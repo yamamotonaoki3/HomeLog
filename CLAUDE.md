@@ -41,8 +41,11 @@
 
 ```
 0. ドキュメントを必ず読む（プランを立てる前に必ず実施）
+     - docs/requirements.md（全体要件定義書）
      - docs/構想.md（全体構想）
-     - docs/在庫管理_要件定義書.md / docs/家計簿_要件定義書.md / docs/献立表_要件定義書.md（対象機能の要件定義書）
+     - docs/details/features/F0x_*.md（対象機能の詳細要件定義書）
+     - docs/details/common-notes.md（機能横断の共通事項）
+     - docs/details/data-model.md（ER図・テーブル定義）
      - docs/技術スタック.md（技術スタック構成）
      上記のうち対象機能に関係するファイルを全て確認した上で実装プランを立てる。
 1. GitHub で Issue を作成（テンプレートを使う）
