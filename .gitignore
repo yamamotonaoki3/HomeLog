@@ -30,8 +30,8 @@ dist/
 *.njsproj
 *.sln
 
-# Claude Code (personal settings)
-.claude/settings.local.json
+# Claude Code（内部設定・スキル等はリポジトリに上げない）
+.claude/
 
 # OS
 .DS_Store
