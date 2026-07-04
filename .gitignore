@@ -1,0 +1,45 @@
+# Java / Spring Boot
+*.class
+*.jar
+*.war
+*.ear
+target/
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+application-local.yml
+application-local.properties
+
+# Node.js / React
+node_modules/
+dist/
+.vite/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Claude Code (personal settings)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# AWS
+.aws/

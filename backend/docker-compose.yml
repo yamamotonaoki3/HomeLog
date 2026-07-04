@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17
+    container_name: homelog-db
+    environment:
+      POSTGRES_DB: homelog
+      POSTGRES_USER: homelog
+      POSTGRES_PASSWORD: homelog
+    ports:
+      - "5432:5432"
+    volumes:
+      - homelog-db-data:/var/lib/postgresql/data
+
+volumes:
+  homelog-db-data:
