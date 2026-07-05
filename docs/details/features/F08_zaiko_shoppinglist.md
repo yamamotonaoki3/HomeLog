@@ -12,14 +12,14 @@
 
 | 画面ID | 画面名 |
 | --- | --- |
-| S-11 | 買い物リスト画面 |
+| S-10 | 在庫・買い物リスト画面（買い物リストパネル。PCでは在庫一覧と同時表示、モバイルはタブ切り替え、[common-notes.md](../common-notes.md) 9章参照） |
 
 ## 3. 業務フロー
 
 ```mermaid
 flowchart TD
     A([在庫が閾値を下回る]) --> B[shopping_list_items へ自動追加\nis_manual=false]
-    C([S-11 買い物リスト画面]) --> D["「追加」ボタン押下（手動）"]
+    C(["S-10 在庫・買い物リスト画面\n（買い物リストパネル）"]) --> D["「追加」ボタン押下（手動）"]
     D --> E[shopping_list_items へ追加\nis_manual=true]
     C --> F["「削除」ボタン押下（手動）"]
     F --> G[shopping_list_items から削除]

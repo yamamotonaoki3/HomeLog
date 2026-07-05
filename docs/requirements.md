@@ -97,7 +97,7 @@
 | F-09 | レシピ登録・管理 | 手動/手書き画像解析/WEB引用によるレシピ登録 | [F09_kondate_recipe.md](details/features/F09_kondate_recipe.md) |
 | F-10 | 献立表 | 1日単位での献立登録、日/週表示切り替え | [F10_kondate_menu.md](details/features/F10_kondate_menu.md) |
 | F-11 | 口座・カード管理 | 口座・カード（口座の子）の手動登録、支出との紐付け | [F11_kakeibo_account.md](details/features/F11_kakeibo_account.md) |
-| F-12 | 世帯支出サマリー | 世帯合計対象フラグがtrueの支出・固定費のみを合計表示 | [F12_kakeibo_household_summary.md](details/features/F12_kakeibo_household_summary.md) |
+| F-12 | 世帯支出サマリー | 世帯合計対象フラグがtrueの支出・固定費のみを合計し、トップ画面のダッシュボードに表示 | [F12_kakeibo_household_summary.md](details/features/F12_kakeibo_household_summary.md) |
 
 ### 5.2 スコープ外
 
@@ -159,7 +159,7 @@
 
 ### 7.1 画面一覧・画面遷移図
 
-詳細は [screen-transitions.md](details/screen-transitions.md) を参照。全17画面（S-01〜S-17）のワイヤーフレームを作成済み（[wireframes.md](details/wireframes.md)参照）。
+詳細は [screen-transitions.md](details/screen-transitions.md) を参照。全17画面のワイヤーフレームを作成済み（[wireframes.md](details/wireframes.md)参照）。トップ画面（S-04）は確認系情報を集約した「生活ダッシュボード」として設計し、旧・世帯合計支出画面（S-16）とイベント別支出サマリーモーダル（S-20）はS-04に統合して廃止、旧・買い物リスト画面（S-11）は在庫一覧（S-10）と同一画面に統合した（[common-notes.md](details/common-notes.md) 9章参照）。
 
 ### 7.2 ワイヤーフレーム
 
@@ -209,3 +209,4 @@
 | 2026-07-05 | 1.2 | S-01〜S-17全画面のワイヤーフレーム（Mermaidブロック図）を作成 |
 | 2026-07-05 | 1.3 | ワイヤーフレームにASCIIアート風レイアウト図を追加。イベント機能（F-06）に日付・繰り返し設定（毎日/毎週/毎月/毎年）・アプリ内通知を追加し、S-18イベント登録モーダルを新設 |
 | 2026-07-05 | 1.4 | トップ画面に日次収支表示・日次詳細モーダル(S-19)・イベントサマリーモーダル(S-20)を追加。在庫・買い物リストに＋/－ボタンを追加。献立表をレシピ確定登録/自由メモのラフ登録の併用方式に変更 |
+| 2026-07-05 | 1.5 | レビュー指摘を受け、トップ画面（S-04）を「生活ダッシュボード」として再設計。旧S-16（世帯合計支出画面）・旧S-20（イベント別支出サマリーモーダル）を廃止しS-04に統合。旧S-11（買い物リスト画面）をS-10（在庫一覧）に統合。S-05に家計簿サマリーカード、S-14にレシピ選択サイドパネルを追加。「確認はトップに集約、登録・編集は各機能画面」の設計方針をcommon-notes.mdに明記 |
