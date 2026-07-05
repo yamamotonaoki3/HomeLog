@@ -34,6 +34,7 @@ erDiagram
     households {
         bigserial id PK
         varchar name
+        varchar invite_code
         timestamp created_at
     }
     household_members {
@@ -237,6 +238,7 @@ erDiagram
 | --- | --- | --- | --- |
 | households.id | BIGSERIAL | ○ | PK |
 | households.name | VARCHAR(100) | ○ | 世帯グループ名 |
+| households.invite_code | VARCHAR(16) | ○ | UNIQUE。世帯作成時に自動発行するランダム英数字コード（他ユーザーの参加に使用） |
 | household_members.household_id | BIGINT | ○ | FK → households.id |
 | household_members.user_id | BIGINT | ○ | FK → users.id |
 
