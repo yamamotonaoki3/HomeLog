@@ -58,14 +58,17 @@ flowchart TD
 | カテゴリー | ○ | kakeibo_categories から選択 |
 | 支払った人 | ○ | 世帯メンバーから選択 |
 | 口座 | — | accounts / cards から選択（[F11_kakeibo_account](F11_kakeibo_account.md)参照） |
-| 世帯合計対象フラグ | ○ | true/false（[common-notes.md](../common-notes.md) 8章参照） |
+| 世帯合計対象フラグ | ○ | true/false。デフォルトfalse（[common-notes.md](../common-notes.md) 11章参照） |
 | メモ | — | 0〜255文字 |
 
-## 6. データ設計（関連テーブル）
+## 6. カテゴリーマスタ初期リスト
+
+食費／日用品／交際費／光熱費／住居費／通信費／医療費／趣味・娯楽／その他（[common-notes.md](../common-notes.md) 11章参照）
+
+## 7. データ設計（関連テーブル）
 
 [data-model.md](../data-model.md) の `expenses`, `kakeibo_categories`, `accounts` テーブルを参照。
 
-## 7. 今後の検討事項
+## 8. 今後の検討事項
 
-- カテゴリーマスタの初期リスト内容（食費・日用品・交際費・光熱費・住居費・通信費 等の暫定案あり）
-- 世帯合計対象フラグのデフォルト値の決め方（例：割り勘対象の支出は自動でtrue、それ以外はユーザー選択、等）
+- なし（現時点で未決事項なし）
