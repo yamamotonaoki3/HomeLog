@@ -17,6 +17,20 @@ erDiagram
         varchar display_name
         timestamp created_at
     }
+    refresh_tokens {
+        bigserial id PK
+        bigint user_id FK
+        varchar token_hash
+        timestamp expires_at
+        timestamp revoked_at
+    }
+    password_reset_tokens {
+        bigserial id PK
+        bigint user_id FK
+        varchar token_hash
+        timestamp expires_at
+        timestamp used_at
+    }
     households {
         bigserial id PK
         varchar name
@@ -148,6 +162,8 @@ erDiagram
         timestamp created_at
     }
 
+    users ||--o{ refresh_tokens : "発行される"
+    users ||--o{ password_reset_tokens : "発行される"
     users ||--o{ household_members : "所属する"
     households ||--o{ household_members : "持つ"
     households ||--o{ external_persons : "登録する"
@@ -194,6 +210,26 @@ erDiagram
 | password_hash | VARCHAR(255) | ○ | BCryptによるハッシュ |
 | display_name | VARCHAR(50) | ○ | 表示名 |
 | created_at | TIMESTAMP | ○ | 登録日時 |
+
+### refresh_tokens（リフレッシュトークン）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| id | BIGSERIAL | ○ | PK |
+| user_id | BIGINT | ○ | FK → users.id |
+| token_hash | VARCHAR(255) | ○ | トークンのハッシュ値（平文は保存しない） |
+| expires_at | TIMESTAMP | ○ | 有効期限（発行から7日） |
+| revoked_at | TIMESTAMP | — | 失効日時（ログアウト時に設定） |
+
+### password_reset_tokens（パスワードリセットトークン）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| id | BIGSERIAL | ○ | PK |
+| user_id | BIGINT | ○ | FK → users.id |
+| token_hash | VARCHAR(255) | ○ | トークンのハッシュ値（平文は保存しない） |
+| expires_at | TIMESTAMP | ○ | 有効期限（発行から30分） |
+| used_at | TIMESTAMP | — | 使用日時（設定済みなら再利用不可） |
 
 ### households（世帯グループ）／household_members（世帯メンバー）
 
