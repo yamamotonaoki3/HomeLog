@@ -189,7 +189,7 @@ flowchart TD
 
 ## S-05 家計簿一覧画面
 
-対応: [F03_kakeibo_expense](features/F03_kakeibo_expense.md)
+対応: [F03_kakeibo_expense](features/F03_kakeibo_expense.md), [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)（未精算サマリー）, [F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)（固定費予定サマリー）, [F06_kakeibo_event](features/F06_kakeibo_event.md)（イベント支出サマリー）, [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md)（世帯合計対象額サマリー）
 
 ```text
 ┌──────────────────────────────────────────────┐
