@@ -91,6 +91,9 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         varchar name
+        date event_date
+        varchar recurrence_type
+        boolean notify_enabled
         timestamp created_at
     }
     zaiko_categories {
@@ -140,6 +143,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint recipe_id FK
+        varchar free_text_memo
         date menu_date
         timestamp created_at
     }
@@ -273,6 +277,9 @@ erDiagram
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | name | VARCHAR(50) | ○ | イベント名 |
+| event_date | DATE | ○ | イベントの基準日（トップ画面カレンダー表示に使用） |
+| recurrence_type | VARCHAR(20) | ○ | 繰り返し設定：`none`/`daily`/`weekly`/`monthly`/`yearly` |
+| notify_enabled | BOOLEAN | ○ | アプリ内通知の有無 |
 
 ### zaiko_categories（在庫カテゴリーマスタ）／stores（店舗マスタ）
 
@@ -331,5 +338,8 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
-| recipe_id | BIGINT | ○ | FK → recipes.id |
+| recipe_id | BIGINT | — | FK → recipes.id（確定登録の場合に設定） |
+| free_text_memo | VARCHAR(100) | — | ラフ登録時の自由メモ（例：「カレー系」） |
 | menu_date | DATE | ○ | 献立の対象日（1日単位） |
+
+※ `recipe_id` と `free_text_memo` はどちらか一方のみ設定する（確定登録/ラフ登録の排他）。

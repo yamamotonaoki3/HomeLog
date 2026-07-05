@@ -17,7 +17,7 @@
 | UC-07 | ユーザー | 立て替えた相手に精算を請求する／請求された精算に応じ受領確認する | [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) |
 | UC-08 | ユーザー | 世帯外の相手との割り勘・精算を記録する | [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) |
 | UC-09 | ユーザー | 固定費（家賃・水道代等）を登録し、毎月自動計上させる | [F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md) |
-| UC-10 | ユーザー | イベントを作成し、複数の支出を紐付けて集計する | [F06_kakeibo_event](features/F06_kakeibo_event.md) |
+| UC-10 | ユーザー | イベントを日付・繰り返し設定（なし/毎日/毎週/毎月/毎年）付きで作成し、複数の支出を紐付けて集計する。トップ画面カレンダーに表示され、繰り返しイベントはアプリ内通知される | [F06_kakeibo_event](features/F06_kakeibo_event.md) |
 | UC-11 | ユーザー | 食材の在庫を登録・編集する | [F07_zaiko_inventory](features/F07_zaiko_inventory.md) |
 | UC-12 | システム | 在庫が閾値を下回った品目を自動的に買い物リストへ追加する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
 | UC-13 | ユーザー | 買い物リストの購入チェックを入れ、在庫に一括反映する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
