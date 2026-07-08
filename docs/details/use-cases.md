@@ -23,7 +23,7 @@
 | UC-13 | ユーザー | 買い物リストの購入チェックを入れ、在庫に一括反映する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
 | UC-14 | ユーザー | レシピを手動登録する、または手書きレシピを画像解析で登録する | [F09_kondate_recipe](features/F09_kondate_recipe.md) |
 | UC-15 | ユーザー | WEBレシピのURLを貼り付けて登録し、独自メモを残す | [F09_kondate_recipe](features/F09_kondate_recipe.md) |
-| UC-16 | ユーザー | 献立を日単位で登録し、週表示で確認する | [F10_kondate_menu](features/F10_kondate_menu.md) |
+| UC-16 | ユーザー | その週に作りたい料理を週単位のリストとして登録・確認する（曜日への割り当てはしない） | [F10_kondate_menu](features/F10_kondate_menu.md) |
 | UC-17 | ユーザー | ログインパスワードを忘れた場合にリセットする | [F01_auth](features/F01_auth.md) |
 | UC-18 | ユーザー | 口座・カードを手動登録し、支出にどの口座/カードを使ったか紐付ける | [F11_kakeibo_account](features/F11_kakeibo_account.md) |
 | UC-19 | ユーザー | 世帯合計対象の支出・固定費のみを合計した「世帯合計支出」を確認する | [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md) |
