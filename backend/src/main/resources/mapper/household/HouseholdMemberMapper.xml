@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.household.mapper.HouseholdMemberMapper">
+
+    <resultMap id="householdMemberResultMap" type="com.homelog.household.entity.HouseholdMemberEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="joinedAt" column="joined_at"/>
+    </resultMap>
+
+    <resultMap id="memberSummaryResultMap" type="com.homelog.household.entity.MemberSummaryEntity">
+        <result property="userId" column="user_id"/>
+        <result property="displayName" column="display_name"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.household.entity.HouseholdMemberEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO household_members (household_id, user_id, joined_at)
+        VALUES (#{householdId}, #{userId}, #{joinedAt})
+    </insert>
+
+    <select id="findByUserId" parameterType="long" resultMap="householdMemberResultMap">
+        SELECT id, household_id, user_id, joined_at
+        FROM household_members
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="findMemberSummariesByHouseholdId" parameterType="long" resultMap="memberSummaryResultMap">
+        SELECT u.id AS user_id, u.display_name AS display_name
+        FROM household_members hm
+        JOIN users u ON u.id = hm.user_id
+        WHERE hm.household_id = #{householdId}
+    </select>
+
+</mapper>

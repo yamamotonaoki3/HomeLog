@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.household.mapper.HouseholdMapper">
+
+    <resultMap id="householdResultMap" type="com.homelog.household.entity.HouseholdEntity">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="inviteCode" column="invite_code"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.household.entity.HouseholdEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO households (name, invite_code, created_at)
+        VALUES (#{name}, #{inviteCode}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="householdResultMap">
+        SELECT id, name, invite_code, created_at
+        FROM households
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByInviteCode" parameterType="string" resultMap="householdResultMap">
+        SELECT id, name, invite_code, created_at
+        FROM households
+        WHERE invite_code = #{inviteCode}
+    </select>
+
+    <update id="updateInviteCode">
+        UPDATE households
+        SET invite_code = #{inviteCode}
+        WHERE id = #{id}
+    </update>
+
+</mapper>
