@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.zaiko.mapper.StoreMapper">
+
+    <resultMap id="storeResultMap" type="com.homelog.zaiko.entity.StoreEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="name" column="name"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.zaiko.entity.StoreEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO stores (household_id, name)
+        VALUES (#{householdId}, #{name})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="storeResultMap">
+        SELECT id, household_id, name
+        FROM stores
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByHouseholdId" parameterType="long" resultMap="storeResultMap">
+        SELECT id, household_id, name
+        FROM stores
+        WHERE household_id = #{householdId}
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE stores
+        SET name = #{name}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM stores
+        WHERE id = #{id}
+    </delete>
+
+</mapper>

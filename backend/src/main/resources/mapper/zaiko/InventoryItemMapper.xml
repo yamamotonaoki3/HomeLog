@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.zaiko.mapper.InventoryItemMapper">
+
+    <resultMap id="inventoryItemResultMap" type="com.homelog.zaiko.entity.InventoryItemEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="name" column="name"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="storeId" column="store_id"/>
+        <result property="quantity" column="quantity"/>
+        <result property="threshold" column="threshold"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.zaiko.entity.InventoryItemEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO inventory_items (household_id, name, category_id, store_id, quantity, threshold)
+        VALUES (#{householdId}, #{name}, #{categoryId}, #{storeId}, #{quantity}, #{threshold})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="inventoryItemResultMap">
+        SELECT id, household_id, name, category_id, store_id, quantity, threshold
+        FROM inventory_items
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByHouseholdId" parameterType="long" resultMap="inventoryItemResultMap">
+        SELECT id, household_id, name, category_id, store_id, quantity, threshold
+        FROM inventory_items
+        WHERE household_id = #{householdId}
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE inventory_items
+        SET name = #{name}, category_id = #{categoryId}, store_id = #{storeId}, threshold = #{threshold}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateQuantity">
+        UPDATE inventory_items
+        SET quantity = quantity + #{delta}
+        WHERE id = #{id}
+          AND quantity + #{delta} >= 0
+          AND quantity + #{delta} <![CDATA[<=]]> 99999.9
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM inventory_items
+        WHERE id = #{id}
+    </delete>
+
+    <select id="countByCategoryId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM inventory_items WHERE category_id = #{categoryId}
+    </select>
+
+    <select id="countByStoreId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM inventory_items WHERE store_id = #{storeId}
+    </select>
+
+</mapper>
