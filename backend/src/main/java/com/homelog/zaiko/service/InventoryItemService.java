@@ -9,14 +9,18 @@ import com.homelog.zaiko.dto.request.UpdateInventoryItemRequest;
 import com.homelog.zaiko.dto.response.InventoryItemResponse;
 import com.homelog.zaiko.dto.response.QuantityResponse;
 import com.homelog.zaiko.entity.InventoryItemEntity;
+import com.homelog.zaiko.entity.ShoppingListItemEntity;
 import com.homelog.zaiko.entity.StoreEntity;
 import com.homelog.zaiko.entity.ZaikoCategoryEntity;
 import com.homelog.zaiko.mapper.InventoryItemMapper;
+import com.homelog.zaiko.mapper.ShoppingListItemMapper;
 import com.homelog.zaiko.mapper.StoreMapper;
 import com.homelog.zaiko.mapper.ZaikoCategoryMapper;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class InventoryItemService {
@@ -31,13 +35,16 @@ public class InventoryItemService {
     private final ZaikoCategoryMapper zaikoCategoryMapper;
     private final StoreMapper storeMapper;
     private final HouseholdMemberMapper householdMemberMapper;
+    private final ShoppingListItemMapper shoppingListItemMapper;
 
     public InventoryItemService(InventoryItemMapper inventoryItemMapper, ZaikoCategoryMapper zaikoCategoryMapper,
-            StoreMapper storeMapper, HouseholdMemberMapper householdMemberMapper) {
+            StoreMapper storeMapper, HouseholdMemberMapper householdMemberMapper,
+            ShoppingListItemMapper shoppingListItemMapper) {
         this.inventoryItemMapper = inventoryItemMapper;
         this.zaikoCategoryMapper = zaikoCategoryMapper;
         this.storeMapper = storeMapper;
         this.householdMemberMapper = householdMemberMapper;
+        this.shoppingListItemMapper = shoppingListItemMapper;
     }
 
     public List<InventoryItemResponse> listItems(Long userId) {
@@ -45,6 +52,7 @@ public class InventoryItemService {
         return inventoryItemMapper.findByHouseholdId(householdId).stream().map(this::toResponse).toList();
     }
 
+    @Transactional
     public InventoryItemResponse createItem(Long userId, CreateInventoryItemRequest request) {
         Long householdId = resolveHouseholdId(userId);
         validateCategory(householdId, request.categoryId());
@@ -58,9 +66,11 @@ public class InventoryItemService {
         item.setQuantity(scale(request.quantity()));
         item.setThreshold(scale(request.threshold()));
         inventoryItemMapper.insert(item);
+        syncShoppingList(item);
         return toResponse(item);
     }
 
+    @Transactional
     public InventoryItemResponse updateItem(Long userId, Long itemId, UpdateInventoryItemRequest request) {
         Long householdId = resolveHouseholdId(userId);
         InventoryItemEntity item = findOwnedItem(householdId, itemId);
@@ -73,9 +83,11 @@ public class InventoryItemService {
         item.setCategoryId(request.categoryId());
         item.setStoreId(request.storeId());
         item.setThreshold(threshold);
+        syncShoppingList(item);
         return toResponse(item);
     }
 
+    @Transactional
     public QuantityResponse adjustQuantity(Long userId, Long itemId, QuantityAdjustRequest request) {
         Long householdId = resolveHouseholdId(userId);
         findOwnedItem(householdId, itemId);
@@ -86,13 +98,36 @@ public class InventoryItemService {
             throw new BadRequestException(QUANTITY_OUT_OF_RANGE_MESSAGE);
         }
         InventoryItemEntity updatedItem = findOwnedItem(householdId, itemId);
+        syncShoppingList(updatedItem);
         return new QuantityResponse(itemId, updatedItem.getQuantity());
     }
 
+    @Transactional
     public void deleteItem(Long userId, Long itemId) {
         Long householdId = resolveHouseholdId(userId);
         findOwnedItem(householdId, itemId);
+        shoppingListItemMapper.deleteByInventoryItemId(itemId);
         inventoryItemMapper.delete(itemId);
+    }
+
+    private void syncShoppingList(InventoryItemEntity item) {
+        boolean belowThreshold = item.getQuantity().compareTo(item.getThreshold()) < 0;
+        if (belowThreshold && !shoppingListItemMapper.existsByInventoryItemId(item.getId())) {
+            ShoppingListItemEntity entry = new ShoppingListItemEntity();
+            entry.setHouseholdId(item.getHouseholdId());
+            entry.setInventoryItemId(item.getId());
+            entry.setManual(false);
+            entry.setPurchased(false);
+            entry.setPurchasedQuantity(BigDecimal.ZERO);
+            entry.setAddedAt(LocalDateTime.now());
+            shoppingListItemMapper.insert(entry);
+        } else if (!belowThreshold) {
+            ShoppingListItemEntity autoEntry = shoppingListItemMapper
+                    .findByInventoryItemIdAndManual(item.getId(), false);
+            if (autoEntry != null) {
+                shoppingListItemMapper.deleteByInventoryItemIdAndManual(item.getId(), false);
+            }
+        }
     }
 
     private void validateCategory(Long householdId, Long categoryId) {

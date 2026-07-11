@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.zaiko.mapper.ShoppingListItemMapper">
+
+    <resultMap id="shoppingListItemResultMap" type="com.homelog.zaiko.entity.ShoppingListItemEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="inventoryItemId" column="inventory_item_id"/>
+        <result property="isManual" column="is_manual"/>
+        <result property="purchased" column="purchased"/>
+        <result property="purchasedQuantity" column="purchased_quantity"/>
+        <result property="addedAt" column="added_at"/>
+    </resultMap>
+
+    <resultMap id="shoppingListItemWithNameResultMap" type="com.homelog.zaiko.entity.ShoppingListItemEntity"
+            extends="shoppingListItemResultMap">
+        <result property="name" column="name"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.zaiko.entity.ShoppingListItemEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO shopping_list_items
+            (household_id, inventory_item_id, is_manual, purchased, purchased_quantity, added_at)
+        VALUES
+            (#{householdId}, #{inventoryItemId}, #{isManual}, #{purchased}, #{purchasedQuantity}, #{addedAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="shoppingListItemResultMap">
+        SELECT id, household_id, inventory_item_id, is_manual, purchased, purchased_quantity, added_at
+        FROM shopping_list_items
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByHouseholdId" resultMap="shoppingListItemWithNameResultMap">
+        SELECT sli.id, sli.household_id, sli.inventory_item_id, sli.is_manual, sli.purchased,
+               sli.purchased_quantity, sli.added_at, i.name AS name
+        FROM shopping_list_items sli
+        JOIN inventory_items i ON i.id = sli.inventory_item_id
+        JOIN zaiko_categories c ON c.id = i.category_id
+        LEFT JOIN stores st ON st.id = i.store_id
+        WHERE sli.household_id = #{householdId}
+        <choose>
+            <when test="sort == 'CATEGORY'">
+                ORDER BY c.name, i.name
+            </when>
+            <when test="sort == 'STORE'">
+                ORDER BY st.name, i.name
+            </when>
+            <otherwise>
+                ORDER BY i.name
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="findByInventoryItemIdAndManual" resultMap="shoppingListItemResultMap">
+        SELECT id, household_id, inventory_item_id, is_manual, purchased, purchased_quantity, added_at
+        FROM shopping_list_items
+        WHERE inventory_item_id = #{inventoryItemId} AND is_manual = #{isManual}
+    </select>
+
+    <select id="existsByInventoryItemId" parameterType="long" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM shopping_list_items
+        WHERE inventory_item_id = #{inventoryItemId}
+    </select>
+
+    <delete id="deleteByInventoryItemIdAndManual">
+        DELETE FROM shopping_list_items
+        WHERE inventory_item_id = #{inventoryItemId} AND is_manual = #{isManual}
+    </delete>
+
+    <delete id="deleteByInventoryItemId" parameterType="long">
+        DELETE FROM shopping_list_items
+        WHERE inventory_item_id = #{inventoryItemId}
+    </delete>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM shopping_list_items
+        WHERE id = #{id}
+    </delete>
+
+    <update id="resetPurchase" parameterType="long">
+        UPDATE shopping_list_items
+        SET purchased = false, purchased_quantity = 0
+        WHERE id = #{id}
+    </update>
+
+</mapper>

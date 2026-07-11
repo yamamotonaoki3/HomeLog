@@ -18,9 +18,11 @@ import com.homelog.zaiko.dto.request.UpdateInventoryItemRequest;
 import com.homelog.zaiko.dto.response.InventoryItemResponse;
 import com.homelog.zaiko.dto.response.QuantityResponse;
 import com.homelog.zaiko.entity.InventoryItemEntity;
+import com.homelog.zaiko.entity.ShoppingListItemEntity;
 import com.homelog.zaiko.entity.StoreEntity;
 import com.homelog.zaiko.entity.ZaikoCategoryEntity;
 import com.homelog.zaiko.mapper.InventoryItemMapper;
+import com.homelog.zaiko.mapper.ShoppingListItemMapper;
 import com.homelog.zaiko.mapper.StoreMapper;
 import com.homelog.zaiko.mapper.ZaikoCategoryMapper;
 import java.math.BigDecimal;
@@ -41,15 +43,26 @@ class InventoryItemServiceTest {
     private StoreMapper storeMapper;
     @Mock
     private HouseholdMemberMapper householdMemberMapper;
+    @Mock
+    private ShoppingListItemMapper shoppingListItemMapper;
 
     private InventoryItemService service() {
-        return new InventoryItemService(inventoryItemMapper, zaikoCategoryMapper, storeMapper, householdMemberMapper);
+        return new InventoryItemService(inventoryItemMapper, zaikoCategoryMapper, storeMapper, householdMemberMapper,
+                shoppingListItemMapper);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
         HouseholdMemberEntity member = new HouseholdMemberEntity();
         member.setHouseholdId(householdId);
         return member;
+    }
+
+    private void stubInventoryItemInsertSetsId() {
+        org.mockito.Mockito.doAnswer(invocation -> {
+            InventoryItemEntity entity = invocation.getArgument(0);
+            entity.setId(100L);
+            return null;
+        }).when(inventoryItemMapper).insert(any(InventoryItemEntity.class));
     }
 
     private ZaikoCategoryEntity categoryOf(long id, long householdId) {
@@ -80,6 +93,7 @@ class InventoryItemServiceTest {
     void createItem_正常系() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        stubInventoryItemInsertSetsId();
 
         InventoryItemResponse response = service().createItem(1L,
                 new CreateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("1.0"), new BigDecimal("0.5")));
@@ -121,6 +135,7 @@ class InventoryItemServiceTest {
         InventoryItemEntity item = new InventoryItemEntity();
         item.setId(5L);
         item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
         when(inventoryItemMapper.findById(5L)).thenReturn(item);
         when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
 
@@ -155,6 +170,7 @@ class InventoryItemServiceTest {
         updatedItem.setId(5L);
         updatedItem.setHouseholdId(10L);
         updatedItem.setQuantity(new BigDecimal("0.9"));
+        updatedItem.setThreshold(new BigDecimal("0.5"));
         when(inventoryItemMapper.findById(5L)).thenReturn(item, updatedItem);
         when(inventoryItemMapper.updateQuantity(5L, new BigDecimal("-0.1"))).thenReturn(1);
 
@@ -257,5 +273,172 @@ class InventoryItemServiceTest {
 
         assertThatThrownBy(() -> service().deleteItem(1L, 5L)).isInstanceOf(ResourceNotFoundException.class);
         verify(inventoryItemMapper, never()).delete(anyLong());
+    }
+
+    @Test
+    void deleteItem_買い物リストの行も削除される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        when(inventoryItemMapper.findById(5L)).thenReturn(item);
+
+        service().deleteItem(1L, 5L);
+
+        verify(shoppingListItemMapper).deleteByInventoryItemId(5L);
+        verify(inventoryItemMapper).delete(5L);
+    }
+
+    @Test
+    void createItem_閾値未満なら買い物リストに自動追加される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        stubInventoryItemInsertSetsId();
+        when(shoppingListItemMapper.existsByInventoryItemId(100L)).thenReturn(false);
+
+        service().createItem(1L,
+                new CreateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("0.3"), new BigDecimal("0.5")));
+
+        verify(shoppingListItemMapper).insert(any(ShoppingListItemEntity.class));
+    }
+
+    @Test
+    void createItem_閾値以上なら買い物リストに追加しない() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        stubInventoryItemInsertSetsId();
+
+        service().createItem(1L,
+                new CreateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("1.0"), new BigDecimal("0.5")));
+
+        verify(shoppingListItemMapper, never()).insert(any());
+    }
+
+    @Test
+    void createItem_閾値未満でも手動追加済みなら二重追加しない() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        stubInventoryItemInsertSetsId();
+        when(shoppingListItemMapper.existsByInventoryItemId(100L)).thenReturn(true);
+
+        service().createItem(1L,
+                new CreateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("0.3"), new BigDecimal("0.5")));
+
+        verify(shoppingListItemMapper, never()).insert(any());
+    }
+
+    @Test
+    void updateItem_閾値変更で新たに閾値未満になれば自動追加される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item);
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        when(shoppingListItemMapper.existsByInventoryItemId(5L)).thenReturn(false);
+
+        service().updateItem(1L, 5L, new UpdateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("2.0")));
+
+        verify(shoppingListItemMapper).insert(any(ShoppingListItemEntity.class));
+    }
+
+    @Test
+    void updateItem_閾値変更で閾値未満でも手動追加済みなら二重追加しない() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item);
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        when(shoppingListItemMapper.existsByInventoryItemId(5L)).thenReturn(true);
+
+        service().updateItem(1L, 5L, new UpdateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("2.0")));
+
+        verify(shoppingListItemMapper, never()).insert(any());
+    }
+
+    @Test
+    void updateItem_閾値変更で閾値以上に戻れば自動追加分は削除される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item);
+        when(zaikoCategoryMapper.findById(3L)).thenReturn(categoryOf(3L, 10L));
+        ShoppingListItemEntity autoEntry = new ShoppingListItemEntity();
+        autoEntry.setId(9L);
+        when(shoppingListItemMapper.findByInventoryItemIdAndManual(5L, false)).thenReturn(autoEntry);
+
+        service().updateItem(1L, 5L, new UpdateInventoryItemRequest("牛乳", 3L, null, new BigDecimal("0.5")));
+
+        verify(shoppingListItemMapper).deleteByInventoryItemIdAndManual(5L, false);
+    }
+
+    @Test
+    void adjustQuantity_閾値を下回ったら自動追加される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
+        InventoryItemEntity updatedItem = new InventoryItemEntity();
+        updatedItem.setId(5L);
+        updatedItem.setHouseholdId(10L);
+        updatedItem.setQuantity(new BigDecimal("0.3"));
+        updatedItem.setThreshold(new BigDecimal("0.5"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item, updatedItem);
+        when(inventoryItemMapper.updateQuantity(5L, new BigDecimal("-0.7"))).thenReturn(1);
+        when(shoppingListItemMapper.existsByInventoryItemId(5L)).thenReturn(false);
+
+        service().adjustQuantity(1L, 5L, new QuantityAdjustRequest(new BigDecimal("-0.7")));
+
+        verify(shoppingListItemMapper).insert(any(ShoppingListItemEntity.class));
+    }
+
+    @Test
+    void adjustQuantity_閾値を下回っても手動追加済みなら二重追加しない() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("1.0"));
+        InventoryItemEntity updatedItem = new InventoryItemEntity();
+        updatedItem.setId(5L);
+        updatedItem.setHouseholdId(10L);
+        updatedItem.setQuantity(new BigDecimal("0.3"));
+        updatedItem.setThreshold(new BigDecimal("0.5"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item, updatedItem);
+        when(inventoryItemMapper.updateQuantity(5L, new BigDecimal("-0.7"))).thenReturn(1);
+        when(shoppingListItemMapper.existsByInventoryItemId(5L)).thenReturn(true);
+
+        service().adjustQuantity(1L, 5L, new QuantityAdjustRequest(new BigDecimal("-0.7")));
+
+        verify(shoppingListItemMapper, never()).insert(any());
+    }
+
+    @Test
+    void adjustQuantity_閾値以上に回復したら自動削除される() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        InventoryItemEntity item = new InventoryItemEntity();
+        item.setId(5L);
+        item.setHouseholdId(10L);
+        item.setQuantity(new BigDecimal("0.3"));
+        InventoryItemEntity updatedItem = new InventoryItemEntity();
+        updatedItem.setId(5L);
+        updatedItem.setHouseholdId(10L);
+        updatedItem.setQuantity(new BigDecimal("1.3"));
+        updatedItem.setThreshold(new BigDecimal("0.5"));
+        when(inventoryItemMapper.findById(5L)).thenReturn(item, updatedItem);
+        when(inventoryItemMapper.updateQuantity(5L, new BigDecimal("1.0"))).thenReturn(1);
+        ShoppingListItemEntity autoEntry = new ShoppingListItemEntity();
+        autoEntry.setId(9L);
+        when(shoppingListItemMapper.findByInventoryItemIdAndManual(5L, false)).thenReturn(autoEntry);
+
+        service().adjustQuantity(1L, 5L, new QuantityAdjustRequest(new BigDecimal("1.0")));
+
+        verify(shoppingListItemMapper).deleteByInventoryItemIdAndManual(5L, false);
     }
 }
