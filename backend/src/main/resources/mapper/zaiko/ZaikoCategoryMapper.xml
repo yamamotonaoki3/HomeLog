@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.zaiko.mapper.ZaikoCategoryMapper">
+
+    <resultMap id="categoryResultMap" type="com.homelog.zaiko.entity.ZaikoCategoryEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="name" column="name"/>
+        <result property="isDefault" column="is_default"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.zaiko.entity.ZaikoCategoryEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO zaiko_categories (household_id, name, is_default)
+        VALUES (#{householdId}, #{name}, #{isDefault})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="categoryResultMap">
+        SELECT id, household_id, name, is_default
+        FROM zaiko_categories
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByHouseholdId" parameterType="long" resultMap="categoryResultMap">
+        SELECT id, household_id, name, is_default
+        FROM zaiko_categories
+        WHERE household_id = #{householdId}
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE zaiko_categories
+        SET name = #{name}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM zaiko_categories
+        WHERE id = #{id}
+    </delete>
+
+</mapper>
