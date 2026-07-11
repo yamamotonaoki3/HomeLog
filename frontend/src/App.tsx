@@ -1,8 +1,34 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
+import { RequireAuth } from './routes/RequireAuth'
+import { RequireHousehold } from './routes/RequireHousehold'
+import { DashboardPage } from './pages/DashboardPage'
+import { HouseholdPage } from './pages/HouseholdPage'
+import { LoginPage } from './pages/LoginPage'
+import { PasswordResetPage } from './pages/PasswordResetPage'
+import { RegisterPage } from './pages/RegisterPage'
+
 function App() {
   return (
-    <div>
-      <h1>HomeLog</h1>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/password-reset" element={<PasswordResetPage />} />
+
+          <Route element={<RequireAuth />}>
+            <Route path="/household" element={<HouseholdPage />} />
+
+            <Route element={<RequireHousehold />}>
+              <Route path="/" element={<DashboardPage />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 
