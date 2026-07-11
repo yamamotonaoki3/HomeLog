@@ -69,6 +69,18 @@ class ShoppingListItemMapperTest {
     }
 
     @Test
+    void countByHouseholdId_世帯に紐づく件数のみ取得できる() {
+        Long householdId1 = createHousehold("sli-house-count1", "SLICODE0000011");
+        Long householdId2 = createHousehold("sli-house-count2", "SLICODE0000012");
+        Long item1 = createItem(householdId1, "牛乳", null);
+        Long item2 = createItem(householdId2, "パン", null);
+        shoppingListItemMapper.insert(newEntity(householdId1, item1, false));
+        shoppingListItemMapper.insert(newEntity(householdId2, item2, false));
+
+        assertThat(shoppingListItemMapper.countByHouseholdId(householdId1)).isEqualTo(1);
+    }
+
+    @Test
     void findByHouseholdId_店舗順で取得できる() {
         Long householdId = createHousehold("sli-house-store", "SLICODE0000003");
         Long storeA = createStore(householdId, "Aマート");
