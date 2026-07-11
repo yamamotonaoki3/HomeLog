@@ -159,6 +159,22 @@ class InventoryItemMapperTest {
         assertThat(inventoryItemMapper.countByStoreId(storeId)).isEqualTo(1);
     }
 
+    @Test
+    void countBelowThreshold_閾値未満の件数のみ取得できる() {
+        Long householdId = createHousehold("item-house8", "ITEMCODE0000009");
+        Long categoryId = createCategory(householdId, "調味料");
+        insertItem(householdId, "在庫十分", categoryId, null);
+        InventoryItemEntity lowStockItem = new InventoryItemEntity();
+        lowStockItem.setHouseholdId(householdId);
+        lowStockItem.setName("在庫不足");
+        lowStockItem.setCategoryId(categoryId);
+        lowStockItem.setQuantity(new BigDecimal("0.1"));
+        lowStockItem.setThreshold(new BigDecimal("0.5"));
+        inventoryItemMapper.insert(lowStockItem);
+
+        assertThat(inventoryItemMapper.countBelowThreshold(householdId)).isEqualTo(1);
+    }
+
     private Long insertItem(Long householdId, String name, Long categoryId, Long storeId) {
         InventoryItemEntity item = new InventoryItemEntity();
         item.setHouseholdId(householdId);

@@ -52,6 +52,12 @@
         </choose>
     </select>
 
+    <select id="countByHouseholdId" parameterType="long" resultType="int">
+        SELECT COUNT(*)
+        FROM shopping_list_items
+        WHERE household_id = #{householdId}
+    </select>
+
     <select id="findByInventoryItemIdAndManual" resultMap="shoppingListItemResultMap">
         SELECT id, household_id, inventory_item_id, is_manual, purchased, purchased_quantity, added_at
         FROM shopping_list_items

@@ -25,4 +25,6 @@ public interface InventoryItemMapper {
     int countByCategoryId(long categoryId);
 
     int countByStoreId(long storeId);
+
+    int countBelowThreshold(long householdId);
 }

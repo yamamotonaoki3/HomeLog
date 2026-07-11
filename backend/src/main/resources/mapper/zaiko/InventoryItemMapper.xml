@@ -58,4 +58,8 @@
         SELECT COUNT(*) FROM inventory_items WHERE store_id = #{storeId}
     </select>
 
+    <select id="countBelowThreshold" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM inventory_items WHERE household_id = #{householdId} AND quantity &lt; threshold
+    </select>
+
 </mapper>

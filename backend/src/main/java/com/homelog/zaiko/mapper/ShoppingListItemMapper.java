@@ -14,6 +14,8 @@ public interface ShoppingListItemMapper {
 
     List<ShoppingListItemEntity> findByHouseholdId(@Param("householdId") long householdId, @Param("sort") String sort);
 
+    int countByHouseholdId(long householdId);
+
     ShoppingListItemEntity findByInventoryItemIdAndManual(
             @Param("inventoryItemId") long inventoryItemId, @Param("isManual") boolean isManual);
 
