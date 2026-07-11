@@ -69,15 +69,21 @@
 6. コミット: git commit
 7. git push origin <ブランチ名>
 8. GitHub で PR を作成（テンプレートを使う・Closes #<番号> を記載）
-9. Codex CLI でコードレビューを実行する: codex review --base main
-     指摘事項があれば対応し、必要に応じて再実行する。
+9. Codex CLI でコードレビューを実行し、指摘があれば Codex 自身に修正させる（次項参照）。指摘ゼロになるまで繰り返す。
 10. セルフレビュー → マージ
 11. ブランチ削除（マージ後は GitHub が自動削除）
 ```
 
 **TDDを採用する理由**：先にテストでインプット/アウトプットの形（entity・dtoの形状）を固めてから実装に入ることで、実装途中で設計ミスや考慮漏れに気づく「手戻り」ではなく、コーディング前の段階でエラーを検出できるようにするため。
 
-**Codex CLIによるレビューについて**：このマシンには Codex CLI（ChatGPTアカウントでログイン済み）が導入されている。`codex review --base main` でブランチの差分を非対話的にレビューできるほか、`codex review --uncommitted` でコミット前の変更、`codex review --commit <SHA>` で特定コミットのレビューも可能。Claude Codeによるセルフレビューに加え、別モデルによる第二の視点として活用する。
+**Codex CLIによるレビュー・修正フローについて**：このマシンには Codex CLI（ChatGPTアカウントでログイン済み）が導入されている。`codex review --base main` でブランチの差分を非対話的にレビューできるほか、`codex review --uncommitted` でコミット前の変更、`codex review --commit <SHA>` で特定コミットのレビューも可能。Claude Codeによるセルフレビューに加え、別モデルによる第二の視点として活用する。
+
+指摘が出た場合は、以下の手順を**都度の指示なしに毎回**適用する（恒久ルール）。
+
+1. `codex review --uncommitted`（または `--base main`）でレビューを実行する。
+2. 指摘があれば、指摘内容と対象ファイルを踏まえた具体的な修正指示を添えて `codex exec "<修正指示>"` を実行し、**Codex 自身にコードを修正させる**。Claude Code が直接コードを修正するのは、Codex の応答が得られない・失敗する等、Codex による修正が行えない場合の代替手段とする。
+3. Codex の修正後、Claude Code が `./gradlew.bat test checkstyleMain checkstyleTest` 等で検証する（Codex 自身のサンドボックスからは Gradle が実行できないことがあるため、ビルド・テストの最終検証は必ず Claude Code 側で行う）。
+4. 指摘ゼロになるまで `codex review` の再実行 → `codex exec` による修正を繰り返す。
 
 ---
 
