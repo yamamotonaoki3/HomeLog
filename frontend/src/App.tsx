@@ -7,6 +7,7 @@ import { HouseholdPage } from './pages/HouseholdPage'
 import { LoginPage } from './pages/LoginPage'
 import { PasswordResetPage } from './pages/PasswordResetPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { ZaikoPage } from './pages/ZaikoPage'
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
 
             <Route element={<RequireHousehold />}>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/zaiko" element={<ZaikoPage />} />
             </Route>
           </Route>
 
