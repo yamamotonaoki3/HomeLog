@@ -37,6 +37,16 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-webmvc-test")
     testImplementation("org.springframework.security:spring-security-test")
+    // Spring Boot 4ではTestRestTemplateがspring-boot-resttestclientモジュールに分離されている
+    // （spring-boot-restclientはTestRestTemplateが内部で使うRestTemplateBuilderを提供する）
+    testImplementation("org.springframework.boot:spring-boot-resttestclient")
+    testImplementation("org.springframework.boot:spring-boot-restclient")
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.testcontainers:junit-jupiter")
+    // TestRestTemplateでPATCHメソッドを使うため（結合テスト）
+    testImplementation("org.apache.httpcomponents.client5:httpclient5")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("com.h2database:h2")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.4")
@@ -49,6 +59,22 @@ checkstyle {
     isIgnoreFailures = false
 }
 
-tasks.withType<Test> {
-    useJUnitPlatform()
+// 単体テスト：integrationタグを除外し、Docker不要・高速なまま維持する
+tasks.test {
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+// 結合テスト：Testcontainers（PostgreSQL 17）でController→Service→Mapper→DBを通しで検証する。
+// Docker Desktopの起動が前提。実行: .\gradlew.bat integrationTest
+tasks.register<Test>("integrationTest") {
+    description = "Runs integration tests (requires Docker)."
+    group = "verification"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform {
+        includeTags("integration")
+    }
+    shouldRunAfter(tasks.test)
 }
