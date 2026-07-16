@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AppLayout } from './components/AppLayout'
 import { AuthProvider } from './context/AuthContext'
 import { RequireAuth } from './routes/RequireAuth'
 import { RequireHousehold } from './routes/RequireHousehold'
@@ -22,8 +23,10 @@ function App() {
             <Route path="/household" element={<HouseholdPage />} />
 
             <Route element={<RequireHousehold />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/zaiko" element={<ZaikoPage />} />
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/zaiko" element={<ZaikoPage />} />
+              </Route>
             </Route>
           </Route>
 
