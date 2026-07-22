@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import { useAuth } from '../context/useAuth'
+import { PasswordField } from '../components/PasswordField'
 
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
 
@@ -12,6 +13,7 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -22,6 +24,10 @@ export function RegisterPage() {
 
     if (!PASSWORD_PATTERN.test(password)) {
       setError('パスワードは8文字以上、英字と数字を含めてください')
+      return
+    }
+    if (password !== passwordConfirm) {
+      setError('パスワードが一致しません')
       return
     }
     const trimmedName = displayName.trim()
@@ -63,13 +69,19 @@ export function RegisterPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <label htmlFor="reg-password">パスワード（8文字以上、英字と数字を含む）</label>
-          <input
+          <PasswordField
             id="reg-password"
-            type="password"
-            required
+            label="パスワード（8文字以上、英字と数字を含む）"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={setPassword}
+            autoComplete="new-password"
+          />
+          <PasswordField
+            id="reg-password-confirm"
+            label="パスワード（確認）"
+            value={passwordConfirm}
+            onChange={setPasswordConfirm}
+            autoComplete="new-password"
           />
           <label htmlFor="reg-name">表示名</label>
           <input

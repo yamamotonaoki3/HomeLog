@@ -35,7 +35,7 @@ describe('PasswordResetPage', () => {
         screen.getByText('パスワードリセット用のメールを送信しました（該当アカウントが存在する場合）'),
       ).toBeInTheDocument(),
     )
-    expect(screen.getByLabelText(/新しいパスワード/)).toBeInTheDocument()
+    expect(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）')).toBeInTheDocument()
   })
 
   it('リセット実行成功で/loginへ遷移する', async () => {
@@ -48,10 +48,11 @@ describe('PasswordResetPage', () => {
 
     await user.type(screen.getByLabelText('メールアドレス'), 'taro@example.com')
     await user.click(screen.getByRole('button', { name: '送信する' }))
-    await waitFor(() => expect(screen.getByLabelText(/新しいパスワード/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）')).toBeInTheDocument())
 
     await user.type(screen.getByLabelText('リセットトークン'), 'reset-token-xxxx')
-    await user.type(screen.getByLabelText(/新しいパスワード/), 'NewPassw0rd')
+    await user.type(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）'), 'NewPassw0rd')
+    await user.type(screen.getByLabelText('新しいパスワード（確認）'), 'NewPassw0rd')
     await user.click(screen.getByRole('button', { name: '変更する' }))
 
     await waitFor(() => expect(screen.getByText('ログイン画面')).toBeInTheDocument())
@@ -66,10 +67,11 @@ describe('PasswordResetPage', () => {
 
     await user.type(screen.getByLabelText('メールアドレス'), 'taro@example.com')
     await user.click(screen.getByRole('button', { name: '送信する' }))
-    await waitFor(() => expect(screen.getByLabelText(/新しいパスワード/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）')).toBeInTheDocument())
 
     await user.type(screen.getByLabelText('リセットトークン'), 'reset-token-xxxx')
-    await user.type(screen.getByLabelText(/新しいパスワード/), 'onlyletters')
+    await user.type(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）'), 'onlyletters')
+    await user.type(screen.getByLabelText('新しいパスワード（確認）'), 'onlyletters')
     await user.click(screen.getByRole('button', { name: '変更する' }))
 
     await waitFor(() =>
@@ -89,10 +91,11 @@ describe('PasswordResetPage', () => {
 
     await user.type(screen.getByLabelText('メールアドレス'), 'taro@example.com')
     await user.click(screen.getByRole('button', { name: '送信する' }))
-    await waitFor(() => expect(screen.getByLabelText(/新しいパスワード/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）')).toBeInTheDocument())
 
     await user.type(screen.getByLabelText('リセットトークン'), 'expired-token')
-    await user.type(screen.getByLabelText(/新しいパスワード/), 'NewPassw0rd')
+    await user.type(screen.getByLabelText('新しいパスワード（8文字以上、英字と数字を含む）'), 'NewPassw0rd')
+    await user.type(screen.getByLabelText('新しいパスワード（確認）'), 'NewPassw0rd')
     await user.click(screen.getByRole('button', { name: '変更する' }))
 
     await waitFor(() => expect(screen.getByText('トークンが無効です')).toBeInTheDocument())
