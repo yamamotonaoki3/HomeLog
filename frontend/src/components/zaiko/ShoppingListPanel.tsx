@@ -15,7 +15,6 @@ interface Props {
 }
 
 interface PurchaseState {
-  checked: boolean
   quantity: number
 }
 
@@ -40,7 +39,7 @@ export function ShoppingListPanel({
   const storeName = (id: number | null | undefined) =>
     id === null || id === undefined ? '' : (stores.find((s) => s.id === id)?.name ?? '')
 
-  const purchaseOf = (id: number): PurchaseState => purchases[id] ?? { checked: false, quantity: 0 }
+  const purchaseOf = (id: number): PurchaseState => purchases[id] ?? { quantity: 0 }
 
   const updatePurchase = (id: number, patch: Partial<PurchaseState>) => {
     setPurchases((prev) => ({ ...prev, [id]: { ...purchaseOf(id), ...prev[id], ...patch } }))
@@ -70,10 +69,10 @@ export function ShoppingListPanel({
 
   const handleUpdate = async () => {
     const items = shopping
-      .map((s) => ({ id: s.id, purchasedQuantity: purchaseOf(s.id).checked ? purchaseOf(s.id).quantity : 0 }))
+      .map((s) => ({ id: s.id, purchasedQuantity: purchaseOf(s.id).quantity }))
       .filter((line) => line.purchasedQuantity > 0)
     if (items.length === 0) {
-      onNotify('購入済みチェックと購入個数を入力してください')
+      onNotify('購入個数を入力してください')
       return
     }
     setSubmitting(true)
@@ -127,7 +126,6 @@ export function ShoppingListPanel({
             <th>品名</th>
             <th>カテゴリー</th>
             <th>買う店</th>
-            <th>購入済</th>
             <th>購入個数</th>
             <th></th>
           </tr>
@@ -135,7 +133,7 @@ export function ShoppingListPanel({
         <tbody>
           {shopping.length === 0 ? (
             <tr>
-              <td colSpan={6}>買い物リストは空です</td>
+              <td colSpan={5}>買い物リストは空です</td>
             </tr>
           ) : (
             shopping.map((item) => {
@@ -146,14 +144,6 @@ export function ShoppingListPanel({
                   <td>{item.name}</td>
                   <td>{categoryName(inv?.categoryId)}</td>
                   <td>{storeName(inv?.storeId)}</td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`${item.name}を購入済にする`}
-                      checked={purchase.checked}
-                      onChange={(e) => updatePurchase(item.id, { checked: e.target.checked })}
-                    />
-                  </td>
                   <td>
                     <button
                       type="button"
