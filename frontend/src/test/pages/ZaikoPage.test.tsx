@@ -346,7 +346,7 @@ describe('ZaikoPage', () => {
     await waitFor(() => expect(screen.getByText('在庫を登録しました')).toBeInTheDocument())
   })
 
-  it('購入済チェック＋購入個数を入れて更新するとチェック分のみ一括反映される', async () => {
+  it('購入個数を入れて更新すると個数を入力した分のみ一括反映される', async () => {
     const { calls } = setupApi({
       inventory: [{ ...egg }, { ...milk }],
       shopping: [
@@ -359,12 +359,13 @@ describe('ZaikoPage', () => {
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
-    await user.click(screen.getByRole('checkbox', { name: '卵を購入済にする' }))
+    expect(screen.queryByRole('checkbox', { name: '卵を購入済にする' })).not.toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await user.click(screen.getByRole('button', { name: '更新' }))
 
-    // 卵のみ送信され（牛乳は未チェック）、在庫2.0に更新・閾値1.0を上回るためリストから除外される
+    // 卵のみ送信され（牛乳は個数未入力）、在庫2.0に更新・閾値1.0を上回るためリストから除外される
     await waitFor(() => {
       const updateCall = calls.find((c) => c.url === '/api/shopping-list-items/update')
       expect(updateCall?.body).toEqual({ items: [{ id: 10, purchasedQuantity: 2 }] })
