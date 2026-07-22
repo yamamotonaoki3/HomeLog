@@ -25,6 +25,26 @@ a:hover { text-decoration: underline; }
 .auth-card label { display: block; margin-top: 12px; margin-bottom: 4px; font-size: 13px; color: #555; line-height: 1.6; }
 .auth-card input, .auth-card select, .auth-card textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 .auth-links { display: flex; justify-content: space-between; margin-top: 14px; font-size: 13px; }
+.password-field { position: relative; }
+.password-field input { width: 100%; padding-right: 40px; }
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+}
+.password-toggle:hover { background: #e5e7eb; color: #333; }
 .split-two { display: flex; gap: 24px; }
 .split-two > div { flex: 1; }
 .error { color: #dc2626; font-size: 13px; min-height: 18px; }

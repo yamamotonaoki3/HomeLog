@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
+import { PasswordField } from '../components/PasswordField'
 
 interface LocationState {
   from?: { pathname?: string }
@@ -49,13 +50,12 @@ export function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <label htmlFor="login-password">パスワード</label>
-          <input
+          <PasswordField
             id="login-password"
-            type="password"
-            required
+            label="パスワード"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={setPassword}
+            autoComplete="current-password"
           />
           <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
             ログイン

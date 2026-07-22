@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
+import { PasswordField } from '../components/PasswordField'
 
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
 
@@ -14,6 +15,7 @@ export function PasswordResetPage() {
   const [email, setEmail] = useState('')
   const [token, setToken] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
   const [step, setStep] = useState<1 | 2>(1)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -42,6 +44,10 @@ export function PasswordResetPage() {
 
     if (!PASSWORD_PATTERN.test(newPassword)) {
       setError('パスワードは8文字以上、英字と数字を含めてください')
+      return
+    }
+    if (newPassword !== newPasswordConfirm) {
+      setError('パスワードが一致しません')
       return
     }
 
@@ -88,13 +94,19 @@ export function PasswordResetPage() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
             />
-            <label htmlFor="reset-new-password">新しいパスワード（8文字以上、英字と数字を含む）</label>
-            <input
+            <PasswordField
               id="reset-new-password"
-              type="password"
-              required
+              label="新しいパスワード（8文字以上、英字と数字を含む）"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={setNewPassword}
+              autoComplete="new-password"
+            />
+            <PasswordField
+              id="reset-new-password-confirm"
+              label="新しいパスワード（確認）"
+              value={newPasswordConfirm}
+              onChange={setNewPasswordConfirm}
+              autoComplete="new-password"
             />
             <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
               変更する
