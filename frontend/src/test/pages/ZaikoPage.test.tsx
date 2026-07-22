@@ -299,6 +299,15 @@ describe('ZaikoPage', () => {
     expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/shopping-list-items/10')).toBe(true)
   })
 
+  it('初期表示は買う店順（store）で取得される', async () => {
+    const { calls } = setupApi({ inventory: [milk] })
+    renderZaikoPage()
+    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+
+    expect(calls.some((c) => c.method === 'GET' && c.url === '/api/shopping-list-items?sort=store')).toBe(true)
+    expect(screen.getByLabelText('並び替え')).toHaveValue('store')
+  })
+
   it('並び替えを変更するとsortパラメータ付きで再取得する', async () => {
     const { calls } = setupApi({ inventory: [milk] })
     const user = userEvent.setup()

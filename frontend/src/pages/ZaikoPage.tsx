@@ -11,7 +11,7 @@ export function ZaikoPage() {
   const [stores, setStores] = useState<Store[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [shopping, setShopping] = useState<ShoppingListItem[]>([])
-  const [sort, setSort] = useState<ShoppingSort>('name')
+  const [sort, setSort] = useState<ShoppingSort>('store')
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
@@ -37,7 +37,7 @@ export function ZaikoPage() {
       apiClient.get<Category[]>('/zaiko-categories'),
       apiClient.get<Store[]>('/stores'),
       apiClient.get<InventoryItem[]>('/inventory-items'),
-      apiClient.get<ShoppingListItem[]>('/shopping-list-items', { params: { sort: 'name' } }),
+      apiClient.get<ShoppingListItem[]>('/shopping-list-items', { params: { sort: 'store' } }),
     ])
       .then(([categoriesRes, storesRes, inventoryRes, shoppingRes]) => {
         if (cancelled) return
