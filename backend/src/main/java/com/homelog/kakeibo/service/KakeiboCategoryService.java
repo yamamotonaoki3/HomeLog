@@ -2,6 +2,7 @@ package com.homelog.kakeibo.service;
 
 import com.homelog.common.exception.BadRequestException;
 import com.homelog.common.exception.ResourceNotFoundException;
+import com.homelog.household.mapper.HouseholdMapper;
 import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateCategoryRequest;
 import com.homelog.kakeibo.dto.request.UpdateCategoryRequest;
@@ -25,17 +26,20 @@ public class KakeiboCategoryService {
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
     private final ExpenseMapper expenseMapper;
     private final HouseholdMemberMapper householdMemberMapper;
+    private final HouseholdMapper householdMapper;
 
     public KakeiboCategoryService(KakeiboCategoryMapper kakeiboCategoryMapper, ExpenseMapper expenseMapper,
-            HouseholdMemberMapper householdMemberMapper) {
+            HouseholdMemberMapper householdMemberMapper, HouseholdMapper householdMapper) {
         this.kakeiboCategoryMapper = kakeiboCategoryMapper;
         this.expenseMapper = expenseMapper;
         this.householdMemberMapper = householdMemberMapper;
+        this.householdMapper = householdMapper;
     }
 
     @Transactional
     public List<CategoryResponse> listCategories(Long userId) {
         Long householdId = resolveHouseholdId(userId);
+        householdMapper.lockById(householdId);
         List<KakeiboCategoryEntity> categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
         if (categories.stream().noneMatch(KakeiboCategoryEntity::isDefault)) {
             seedDefaultCategories(householdId);

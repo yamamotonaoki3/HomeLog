@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.homelog.common.exception.BadRequestException;
 import com.homelog.common.exception.ResourceNotFoundException;
 import com.homelog.household.entity.HouseholdMemberEntity;
+import com.homelog.household.mapper.HouseholdMapper;
 import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateCategoryRequest;
 import com.homelog.kakeibo.dto.request.UpdateCategoryRequest;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -35,9 +38,11 @@ class KakeiboCategoryServiceTest {
     private ExpenseMapper expenseMapper;
     @Mock
     private HouseholdMemberMapper householdMemberMapper;
+    @Mock
+    private HouseholdMapper householdMapper;
 
     private KakeiboCategoryService service() {
-        return new KakeiboCategoryService(kakeiboCategoryMapper, expenseMapper, householdMemberMapper);
+        return new KakeiboCategoryService(kakeiboCategoryMapper, expenseMapper, householdMemberMapper, householdMapper);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -63,6 +68,21 @@ class KakeiboCategoryServiceTest {
         assertThat(response).hasSize(9);
         assertThat(response).allMatch(CategoryResponse::isDefault);
         verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+    }
+
+    @Test
+    void listCategories_世帯ロック取得後にカテゴリーを確認してデフォルトカテゴリーを投入する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(kakeiboCategoryMapper.findByHouseholdId(10L))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        service().listCategories(1L);
+
+        InOrder inOrder = inOrder(householdMapper, kakeiboCategoryMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(kakeiboCategoryMapper).findByHouseholdId(10L);
+        inOrder.verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
