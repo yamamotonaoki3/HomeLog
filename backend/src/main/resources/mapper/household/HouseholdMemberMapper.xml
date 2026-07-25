@@ -26,14 +26,6 @@
         WHERE user_id = #{userId}
     </select>
 
-    <select id="lockByHouseholdId" parameterType="long" resultType="long">
-        SELECT id
-        FROM household_members
-        WHERE household_id = #{householdId}
-        ORDER BY id
-        FOR UPDATE
-    </select>
-
     <select id="findMemberSummariesByHouseholdId" parameterType="long" resultMap="memberSummaryResultMap">
         SELECT u.id AS user_id, u.display_name AS display_name
         FROM household_members hm

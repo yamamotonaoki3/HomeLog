@@ -111,19 +111,6 @@ class HouseholdMemberMapperTest {
     }
 
     @Test
-    void lockByHouseholdId_対象世帯のメンバー行を返す() {
-        Long householdId = createHousehold("lock-house", "LOCKCODE00000001");
-        Long userId1 = createUser("lock1@example.com");
-        Long userId2 = createUser("lock2@example.com");
-        insertMember(householdId, userId1);
-        insertMember(householdId, userId2);
-
-        List<Long> lockedMemberIds = householdMemberMapper.lockByHouseholdId(householdId);
-
-        assertThat(lockedMemberIds).hasSize(2);
-    }
-
-    @Test
     void findMemberSummariesByHouseholdId_表示名付きで取得できる() {
         Long householdId = createHousehold("summary-house", "SUMMARYCODE00001");
         Long userId = createUser("summary@example.com", "サマリー太郎");

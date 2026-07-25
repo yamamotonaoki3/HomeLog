@@ -61,6 +61,17 @@ class HouseholdMapperTest {
     }
 
     @Test
+    void lockById_対象世帯を返す() {
+        HouseholdEntity household = newHousehold("ロック家", "LOCKHOUSE0000001");
+        householdMapper.insert(household);
+
+        HouseholdEntity locked = householdMapper.lockById(household.getId());
+
+        assertThat(locked).isNotNull();
+        assertThat(locked.getId()).isEqualTo(household.getId());
+    }
+
+    @Test
     void updateInviteCode_正常系() {
         HouseholdEntity household = newHousehold("佐藤家", "OLD1234567890ABC");
         householdMapper.insert(household);

@@ -136,13 +136,16 @@ class HouseholdServiceTest {
         household.setName("山田家");
         household.setInviteCode("AB12CD34EF56GH78");
         when(householdMapper.findByInviteCode("AB12CD34EF56GH78")).thenReturn(household);
+        when(householdMapper.lockById(10L)).thenReturn(household);
 
         HouseholdJoinResponse response = householdService.joinHousehold(2L,
                 new JoinHouseholdRequest("AB12CD34EF56GH78"));
 
         assertThat(response.id()).isEqualTo(10L);
         assertThat(response.name()).isEqualTo("山田家");
-        verify(householdMemberMapper).insert(any(HouseholdMemberEntity.class));
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(householdMemberMapper).insert(any(HouseholdMemberEntity.class));
     }
 
     @Test
@@ -162,6 +165,21 @@ class HouseholdServiceTest {
 
         assertThatThrownBy(() -> householdService.joinHousehold(2L, new JoinHouseholdRequest("UNKNOWN")))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void joinHousehold_ロック取得前に世帯が削除された場合は404() {
+        householdService = service();
+        when(householdMemberMapper.findByUserId(2L)).thenReturn(null);
+        HouseholdEntity household = new HouseholdEntity();
+        household.setId(10L);
+        when(householdMapper.findByInviteCode("AB12CD34EF56GH78")).thenReturn(household);
+        when(householdMapper.lockById(10L)).thenReturn(null);
+
+        assertThatThrownBy(() -> householdService.joinHousehold(
+                2L, new JoinHouseholdRequest("AB12CD34EF56GH78")))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(householdMemberMapper, org.mockito.Mockito.never()).insert(any());
     }
 
     @Test
@@ -281,8 +299,8 @@ class HouseholdServiceTest {
 
         householdService.leaveHousehold(1L);
 
-        InOrder inOrder = inOrder(householdMemberMapper);
-        inOrder.verify(householdMemberMapper).lockByHouseholdId(10L);
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
         inOrder.verify(householdMemberMapper).delete(1L);
         inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
         verify(householdMapper, org.mockito.Mockito.never()).delete(anyLong());
@@ -298,8 +316,8 @@ class HouseholdServiceTest {
 
         householdService.leaveHousehold(1L);
 
-        InOrder inOrder = inOrder(householdMemberMapper);
-        inOrder.verify(householdMemberMapper).lockByHouseholdId(10L);
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
         inOrder.verify(householdMemberMapper).delete(1L);
         inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
         verify(householdMapper).delete(10L);
