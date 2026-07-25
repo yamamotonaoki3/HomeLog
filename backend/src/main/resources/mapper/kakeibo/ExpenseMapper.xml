@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.ExpenseMapper">
+
+    <resultMap id="expenseResultMap" type="com.homelog.kakeibo.entity.ExpenseEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="payerUserId" column="payer_user_id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="amount" column="amount"/>
+        <result property="purpose" column="purpose"/>
+        <result property="memo" column="memo"/>
+        <result property="expenseDate" column="expense_date"/>
+        <result property="includeInHouseholdTotal" column="include_in_household_total"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.ExpenseEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO expenses
+            (household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+             include_in_household_total, created_at)
+        VALUES
+            (#{householdId}, #{payerUserId}, #{categoryId}, #{amount}, #{purpose}, #{memo}, #{expenseDate},
+             #{includeInHouseholdTotal}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="expenseResultMap">
+        SELECT id, household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+               include_in_household_total, created_at
+        FROM expenses
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByPayerUserId" resultMap="expenseResultMap">
+        SELECT id, household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+               include_in_household_total, created_at
+        FROM expenses
+        WHERE household_id = #{householdId}
+          AND payer_user_id = #{payerUserId}
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        ORDER BY expense_date DESC, id DESC
+    </select>
+
+    <select id="countByCategoryId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM expenses WHERE category_id = #{categoryId}
+    </select>
+
+</mapper>
