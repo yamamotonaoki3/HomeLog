@@ -82,6 +82,31 @@ class KakeiboCategoryServiceTest {
     }
 
     @Test
+    void listCategories_カスタムカテゴリーだけがある場合もデフォルトカテゴリーを投入する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        List<KakeiboCategoryEntity> categories = new ArrayList<>();
+        KakeiboCategoryEntity custom = new KakeiboCategoryEntity();
+        custom.setId(1L);
+        custom.setHouseholdId(10L);
+        custom.setName("カスタム");
+        custom.setDefault(false);
+        categories.add(custom);
+        when(kakeiboCategoryMapper.findByHouseholdId(10L)).thenAnswer(invocation -> categories);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            KakeiboCategoryEntity category = invocation.getArgument(0);
+            category.setId((long) (categories.size() + 1));
+            categories.add(category);
+            return null;
+        }).when(kakeiboCategoryMapper).insert(any(KakeiboCategoryEntity.class));
+
+        List<CategoryResponse> response = service().listCategories(1L);
+
+        assertThat(response).hasSize(10);
+        assertThat(response).filteredOn(CategoryResponse::isDefault).hasSize(9);
+        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+    }
+
+    @Test
     void listCategories_未所属の場合は404() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(null);
 

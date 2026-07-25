@@ -2,6 +2,8 @@ package com.homelog.kakeibo.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -111,6 +113,19 @@ class ExpenseControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createExpense_金額上限超過は400() throws Exception {
+        CreateExpenseRequest request = new CreateExpenseRequest(
+                LocalDate.of(2026, 1, 1), 10_000_000_000L, "ランチ", 5L, null, null);
+
+        mockMvc.perform(post("/api/expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verify(expenseService, never()).createExpense(anyLong(), any());
     }
 
     @Test

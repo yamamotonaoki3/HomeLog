@@ -4,14 +4,14 @@
 
 CREATE TABLE kakeibo_categories (
     id BIGSERIAL PRIMARY KEY,
-    household_id BIGINT NOT NULL REFERENCES households (id),
+    household_id BIGINT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     is_default BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE expenses (
     id BIGSERIAL PRIMARY KEY,
-    household_id BIGINT NOT NULL REFERENCES households (id),
+    household_id BIGINT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
     payer_user_id BIGINT NOT NULL REFERENCES users (id),
     category_id BIGINT NOT NULL REFERENCES kakeibo_categories (id),
     amount NUMERIC(10, 0) NOT NULL,

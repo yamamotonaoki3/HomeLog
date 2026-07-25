@@ -37,7 +37,7 @@ public class KakeiboCategoryService {
     public List<CategoryResponse> listCategories(Long userId) {
         Long householdId = resolveHouseholdId(userId);
         List<KakeiboCategoryEntity> categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
-        if (categories.isEmpty()) {
+        if (categories.stream().noneMatch(KakeiboCategoryEntity::isDefault)) {
             seedDefaultCategories(householdId);
             categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
         }

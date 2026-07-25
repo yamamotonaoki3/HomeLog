@@ -71,6 +71,24 @@ class KakeiboExpenseFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("支出・カテゴリーが存在する世帯でも最後の1人が退出すると世帯ごとCASCADE削除される")
+    void leaveAsLastMemberDeletesHouseholdWithKakeiboData() {
+        String token = registerAndLogin(uniqueEmail("kakeibo-leave"));
+        createHousehold(token, "家計簿退出テスト家");
+        long categoryId = firstCategoryId(token);
+        postJson("/api/expenses",
+                Map.of("expenseDate", "2026-01-01", "amount", 1000, "purpose", "退出前の支出",
+                        "categoryId", categoryId),
+                token);
+
+        ResponseEntity<Map<String, Object>> leaveResponse = postJson("/api/households/leave", null, token);
+
+        assertThat(leaveResponse.getStatusCode().value()).isEqualTo(204);
+        ResponseEntity<Map<String, Object>> meAfterLeave = getJson("/api/households/me", token);
+        assertThat(meAfterLeave.getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
     @DisplayName("他世帯のカテゴリーを指定した支出登録は400を返す")
     void createExpenseWithOtherHouseholdCategoryReturns400() {
         String tokenOwner = registerAndLogin(uniqueEmail("expense-owner"));
