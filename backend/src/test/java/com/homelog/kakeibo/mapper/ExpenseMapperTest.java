@@ -58,7 +58,7 @@ class ExpenseMapperTest {
         insertExpense(householdId, userA, categoryId, "500", "Aの支出");
         insertExpense(householdId, userB, categoryId, "700", "Bの支出");
 
-        List<ExpenseEntity> found = expenseMapper.findByPayerUserId(userA, null);
+        List<ExpenseEntity> found = expenseMapper.findByPayerUserId(householdId, userA, null);
 
         assertThat(found).hasSize(1);
         assertThat(found.get(0).getPurpose()).isEqualTo("Aの支出");
@@ -73,10 +73,28 @@ class ExpenseMapperTest {
         insertExpense(householdId, userId, categoryId1, "300", "食費の支出");
         insertExpense(householdId, userId, categoryId2, "2000", "交際費の支出");
 
-        List<ExpenseEntity> found = expenseMapper.findByPayerUserId(userId, categoryId1);
+        List<ExpenseEntity> found = expenseMapper.findByPayerUserId(householdId, userId, categoryId1);
 
         assertThat(found).hasSize(1);
         assertThat(found.get(0).getPurpose()).isEqualTo("食費の支出");
+    }
+
+    @Test
+    void findByPayerUserId_同じユーザーでも異なる世帯の支出は含まれない() {
+        Long oldHouseholdId = createHousehold("old-house", "EXPCODE0000005");
+        Long currentHouseholdId = createHousehold("current-house", "EXPCODE0000006");
+        Long userId = createUser("moved-payer@example.com");
+        Long oldCategoryId = insertCategory(oldHouseholdId, "旧世帯の食費");
+        Long currentCategoryId = insertCategory(currentHouseholdId, "現世帯の食費");
+        insertExpense(oldHouseholdId, userId, oldCategoryId, "1000", "旧世帯の支出");
+        insertExpense(currentHouseholdId, userId, currentCategoryId, "2000", "現世帯の支出");
+
+        List<ExpenseEntity> found =
+                expenseMapper.findByPayerUserId(currentHouseholdId, userId, null);
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).getHouseholdId()).isEqualTo(currentHouseholdId);
+        assertThat(found.get(0).getPurpose()).isEqualTo("現世帯の支出");
     }
 
     @Test

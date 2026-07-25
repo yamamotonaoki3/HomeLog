@@ -12,7 +12,8 @@ public interface ExpenseMapper {
 
     ExpenseEntity findById(long id);
 
-    List<ExpenseEntity> findByPayerUserId(@Param("payerUserId") long payerUserId,
+    List<ExpenseEntity> findByPayerUserId(@Param("householdId") long householdId,
+            @Param("payerUserId") long payerUserId,
             @Param("categoryId") Long categoryId);
 
     int countByCategoryId(long categoryId);

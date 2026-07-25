@@ -32,8 +32,9 @@ public class ExpenseService {
     }
 
     public List<ExpenseResponse> listExpenses(Long userId, Long categoryId) {
-        resolveHouseholdId(userId);
-        return expenseMapper.findByPayerUserId(userId, categoryId).stream().map(this::toResponse).toList();
+        Long householdId = resolveHouseholdId(userId);
+        return expenseMapper.findByPayerUserId(householdId, userId, categoryId).stream()
+                .map(this::toResponse).toList();
     }
 
     @Transactional

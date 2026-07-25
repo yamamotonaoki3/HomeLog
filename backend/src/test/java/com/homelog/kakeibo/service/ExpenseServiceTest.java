@@ -62,12 +62,30 @@ class ExpenseServiceTest {
         entity.setPurpose("ランチ");
         entity.setExpenseDate(LocalDate.of(2026, 1, 1));
         entity.setIncludeInHouseholdTotal(false);
-        when(expenseMapper.findByPayerUserId(1L, null)).thenReturn(List.of(entity));
+        when(expenseMapper.findByPayerUserId(10L, 1L, null)).thenReturn(List.of(entity));
 
         List<ExpenseResponse> response = service().listExpenses(1L, null);
 
         assertThat(response).hasSize(1);
         assertThat(response.get(0).purpose()).isEqualTo("ランチ");
+    }
+
+    @Test
+    void listExpenses_現在所属する世帯IDで支出を絞り込む() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(20L));
+        ExpenseEntity currentHouseholdExpense = new ExpenseEntity();
+        currentHouseholdExpense.setId(200L);
+        currentHouseholdExpense.setPurpose("現世帯の支出");
+        currentHouseholdExpense.setAmount(new BigDecimal("2000"));
+        currentHouseholdExpense.setExpenseDate(LocalDate.of(2026, 2, 1));
+        when(expenseMapper.findByPayerUserId(20L, 1L, null))
+                .thenReturn(List.of(currentHouseholdExpense));
+
+        List<ExpenseResponse> response = service().listExpenses(1L, null);
+
+        assertThat(response).extracting(ExpenseResponse::purpose)
+                .containsExactly("現世帯の支出");
+        verify(expenseMapper).findByPayerUserId(20L, 1L, null);
     }
 
     @Test
