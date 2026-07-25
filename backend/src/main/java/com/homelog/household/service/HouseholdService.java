@@ -59,6 +59,10 @@ public class HouseholdService {
             // コード誤りと期限切れを区別しない（api-design.md 3章参照、招待コード探索対策）
             throw new ResourceNotFoundException("招待コードが無効です");
         }
+        household = householdMapper.lockById(household.getId());
+        if (household == null) {
+            throw new ResourceNotFoundException("招待コードが無効です");
+        }
         addMember(household.getId(), userId);
         return new HouseholdJoinResponse(household.getId(), household.getName());
     }
@@ -83,6 +87,20 @@ public class HouseholdService {
         }
         String newCode = updateWithUniqueInviteCode(member.getHouseholdId());
         return new InviteCodeResponse(newCode);
+    }
+
+    @Transactional
+    public void leaveHousehold(Long userId) {
+        HouseholdMemberEntity member = householdMemberMapper.findByUserId(userId);
+        if (member == null) {
+            throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
+        }
+        householdMapper.lockById(member.getHouseholdId());
+        householdMemberMapper.delete(userId);
+        int remaining = householdMemberMapper.countByHouseholdId(member.getHouseholdId());
+        if (remaining == 0) {
+            householdMapper.delete(member.getHouseholdId());
+        }
     }
 
     private void insertWithUniqueInviteCode(HouseholdEntity household) {

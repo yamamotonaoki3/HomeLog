@@ -33,4 +33,15 @@
         WHERE hm.household_id = #{householdId}
     </select>
 
+    <delete id="delete" parameterType="long">
+        DELETE FROM household_members
+        WHERE user_id = #{userId}
+    </delete>
+
+    <select id="countByHouseholdId" parameterType="long" resultType="int">
+        SELECT COUNT(*)
+        FROM household_members
+        WHERE household_id = #{householdId}
+    </select>
+
 </mapper>

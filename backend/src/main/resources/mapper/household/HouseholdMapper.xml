@@ -21,6 +21,13 @@
         WHERE id = #{id}
     </select>
 
+    <select id="lockById" parameterType="long" resultMap="householdResultMap">
+        SELECT id, name, invite_code, created_at
+        FROM households
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
     <select id="findByInviteCode" parameterType="string" resultMap="householdResultMap">
         SELECT id, name, invite_code, created_at
         FROM households
@@ -32,5 +39,10 @@
         SET invite_code = #{inviteCode}
         WHERE id = #{id}
     </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM households
+        WHERE id = #{id}
+    </delete>
 
 </mapper>

@@ -141,4 +141,19 @@ class HouseholdControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inviteCode").value("ZZ99YY88XX77WW66"));
     }
+
+    @Test
+    void leaveHousehold_正常系は204() throws Exception {
+        mockMvc.perform(post("/api/households/leave"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void leaveHousehold_未所属は404() throws Exception {
+        org.mockito.Mockito.doThrow(new ResourceNotFoundException("世帯グループが見つかりません"))
+                .when(householdService).leaveHousehold(anyLong());
+
+        mockMvc.perform(post("/api/households/leave"))
+                .andExpect(status().isNotFound());
+    }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
@@ -134,13 +136,16 @@ class HouseholdServiceTest {
         household.setName("山田家");
         household.setInviteCode("AB12CD34EF56GH78");
         when(householdMapper.findByInviteCode("AB12CD34EF56GH78")).thenReturn(household);
+        when(householdMapper.lockById(10L)).thenReturn(household);
 
         HouseholdJoinResponse response = householdService.joinHousehold(2L,
                 new JoinHouseholdRequest("AB12CD34EF56GH78"));
 
         assertThat(response.id()).isEqualTo(10L);
         assertThat(response.name()).isEqualTo("山田家");
-        verify(householdMemberMapper).insert(any(HouseholdMemberEntity.class));
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(householdMemberMapper).insert(any(HouseholdMemberEntity.class));
     }
 
     @Test
@@ -160,6 +165,21 @@ class HouseholdServiceTest {
 
         assertThatThrownBy(() -> householdService.joinHousehold(2L, new JoinHouseholdRequest("UNKNOWN")))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void joinHousehold_ロック取得前に世帯が削除された場合は404() {
+        householdService = service();
+        when(householdMemberMapper.findByUserId(2L)).thenReturn(null);
+        HouseholdEntity household = new HouseholdEntity();
+        household.setId(10L);
+        when(householdMapper.findByInviteCode("AB12CD34EF56GH78")).thenReturn(household);
+        when(householdMapper.lockById(10L)).thenReturn(null);
+
+        assertThatThrownBy(() -> householdService.joinHousehold(
+                2L, new JoinHouseholdRequest("AB12CD34EF56GH78")))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(householdMemberMapper, org.mockito.Mockito.never()).insert(any());
     }
 
     @Test
@@ -267,5 +287,49 @@ class HouseholdServiceTest {
         assertThatThrownBy(() -> householdService.regenerateInviteCode(1L))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(householdMapper, org.mockito.Mockito.never()).updateInviteCode(anyLong(), any());
+    }
+
+    @Test
+    void leaveHousehold_他にメンバーがいる場合は世帯グループを削除しない() {
+        householdService = service();
+        HouseholdMemberEntity member = new HouseholdMemberEntity();
+        member.setHouseholdId(10L);
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(member);
+        when(householdMemberMapper.countByHouseholdId(10L)).thenReturn(1);
+
+        householdService.leaveHousehold(1L);
+
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(householdMemberMapper).delete(1L);
+        inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
+        verify(householdMapper, org.mockito.Mockito.never()).delete(anyLong());
+    }
+
+    @Test
+    void leaveHousehold_最後の1人の場合は世帯グループも削除する() {
+        householdService = service();
+        HouseholdMemberEntity member = new HouseholdMemberEntity();
+        member.setHouseholdId(10L);
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(member);
+        when(householdMemberMapper.countByHouseholdId(10L)).thenReturn(0);
+
+        householdService.leaveHousehold(1L);
+
+        InOrder inOrder = inOrder(householdMapper, householdMemberMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(householdMemberMapper).delete(1L);
+        inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
+        verify(householdMapper).delete(10L);
+    }
+
+    @Test
+    void leaveHousehold_未所属の場合は404() {
+        householdService = service();
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(null);
+
+        assertThatThrownBy(() -> householdService.leaveHousehold(1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(householdMemberMapper, org.mockito.Mockito.never()).delete(anyLong());
     }
 }
