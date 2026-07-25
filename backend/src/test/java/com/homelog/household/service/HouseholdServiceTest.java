@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
@@ -279,7 +281,10 @@ class HouseholdServiceTest {
 
         householdService.leaveHousehold(1L);
 
-        verify(householdMemberMapper).delete(1L);
+        InOrder inOrder = inOrder(householdMemberMapper);
+        inOrder.verify(householdMemberMapper).lockByHouseholdId(10L);
+        inOrder.verify(householdMemberMapper).delete(1L);
+        inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
         verify(householdMapper, org.mockito.Mockito.never()).delete(anyLong());
     }
 
@@ -293,7 +298,10 @@ class HouseholdServiceTest {
 
         householdService.leaveHousehold(1L);
 
-        verify(householdMemberMapper).delete(1L);
+        InOrder inOrder = inOrder(householdMemberMapper);
+        inOrder.verify(householdMemberMapper).lockByHouseholdId(10L);
+        inOrder.verify(householdMemberMapper).delete(1L);
+        inOrder.verify(householdMemberMapper).countByHouseholdId(10L);
         verify(householdMapper).delete(10L);
     }
 

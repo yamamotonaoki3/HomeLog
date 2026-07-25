@@ -12,6 +12,8 @@ public interface HouseholdMemberMapper {
 
     HouseholdMemberEntity findByUserId(Long userId);
 
+    List<Long> lockByHouseholdId(Long householdId);
+
     List<MemberSummaryEntity> findMemberSummariesByHouseholdId(Long householdId);
 
     void delete(Long userId);

@@ -91,6 +91,7 @@ public class HouseholdService {
         if (member == null) {
             throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
         }
+        householdMemberMapper.lockByHouseholdId(member.getHouseholdId());
         householdMemberMapper.delete(userId);
         int remaining = householdMemberMapper.countByHouseholdId(member.getHouseholdId());
         if (remaining == 0) {
