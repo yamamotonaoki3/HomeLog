@@ -85,6 +85,19 @@ public class HouseholdService {
         return new InviteCodeResponse(newCode);
     }
 
+    @Transactional
+    public void leaveHousehold(Long userId) {
+        HouseholdMemberEntity member = householdMemberMapper.findByUserId(userId);
+        if (member == null) {
+            throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
+        }
+        householdMemberMapper.delete(userId);
+        int remaining = householdMemberMapper.countByHouseholdId(member.getHouseholdId());
+        if (remaining == 0) {
+            householdMapper.delete(member.getHouseholdId());
+        }
+    }
+
     private void insertWithUniqueInviteCode(HouseholdEntity household) {
         household.setInviteCode(generateUniqueInviteCode());
         try {

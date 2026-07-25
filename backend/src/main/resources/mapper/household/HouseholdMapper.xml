@@ -33,4 +33,9 @@
         WHERE id = #{id}
     </update>
 
+    <delete id="delete" parameterType="long">
+        DELETE FROM households
+        WHERE id = #{id}
+    </delete>
+
 </mapper>

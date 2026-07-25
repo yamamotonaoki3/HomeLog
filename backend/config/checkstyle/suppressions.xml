@@ -6,4 +6,7 @@
 <suppressions>
     <!-- テストメソッド名はアンダースコアを使用した given_when_then 形式を許可 -->
     <suppress checks="MethodName" files=".*Test\.java"/>
+
+    <!-- Flyway Javaマイグレーションのクラス名はV{version}__{description}形式が必須のため、通常のクラス命名規則から除外 -->
+    <suppress checks="TypeName" files="db[/\\]migration[/\\].*\.java"/>
 </suppressions>

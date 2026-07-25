@@ -48,6 +48,12 @@ public class HouseholdController {
         return householdService.regenerateInviteCode(currentUserId());
     }
 
+    @PostMapping("/leave")
+    public ResponseEntity<Void> leaveHousehold() {
+        householdService.leaveHousehold(currentUserId());
+        return ResponseEntity.noContent().build();
+    }
+
     // JwtAuthenticationFilterがSecurityContextHolderにユーザーIDを設定済みであることを前提とする
     private Long currentUserId() {
         return (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();

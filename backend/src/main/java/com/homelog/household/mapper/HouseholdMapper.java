@@ -14,4 +14,6 @@ public interface HouseholdMapper {
     HouseholdEntity findByInviteCode(String inviteCode);
 
     void updateInviteCode(@Param("id") Long id, @Param("inviteCode") String inviteCode);
+
+    void delete(Long id);
 }

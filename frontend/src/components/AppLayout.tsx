@@ -25,6 +25,9 @@ export function AppLayout() {
           <NavLink to="/zaiko" className={navLinkClass}>
             在庫管理
           </NavLink>
+          <NavLink to="/household/settings" className={navLinkClass}>
+            世帯設定
+          </NavLink>
           <button type="button" className="nav-logout" onClick={handleLogout}>
             ログアウト
           </button>

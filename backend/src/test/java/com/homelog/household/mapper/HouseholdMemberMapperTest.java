@@ -74,6 +74,43 @@ class HouseholdMemberMapperTest {
     }
 
     @Test
+    void delete_正常系() {
+        Long householdId = createHousehold("delete-house", "DELETECODE000001");
+        Long userId = createUser("delete-target@example.com");
+        HouseholdMemberEntity member = new HouseholdMemberEntity();
+        member.setHouseholdId(householdId);
+        member.setUserId(userId);
+        member.setJoinedAt(LocalDateTime.now());
+        householdMemberMapper.insert(member);
+
+        householdMemberMapper.delete(userId);
+
+        assertThat(householdMemberMapper.findByUserId(userId)).isNull();
+    }
+
+    @Test
+    void countByHouseholdId_所属人数を返す() {
+        Long householdId = createHousehold("count-house", "COUNTCODE0000001");
+        Long userId1 = createUser("count1@example.com");
+        Long userId2 = createUser("count2@example.com");
+        insertMember(householdId, userId1);
+        insertMember(householdId, userId2);
+
+        int count = householdMemberMapper.countByHouseholdId(householdId);
+
+        assertThat(count).isEqualTo(2);
+    }
+
+    @Test
+    void countByHouseholdId_誰もいない場合は0を返す() {
+        Long householdId = createHousehold("empty-house", "EMPTYCODE0000001");
+
+        int count = householdMemberMapper.countByHouseholdId(householdId);
+
+        assertThat(count).isZero();
+    }
+
+    @Test
     void findMemberSummariesByHouseholdId_表示名付きで取得できる() {
         Long householdId = createHousehold("summary-house", "SUMMARYCODE00001");
         Long userId = createUser("summary@example.com", "サマリー太郎");
@@ -88,6 +125,14 @@ class HouseholdMemberMapperTest {
         assertThat(summaries).hasSize(1);
         assertThat(summaries.get(0).getUserId()).isEqualTo(userId);
         assertThat(summaries.get(0).getDisplayName()).isEqualTo("サマリー太郎");
+    }
+
+    private void insertMember(Long householdId, Long userId) {
+        HouseholdMemberEntity member = new HouseholdMemberEntity();
+        member.setHouseholdId(householdId);
+        member.setUserId(userId);
+        member.setJoinedAt(LocalDateTime.now());
+        householdMemberMapper.insert(member);
     }
 
     private Long createHousehold(String name, String inviteCode) {
