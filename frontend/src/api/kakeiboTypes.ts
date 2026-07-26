@@ -1,0 +1,15 @@
+export interface KakeiboCategory {
+  id: number
+  name: string
+  isDefault: boolean
+}
+
+export interface Expense {
+  id: number
+  expenseDate: string
+  amount: number
+  purpose: string
+  categoryId: number
+  memo: string | null
+  includeInHouseholdTotal: boolean
+}
