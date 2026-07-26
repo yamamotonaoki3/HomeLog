@@ -199,7 +199,7 @@ flowchart TD
 - イベント別支出サマリーには全イベントではなく、**表示対象として選択したイベント（`show_on_dashboard` = true）のみ**を表示する。ON/OFFはS-18登録モーダル・S-09イベント一覧で切り替える（[F06_kakeibo_event](features/F06_kakeibo_event.md) 4章参照）。
 - イベント別支出サマリーは、表示対象の件数が多い場合は上位数件＋「もっと見る」等の表示に将来対応する（今後の検討事項）。
 - 各カードの数値・リンク先は、対応する各機能画面の情報をそのまま参照する（新たな計算ロジックは持たない）。
-- 「収支」（今日の状況カード・カレンダー各日付セル）は、ログインユーザー本人のその日の収入合計－支出合計。世帯合計対象フラグの有無に関わらず本人の全件を対象とし、他メンバーの収入・支出は権限方針上参照できないため常に本人個人の収支となる（[common-notes.md](common-notes.md) 8章、[F13_kakeibo_income](features/F13_kakeibo_income.md)参照）。
+- 「収支」（今日の状況カード・カレンダー各日付セル）は、ログインユーザー本人のその日の収入合計－支出合計。支出側の世帯合計対象フラグの有無に関わらず本人が登録した全件を対象とし、他メンバーの収入・支出は権限方針上参照できないため常に本人個人の収支となる（世帯合計支出とは別の指標。[common-notes.md](common-notes.md) 8章、[F13_kakeibo_income](features/F13_kakeibo_income.md)参照）。
 - どのカード（今日の状況／今月のお金／個人の財政／買い物・在庫／カレンダー）を表示するかに加え、カード内の項目単位（例：今日の状況の中の収支・今週の献立・イベント）でも、設定画面（S-21）でユーザーごとに表示を選択できる。全カードを非表示にした場合は設定画面への案内を表示する。
 
 ---
@@ -327,7 +327,6 @@ flowchart TD
 │ 金額       [__________]          │
 │ 内容       [__________]          │
 │ カテゴリー [________▼]           │
-│ □ 世帯合計に含める                │
 │ メモ       [__________]（任意）   │
 │                                  │
 │     [ 保存 ]    [ キャンセル ]    │
@@ -342,15 +341,14 @@ flowchart TD
         Amount["金額 入力欄"]
         Content["内容 入力欄"]
         Category["カテゴリー セレクト"]
-        HouseholdFlag["世帯合計対象フラグ チェックボックス"]
         Memo["メモ 入力欄（任意）"]
         SaveBtn["「保存」ボタン"]
         CancelBtn["「キャンセル」ボタン"]
     end
-    Date --- Amount --- Content --- Category --- HouseholdFlag --- Memo --- SaveBtn --- CancelBtn
+    Date --- Amount --- Content --- Category --- Memo --- SaveBtn --- CancelBtn
 ```
 
-「支払った人」に相当する入力欄は持たない。収入を得た人は常に登録者本人固定とする（[F13_kakeibo_income](features/F13_kakeibo_income.md) 6章参照）。口座・イベント・割り勘との連携は今回のスコープ外（[F13_kakeibo_income](features/F13_kakeibo_income.md) 9章参照）。
+「支払った人」「世帯合計対象フラグ」に相当する入力欄は持たない。収入を得た人は常に登録者本人固定とし、収入は純粋に個人管理（世帯合計に算入する仕組みを持たない）とする（[F13_kakeibo_income](features/F13_kakeibo_income.md) 1章・6章参照）。口座・イベント・割り勘との連携は今回のスコープ外（[F13_kakeibo_income](features/F13_kakeibo_income.md) 9章参照）。
 
 ---
 

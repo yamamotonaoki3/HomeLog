@@ -395,7 +395,6 @@ erDiagram
 | content | VARCHAR(100) | ○ | 収入内容（例：〇月分給与） |
 | memo | VARCHAR(255) | — | メモ |
 | income_date | DATE | ○ | 収入発生日 |
-| include_in_household_total | BOOLEAN | ○ | 世帯合計収支への算入対象か（[common-notes.md](common-notes.md) 8章参照） |
 
 ### fixed_costs（固定費）
 
