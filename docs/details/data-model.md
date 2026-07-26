@@ -149,7 +149,6 @@ erDiagram
         varchar content
         varchar memo
         date income_date
-        boolean include_in_household_total
     }
     zaiko_categories {
         bigserial id PK
