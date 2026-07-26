@@ -55,10 +55,16 @@ export function ExpenseModal({ categories, onClose, onSaved }: Props) {
         memo: trimmedMemo === '' ? null : trimmedMemo,
         includeInHouseholdTotal,
       })
-      await onSaved()
     } catch (err) {
       setError(getApiErrorMessage(err, '支出の登録に失敗しました'))
       setSubmitting(false)
+      return
+    }
+
+    try {
+      await onSaved()
+    } catch (err) {
+      setError(getApiErrorMessage(err, '支出一覧の更新に失敗しました'))
     }
   }
 

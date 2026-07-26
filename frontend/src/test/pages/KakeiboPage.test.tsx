@@ -195,7 +195,7 @@ describe('KakeiboPage', () => {
   })
 
   it('支出登録後の一覧再取得に失敗した場合はToastを表示してモーダルを開いたままにする', async () => {
-    setupApi()
+    const { calls } = setupApi()
     let expenseGetCount = 0
     server.use(
       http.get('/api/expenses', () => {
@@ -216,7 +216,12 @@ describe('KakeiboPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('一覧を更新できませんでした'),
     )
-    expect(screen.getByRole('button', { name: '登録' })).toBeInTheDocument()
+    const submitButton = screen.getByRole('button', { name: '登録' })
+    expect(submitButton).toBeDisabled()
+
+    await user.click(submitButton)
+
+    expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1)
   })
 
   it('世帯合計対象フラグをチェックすると送信内容に反映される', async () => {
@@ -293,5 +298,22 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
 
     expect(screen.getByRole('button', { name: '支出を登録' })).toBeDisabled()
+  })
+
+  it('初期取得で支出一覧だけ失敗しても取得できたカテゴリーを反映する', async () => {
+    setupApi()
+    server.use(
+      http.get('/api/expenses', () =>
+        HttpResponse.json({ message: '支出一覧を取得できませんでした' }, { status: 500 }),
+      ),
+    )
+    renderKakeiboPage()
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('支出一覧を取得できませんでした'),
+    )
+
+    expect(screen.getByRole('button', { name: '支出を登録' })).toBeEnabled()
+    expect(screen.getByLabelText('カテゴリー絞り込み')).toHaveTextContent('食費')
   })
 })

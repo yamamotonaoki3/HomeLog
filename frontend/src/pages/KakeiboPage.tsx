@@ -33,18 +33,33 @@ export function KakeiboPage() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([
+    Promise.allSettled([
       apiClient.get<KakeiboCategory[]>('/kakeibo-categories'),
       apiClient.get<Expense[]>('/expenses'),
     ])
-      .then(([categoriesRes, expensesRes]) => {
+      .then(([categoriesResult, expensesResult]) => {
         if (cancelled) return
-        setCategories(categoriesRes.data)
-        setExpenses(expensesRes.data)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          showToast(getApiErrorMessage(err, 'データの取得に失敗しました。時間をおいて再度お試しください'))
+
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value.data)
+        } else {
+          showToast(
+            getApiErrorMessage(
+              categoriesResult.reason,
+              'カテゴリーの取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
+        }
+
+        if (expensesResult.status === 'fulfilled') {
+          setExpenses(expensesResult.value.data)
+        } else {
+          showToast(
+            getApiErrorMessage(
+              expensesResult.reason,
+              '支出の取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
         }
       })
       .finally(() => {
