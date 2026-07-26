@@ -26,7 +26,9 @@ export function KakeiboPage() {
     })
     if (requestId === latestExpenseRequestId.current) {
       setExpenses(response.data)
+      return true
     }
+    return false
   }, [])
 
   useEffect(() => {
@@ -54,9 +56,9 @@ export function KakeiboPage() {
   }, [showToast])
 
   const handleCategoryFilterChange = async (categoryId: string) => {
-    setCategoryFilter(categoryId)
     try {
-      await fetchExpenses(categoryId)
+      const applied = await fetchExpenses(categoryId)
+      if (applied) setCategoryFilter(categoryId)
     } catch (err) {
       showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
     }
@@ -85,6 +87,7 @@ export function KakeiboPage() {
         categoryFilter={categoryFilter}
         onCategoryFilterChange={handleCategoryFilterChange}
         onAddClick={() => setModalOpen(true)}
+        addDisabled={categories.length === 0}
       />
       {modalOpen && (
         <ExpenseModal categories={categories} onClose={() => setModalOpen(false)} onSaved={handleSaved} />

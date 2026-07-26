@@ -112,6 +112,31 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
   })
 
+  it('カテゴリー絞り込みの取得に失敗した場合は選択状態と一覧を変更しない', async () => {
+    setupApi({ expenses: [lunchExpense, suppliesExpense] })
+    server.use(
+      http.get('/api/expenses', ({ request }) => {
+        const categoryId = new URL(request.url).searchParams.get('categoryId')
+        if (categoryId === '1') {
+          return HttpResponse.json({ message: '一覧を取得できませんでした' }, { status: 500 })
+        }
+        return HttpResponse.json([lunchExpense, suppliesExpense])
+      }),
+    )
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('一覧を取得できませんでした'),
+    )
+    expect(screen.getByLabelText('カテゴリー絞り込み')).toHaveValue('')
+    expect(screen.getByText('ランチ')).toBeInTheDocument()
+    expect(screen.getByText('洗剤')).toBeInTheDocument()
+  })
+
   it('カテゴリー絞り込みを連続変更しても最新のレスポンスだけを表示する', async () => {
     setupApi({ expenses: [lunchExpense, suppliesExpense] })
     let resolveFirstRequest: (() => void) | undefined
@@ -256,5 +281,17 @@ describe('KakeiboPage', () => {
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
 
     expect(screen.queryByRole('button', { name: '登録' })).not.toBeInTheDocument()
+  })
+
+  it('カテゴリーが0件のとき支出登録ボタンを無効化する', async () => {
+    setupApi()
+    server.use(
+      http.get('/api/kakeibo-categories', () => HttpResponse.json([])),
+    )
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: '支出を登録' })).toBeDisabled()
   })
 })

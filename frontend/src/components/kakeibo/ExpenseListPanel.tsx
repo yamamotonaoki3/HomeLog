@@ -6,6 +6,7 @@ interface Props {
   categoryFilter: string
   onCategoryFilterChange: (categoryId: string) => void
   onAddClick: () => void
+  addDisabled: boolean
 }
 
 export function ExpenseListPanel({
@@ -14,6 +15,7 @@ export function ExpenseListPanel({
   categoryFilter,
   onCategoryFilterChange,
   onAddClick,
+  addDisabled,
 }: Props) {
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? ''
 
@@ -33,7 +35,7 @@ export function ExpenseListPanel({
             </option>
           ))}
         </select>
-        <button type="button" className="btn btn-primary" onClick={onAddClick}>
+        <button type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
           支出を登録
         </button>
       </div>
