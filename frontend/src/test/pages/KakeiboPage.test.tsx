@@ -112,6 +112,40 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
   })
 
+  it('カテゴリー絞り込みを連続変更しても最新のレスポンスだけを表示する', async () => {
+    setupApi({ expenses: [lunchExpense, suppliesExpense] })
+    let resolveFirstRequest: (() => void) | undefined
+    let firstRequestCompleted = false
+    server.use(
+      http.get('/api/expenses', async ({ request }) => {
+        const categoryId = new URL(request.url).searchParams.get('categoryId')
+        if (categoryId === '1') {
+          await new Promise<void>((resolve) => {
+            resolveFirstRequest = resolve
+          })
+          firstRequestCompleted = true
+          return HttpResponse.json([lunchExpense])
+        }
+        if (categoryId === '2') return HttpResponse.json([suppliesExpense])
+        return HttpResponse.json([lunchExpense, suppliesExpense])
+      }),
+    )
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(resolveFirstRequest).toBeDefined())
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '日用品')
+    await waitFor(() => expect(screen.getByText('洗剤')).toBeInTheDocument())
+
+    resolveFirstRequest?.()
+
+    await waitFor(() => expect(firstRequestCompleted).toBe(true))
+    expect(screen.queryByText('ランチ')).not.toBeInTheDocument()
+    expect(screen.getByText('洗剤')).toBeInTheDocument()
+  })
+
   it('支出を登録すると一覧に反映されモーダルが閉じる', async () => {
     const { calls } = setupApi()
     const user = userEvent.setup()
@@ -133,6 +167,31 @@ describe('KakeiboPage', () => {
       categoryId: 1,
       includeInHouseholdTotal: false,
     })
+  })
+
+  it('支出登録後の一覧再取得に失敗した場合はToastを表示してモーダルを開いたままにする', async () => {
+    setupApi()
+    let expenseGetCount = 0
+    server.use(
+      http.get('/api/expenses', () => {
+        expenseGetCount += 1
+        if (expenseGetCount === 1) return HttpResponse.json([])
+        return HttpResponse.json({ message: '一覧を更新できませんでした' }, { status: 500 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '支出を登録' }))
+    await user.type(screen.getByLabelText('金額'), '1500')
+    await user.type(screen.getByLabelText('使用用途'), '書籍')
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('一覧を更新できませんでした'),
+    )
+    expect(screen.getByRole('button', { name: '登録' })).toBeInTheDocument()
   })
 
   it('世帯合計対象フラグをチェックすると送信内容に反映される', async () => {

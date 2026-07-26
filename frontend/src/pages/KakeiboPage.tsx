@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Expense, KakeiboCategory } from '../api/kakeiboTypes'
@@ -13,16 +13,20 @@ export function KakeiboPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
+  const latestExpenseRequestId = useRef(0)
 
   const showToast = useCallback((message: string) => {
     setToast((prev) => ({ message, showKey: prev.showKey + 1 }))
   }, [])
 
   const fetchExpenses = useCallback(async (categoryIdFilter: string) => {
+    const requestId = ++latestExpenseRequestId.current
     const response = await apiClient.get<Expense[]>('/expenses', {
       params: categoryIdFilter === '' ? {} : { categoryId: categoryIdFilter },
     })
-    setExpenses(response.data)
+    if (requestId === latestExpenseRequestId.current) {
+      setExpenses(response.data)
+    }
   }, [])
 
   useEffect(() => {
@@ -59,8 +63,13 @@ export function KakeiboPage() {
   }
 
   const handleSaved = async () => {
+    try {
+      await fetchExpenses(categoryFilter)
+    } catch (err) {
+      showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
+      throw err
+    }
     setModalOpen(false)
-    await fetchExpenses(categoryFilter)
     showToast('支出を登録しました')
   }
 
