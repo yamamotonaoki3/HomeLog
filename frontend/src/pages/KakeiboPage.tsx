@@ -140,6 +140,28 @@ export function KakeiboPage() {
     }
   }, [showToast])
 
+  const handleTypeFilterChange = async (nextTypeFilter: TypeFilter) => {
+    setTypeFilter(nextTypeFilter)
+    if (nextTypeFilter !== 'all') return
+
+    if (categoryFilter !== '') {
+      setCategoryFilter('')
+      try {
+        await fetchExpenses('')
+      } catch (err) {
+        showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
+      }
+    }
+    if (incomeCategoryFilter !== '') {
+      setIncomeCategoryFilter('')
+      try {
+        await fetchIncomes('')
+      } catch (err) {
+        showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
+      }
+    }
+  }
+
   const handleActiveCategoryFilterChange = async (categoryIdValue: string) => {
     if (typeFilter === 'income') {
       try {
@@ -200,7 +222,7 @@ export function KakeiboPage() {
         expenseCategories={categories}
         incomeCategories={incomeCategories}
         typeFilter={typeFilter}
-        onTypeFilterChange={setTypeFilter}
+        onTypeFilterChange={handleTypeFilterChange}
         activeCategoryFilter={activeCategoryFilter}
         activeCategoryOptions={activeCategoryOptions}
         onActiveCategoryFilterChange={handleActiveCategoryFilterChange}

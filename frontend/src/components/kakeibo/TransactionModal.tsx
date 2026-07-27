@@ -110,6 +110,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
             aria-selected={kind === 'expense'}
             className={kind === 'expense' ? 'btn btn-primary' : 'btn btn-secondary'}
             onClick={() => handleKindChange('expense')}
+            disabled={expenseCategories.length === 0}
           >
             支出
           </button>
@@ -119,6 +120,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
             aria-selected={kind === 'income'}
             className={kind === 'income' ? 'btn btn-primary' : 'btn btn-secondary'}
             onClick={() => handleKindChange('income')}
+            disabled={incomeCategories.length === 0}
           >
             収入
           </button>
@@ -181,7 +183,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
           <p className="error">{error}</p>
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0}>
               登録
             </button>
             <button type="button" className="btn btn-secondary" onClick={onClose}>

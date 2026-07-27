@@ -196,6 +196,22 @@ describe('KakeiboPage', () => {
     expect(screen.queryByLabelText('カテゴリー絞り込み')).not.toBeInTheDocument()
   })
 
+  it('カテゴリー絞り込み後に種別をすべてに戻すと絞り込み前の全件が復元される', async () => {
+    setupApi({ expenses: [lunchExpense, suppliesExpense], incomes: [salaryIncome] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), 'すべて')
+
+    await waitFor(() => expect(screen.getByText('洗剤')).toBeInTheDocument())
+    expect(screen.getByText('ランチ')).toBeInTheDocument()
+    expect(screen.getByText('1月分給与')).toBeInTheDocument()
+  })
+
   it('支出のカテゴリー絞り込みでcategoryIdパラメータ付きで再取得する', async () => {
     const { calls } = setupApi({ expenses: [lunchExpense, suppliesExpense] })
     const user = userEvent.setup()
@@ -402,5 +418,21 @@ describe('KakeiboPage', () => {
     )
 
     expect(screen.getByText('1月分給与')).toBeInTheDocument()
+  })
+
+  it('収入カテゴリーが0件のとき、モーダル内の収入タブは無効化され不正なカテゴリーでは登録できない', async () => {
+    const { calls } = setupApi()
+    server.use(http.get('/api/income-categories', () => HttpResponse.json([])))
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '登録' })).toBeEnabled()
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+
+    expect(within(modal).getByRole('tab', { name: '収入' })).toBeDisabled()
+    await user.click(within(modal).getByRole('tab', { name: '収入' }))
+    expect(within(modal).getByRole('tab', { name: '支出' })).toHaveAttribute('aria-selected', 'true')
+
+    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/incomes')).toBe(false)
   })
 })
