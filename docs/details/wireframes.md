@@ -123,7 +123,7 @@ flowchart TD
 
 ## S-04 トップ画面（生活ダッシュボード＋カレンダー）
 
-対応: [F06_kakeibo_event](features/F06_kakeibo_event.md), [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md), [F07_zaiko_inventory](features/F07_zaiko_inventory.md), [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md), [F10_kondate_menu](features/F10_kondate_menu.md)
+対応: [F06_kakeibo_event](features/F06_kakeibo_event.md), [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md), [F13_kakeibo_income](features/F13_kakeibo_income.md), [F07_zaiko_inventory](features/F07_zaiko_inventory.md), [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md), [F10_kondate_menu](features/F10_kondate_menu.md)
 
 確認系の情報（今日の状況・今月のお金・買い物/在庫）を画面遷移なしで把握できる「生活ダッシュボード」として再定義する（[common-notes.md](common-notes.md) 9章の方針）。旧S-16（世帯合計支出画面）・旧S-20（イベント別支出サマリーモーダル）はここに統合し廃止した。
 
@@ -172,7 +172,7 @@ flowchart TD
             direction LR
             subgraph Sidebar["左サイドバー"]
                 direction TB
-                Today["「今日の状況」カード：収支・今週の献立・イベント"]
+                Today["「今日の状況」カード：収支（本人の収入合計－支出合計）・今週の献立・イベント"]
                 Money["「今月のお金」カード：個人支出・世帯合計対象額・\n未精算（受取予定/支払予定を分けて表示）・\nイベント別支出サマリー（今年/今月セレクト）"]
                 Finance["「個人の財政」カード：自分の口座残高合計\n（本人のみ表示、S-15へのリンク）"]
                 Stock["「買い物・在庫」カード：買い物リスト件数・在庫不足件数・よく使う品目"]
@@ -199,20 +199,21 @@ flowchart TD
 - イベント別支出サマリーには全イベントではなく、**表示対象として選択したイベント（`show_on_dashboard` = true）のみ**を表示する。ON/OFFはS-18登録モーダル・S-09イベント一覧で切り替える（[F06_kakeibo_event](features/F06_kakeibo_event.md) 4章参照）。
 - イベント別支出サマリーは、表示対象の件数が多い場合は上位数件＋「もっと見る」等の表示に将来対応する（今後の検討事項）。
 - 各カードの数値・リンク先は、対応する各機能画面の情報をそのまま参照する（新たな計算ロジックは持たない）。
+- 「収支」（今日の状況カード・カレンダー各日付セル）は、ログインユーザー本人のその日の収入合計－支出合計。支出側の世帯合計対象フラグの有無に関わらず本人が登録した全件を対象とし、他メンバーの収入・支出は権限方針上参照できないため常に本人個人の収支となる（世帯合計支出とは別の指標。[common-notes.md](common-notes.md) 8章、[F13_kakeibo_income](features/F13_kakeibo_income.md)参照）。
 - どのカード（今日の状況／今月のお金／個人の財政／買い物・在庫／カレンダー）を表示するかに加え、カード内の項目単位（例：今日の状況の中の収支・今週の献立・イベント）でも、設定画面（S-21）でユーザーごとに表示を選択できる。全カードを非表示にした場合は設定画面への案内を表示する。
 
 ---
 
 ## S-05 家計簿一覧画面
 
-対応: [F03_kakeibo_expense](features/F03_kakeibo_expense.md), [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)（未精算サマリー）, [F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)（固定費予定サマリー）, [F06_kakeibo_event](features/F06_kakeibo_event.md)（イベント支出サマリー）, [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md)（世帯合計対象額サマリー）
+対応: [F03_kakeibo_expense](features/F03_kakeibo_expense.md), [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)（未精算サマリー）, [F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)（固定費予定サマリー）, [F06_kakeibo_event](features/F06_kakeibo_event.md)（イベント支出サマリー）, [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md)（世帯合計対象額サマリー）, [F13_kakeibo_income](features/F13_kakeibo_income.md)（収入一覧タブ）
 
 ```text
 ┌──────────────────────────────────────────────┐
-│ 今月支出:32,000円 世帯合計対象額:45,300円        │
+│ 今月支出:32,000円 今月収入:280,000円 世帯合計対象額:45,300円│
 │ 未精算 受取:4,000円/支払:4,500円  固定費予定:89,200円 イベント支出[今年▼]:15,000円│
 ├──────────────────────────────────────────────┤
-│ [支出一覧] [精算] [固定費] [イベント] [口座]   │
+│ [支出一覧] [収入一覧] [精算] [固定費] [イベント] [口座]│
 ├──────────────────────────────────────────────┤
 │ カテゴリー: [ すべて ▼ ]      [ 支出を登録 ]  │
 ├────────┬────────┬────────┬──────┬────────────┤
@@ -223,15 +224,27 @@ flowchart TD
 └────────┴────────┴────────┴──────┴────────────┘
 ```
 
+収入一覧タブ選択時：
+
+```text
+┌──────────────────────────────────────────────┐
+│ カテゴリー: [ すべて ▼ ]      [ 収入を登録 ]  │
+├────────┬────────┬────────┬──────────────────┤
+│ 日時    │ 内容    │ カテゴリー│ 金額              │
+├────────┼────────┼────────┼──────────────────┤
+│ 7/25   │ 7月分給与│ 給与     │280,000円          │
+└────────┴────────┴────────┴──────────────────┘
+```
+
 ```mermaid
 flowchart TD
     subgraph Screen["S-05 家計簿一覧画面"]
         direction TB
-        Summary["サマリーカード：今月支出／世帯合計対象額／未精算額／固定費予定／イベント支出（今年/今月セレクト）"]
-        Tabs["タブ：支出一覧 / 精算(S-07) / 固定費(S-08) / イベント(S-09) / 口座・カード(S-15)"]
+        Summary["サマリーカード：今月支出／今月収入／世帯合計対象額／未精算額／固定費予定／イベント支出（今年/今月セレクト）"]
+        Tabs["タブ：支出一覧 / 収入一覧 / 精算(S-07) / 固定費(S-08) / イベント(S-09) / 口座・カード(S-15)"]
         Filter["カテゴリー 絞り込みセレクト"]
-        AddBtn["「支出を登録」ボタン → S-06"]
-        List["支出一覧テーブル"]
+        AddBtn["「支出を登録」ボタン → S-06\n（収入一覧タブでは「収入を登録」ボタン → S-22）"]
+        List["支出一覧テーブル（収入一覧タブでは収入一覧テーブル）"]
     end
     Summary --- Tabs --- Filter --- AddBtn --- List
 ```
@@ -240,6 +253,11 @@ flowchart TD
 
 | 日時 | 使用用途 | カテゴリー | 金額 | 支払った人 | 口座 | メモ |
 | --- | --- | --- | --- | --- | --- | --- |
+
+収入一覧テーブルの列例：
+
+| 日時 | 内容 | カテゴリー | 金額 | メモ |
+| --- | --- | --- | --- | --- |
 
 ---
 
@@ -295,6 +313,42 @@ flowchart TD
     end
     Date --- Amount --- Purpose --- Category --- Payer --- Account --- Event --- HouseholdFlag --- Memo --- SplitSection --- SaveBtn --- CancelBtn
 ```
+
+---
+
+## S-22 収入登録モーダル
+
+対応: [F13_kakeibo_income](features/F13_kakeibo_income.md)
+
+```text
+┌─────────────────────────────────┐
+│        収入を登録                │
+│ 日時       [__________]          │
+│ 金額       [__________]          │
+│ 内容       [__________]          │
+│ カテゴリー [________▼]           │
+│ メモ       [__________]（任意）   │
+│                                  │
+│     [ 保存 ]    [ キャンセル ]    │
+└─────────────────────────────────┘
+```
+
+```mermaid
+flowchart TD
+    subgraph Modal["S-22 収入登録モーダル"]
+        direction TB
+        Date["日時 入力欄"]
+        Amount["金額 入力欄"]
+        Content["内容 入力欄"]
+        Category["カテゴリー セレクト"]
+        Memo["メモ 入力欄（任意）"]
+        SaveBtn["「保存」ボタン"]
+        CancelBtn["「キャンセル」ボタン"]
+    end
+    Date --- Amount --- Content --- Category --- Memo --- SaveBtn --- CancelBtn
+```
+
+「支払った人」「世帯合計対象フラグ」に相当する入力欄は持たない。収入を得た人は常に登録者本人固定とし、収入は純粋に個人管理（世帯合計に算入する仕組みを持たない）とする（[F13_kakeibo_income](features/F13_kakeibo_income.md) 1章・6章参照）。口座・イベント・割り勘との連携は今回のスコープ外（[F13_kakeibo_income](features/F13_kakeibo_income.md) 9章参照）。
 
 ---
 

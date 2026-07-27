@@ -27,3 +27,5 @@
 | UC-17 | ユーザー | ログインパスワードを忘れた場合にリセットする | [F01_auth](features/F01_auth.md) |
 | UC-18 | ユーザー | 口座・カードを手動登録し、支出にどの口座/カードを使ったか紐付ける | [F11_kakeibo_account](features/F11_kakeibo_account.md) |
 | UC-19 | ユーザー | 世帯合計対象の支出・固定費のみを合計した「世帯合計支出」を確認する | [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md) |
+| UC-20 | ユーザー | 日々の収入を記録する（日時・金額・内容・カテゴリー・メモ） | [F13_kakeibo_income](features/F13_kakeibo_income.md) |
+| UC-21 | ユーザー | カテゴリー別に収入を検索する | [F13_kakeibo_income](features/F13_kakeibo_income.md) |

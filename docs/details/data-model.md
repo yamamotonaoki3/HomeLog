@@ -134,6 +134,22 @@ erDiagram
         boolean show_on_dashboard
         timestamp created_at
     }
+    income_categories {
+        bigserial id PK
+        bigint household_id FK
+        varchar name
+        boolean is_default
+    }
+    incomes {
+        bigserial id PK
+        bigint household_id FK
+        bigint earner_user_id FK
+        bigint category_id FK
+        numeric amount
+        varchar content
+        varchar memo
+        date income_date
+    }
     zaiko_categories {
         bigserial id PK
         bigint household_id FK
@@ -194,6 +210,8 @@ erDiagram
     households ||--o{ external_persons : "登録する"
     households ||--o{ kakeibo_categories : "持つ"
     households ||--o{ expenses : "持つ"
+    households ||--o{ income_categories : "持つ"
+    households ||--o{ incomes : "持つ"
     households ||--o{ fixed_costs : "持つ"
     fixed_costs ||--o{ fixed_cost_splits : "割り勘設定を持つ"
     users ||--o{ fixed_cost_splits : "負担する(debtor)"
@@ -215,6 +233,9 @@ erDiagram
     expenses ||--o{ expense_splits : "分割される"
     users ||--o{ expense_splits : "負担する(debtor)"
     external_persons ||--o{ expense_splits : "負担する(debtor)"
+
+    users ||--o{ incomes : "得る(earner)"
+    income_categories ||--o{ incomes : "分類する"
 
     zaiko_categories ||--o{ inventory_items : "分類する"
     stores ||--o{ inventory_items : "紐付く"
@@ -351,6 +372,28 @@ erDiagram
 | expense_splits.settled_at | TIMESTAMP | — | 精算完了日時 |
 
 ※ `debtor_user_id` と `debtor_external_id` はどちらか一方のみ設定する（世帯内/世帯外の排他）。
+
+### income_categories（収入カテゴリーマスタ）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| id | BIGSERIAL | ○ | PK |
+| household_id | BIGINT | ○ | FK → households.id |
+| name | VARCHAR(50) | ○ | カテゴリー名 |
+| is_default | BOOLEAN | ○ | システムデフォルトか否か |
+
+### incomes（収入）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| id | BIGSERIAL | ○ | PK |
+| household_id | BIGINT | ○ | FK → households.id |
+| earner_user_id | BIGINT | ○ | FK → users.id（収入を得た人。常に登録者本人。[F13_kakeibo_income](features/F13_kakeibo_income.md) 6章参照） |
+| category_id | BIGINT | ○ | FK → income_categories.id |
+| amount | NUMERIC | ○ | 収入金額 |
+| content | VARCHAR(100) | ○ | 収入内容（例：〇月分給与） |
+| memo | VARCHAR(255) | — | メモ |
+| income_date | DATE | ○ | 収入発生日 |
 
 ### fixed_costs（固定費）
 
