@@ -25,7 +25,8 @@ export function KakeiboPage() {
   const [incomeModalOpen, setIncomeModalOpen] = useState(false)
   const latestIncomeRequestId = useRef(0)
 
-  const [loading, setLoading] = useState(true)
+  const [expenseLoading, setExpenseLoading] = useState(true)
+  const [incomeLoading, setIncomeLoading] = useState(true)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -58,13 +59,14 @@ export function KakeiboPage() {
 
   useEffect(() => {
     let cancelled = false
+    const expenseRequestId = ++latestExpenseRequestId.current
+    const incomeRequestId = ++latestIncomeRequestId.current
+
     Promise.allSettled([
       apiClient.get<KakeiboCategory[]>('/kakeibo-categories'),
       apiClient.get<Expense[]>('/expenses'),
-      apiClient.get<IncomeCategory[]>('/income-categories'),
-      apiClient.get<Income[]>('/incomes'),
     ])
-      .then(([categoriesResult, expensesResult, incomeCategoriesResult, incomesResult]) => {
+      .then(([categoriesResult, expensesResult]) => {
         if (cancelled) return
 
         if (categoriesResult.status === 'fulfilled') {
@@ -78,16 +80,32 @@ export function KakeiboPage() {
           )
         }
 
-        if (expensesResult.status === 'fulfilled') {
+        if (
+          expensesResult.status === 'fulfilled' &&
+          expenseRequestId === latestExpenseRequestId.current
+        ) {
           setExpenses(expensesResult.value.data)
         } else {
-          showToast(
-            getApiErrorMessage(
-              expensesResult.reason,
-              '支出の取得に失敗しました。時間をおいて再度お試しください',
-            ),
-          )
+          if (expensesResult.status === 'rejected') {
+            showToast(
+              getApiErrorMessage(
+                expensesResult.reason,
+                '支出の取得に失敗しました。時間をおいて再度お試しください',
+              ),
+            )
+          }
         }
+      })
+      .finally(() => {
+        if (!cancelled) setExpenseLoading(false)
+      })
+
+    Promise.allSettled([
+      apiClient.get<IncomeCategory[]>('/income-categories'),
+      apiClient.get<Income[]>('/incomes'),
+    ])
+      .then(([incomeCategoriesResult, incomesResult]) => {
+        if (cancelled) return
 
         if (incomeCategoriesResult.status === 'fulfilled') {
           setIncomeCategories(incomeCategoriesResult.value.data)
@@ -100,19 +118,24 @@ export function KakeiboPage() {
           )
         }
 
-        if (incomesResult.status === 'fulfilled') {
+        if (
+          incomesResult.status === 'fulfilled' &&
+          incomeRequestId === latestIncomeRequestId.current
+        ) {
           setIncomes(incomesResult.value.data)
         } else {
-          showToast(
-            getApiErrorMessage(
-              incomesResult.reason,
-              '収入の取得に失敗しました。時間をおいて再度お試しください',
-            ),
-          )
+          if (incomesResult.status === 'rejected') {
+            showToast(
+              getApiErrorMessage(
+                incomesResult.reason,
+                '収入の取得に失敗しました。時間をおいて再度お試しください',
+              ),
+            )
+          }
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setIncomeLoading(false)
       })
     return () => {
       cancelled = true
@@ -159,10 +182,6 @@ export function KakeiboPage() {
     showToast('収入を登録しました')
   }
 
-  if (loading) {
-    return <p>読み込み中...</p>
-  }
-
   return (
     <div className="page">
       <div className="tabs" role="tablist">
@@ -185,7 +204,11 @@ export function KakeiboPage() {
           収入
         </button>
       </div>
-      {tab === 'expense' ? (
+      {tab === 'expense' && expenseLoading ? (
+        <p>読み込み中...</p>
+      ) : tab === 'income' && incomeLoading ? (
+        <p>読み込み中...</p>
+      ) : tab === 'expense' ? (
         <>
           <ExpenseListPanel
             expenses={expenses}

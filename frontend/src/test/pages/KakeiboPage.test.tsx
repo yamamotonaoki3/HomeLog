@@ -128,6 +128,30 @@ const bonusIncome: Income = {
 }
 
 describe('KakeiboPage', () => {
+  it('収入APIが未完了でも支出APIの完了後に支出タブを表示する', async () => {
+    let resolveIncomeRequests: (() => void) | undefined
+    const incomeRequestsPending = new Promise<void>((resolve) => {
+      resolveIncomeRequests = resolve
+    })
+    setupApi({ expenses: [lunchExpense] })
+    server.use(
+      http.get('/api/income-categories', async () => {
+        await incomeRequestsPending
+        return HttpResponse.json(defaultIncomeCategories)
+      }),
+      http.get('/api/incomes', async () => {
+        await incomeRequestsPending
+        return HttpResponse.json([])
+      }),
+    )
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument()
+
+    resolveIncomeRequests?.()
+  })
+
   it('支出一覧がカテゴリー名付きで表示される', async () => {
     setupApi({ expenses: [lunchExpense] })
     renderKakeiboPage()
