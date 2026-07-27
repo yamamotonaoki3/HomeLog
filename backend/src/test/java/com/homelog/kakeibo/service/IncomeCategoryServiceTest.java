@@ -198,7 +198,11 @@ class IncomeCategoryServiceTest {
 
         service().deleteCategory(1L, 5L);
 
-        verify(incomeCategoryMapper).delete(5L);
+        InOrder inOrder = inOrder(householdMapper, incomeCategoryMapper, incomeMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(incomeCategoryMapper).findById(5L);
+        inOrder.verify(incomeMapper).countByCategoryId(5L);
+        inOrder.verify(incomeCategoryMapper).delete(5L);
     }
 
     @Test

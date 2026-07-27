@@ -68,8 +68,10 @@ public class IncomeCategoryService {
         return toResponse(category);
     }
 
+    @Transactional
     public void deleteCategory(Long userId, Long categoryId) {
         Long householdId = resolveHouseholdId(userId);
+        householdMapper.lockById(householdId);
         IncomeCategoryEntity category = findOwnedCategory(householdId, categoryId);
         if (category.isDefault()) {
             throw new BadRequestException(DEFAULT_IMMUTABLE_MESSAGE);
