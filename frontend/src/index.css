@@ -77,6 +77,9 @@ a:hover { text-decoration: underline; }
 .qty-value { display: inline-block; width: 34px; text-align: center; }
 .step-select { width: 55px; margin-left: 6px; }
 
+/* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+
 /* モーダル */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
