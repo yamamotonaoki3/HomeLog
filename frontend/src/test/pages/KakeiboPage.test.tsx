@@ -127,53 +127,81 @@ const bonusIncome: Income = {
   memo: null,
 }
 
+async function openModal() {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: '登録' }))
+  return user
+}
+
 describe('KakeiboPage', () => {
-  it('収入APIが未完了でも支出APIの完了後に支出タブを表示する', async () => {
-    let resolveIncomeRequests: (() => void) | undefined
-    const incomeRequestsPending = new Promise<void>((resolve) => {
-      resolveIncomeRequests = resolve
-    })
-    setupApi({ expenses: [lunchExpense] })
-    server.use(
-      http.get('/api/income-categories', async () => {
-        await incomeRequestsPending
-        return HttpResponse.json(defaultIncomeCategories)
-      }),
-      http.get('/api/incomes', async () => {
-        await incomeRequestsPending
-        return HttpResponse.json([])
-      }),
-    )
-    renderKakeiboPage()
-
-    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
-    expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument()
-
-    resolveIncomeRequests?.()
-  })
-
-  it('支出一覧がカテゴリー名付きで表示される', async () => {
-    setupApi({ expenses: [lunchExpense] })
+  it('支出・収入が一つの一覧に混在し日時降順で表示される', async () => {
+    setupApi({ expenses: [lunchExpense], incomes: [salaryIncome] })
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
     const table = screen.getByRole('table')
-    expect(within(table).getByText('食費')).toBeInTheDocument()
-    expect(within(table).getByText('1200')).toBeInTheDocument()
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows[0]).toHaveTextContent('1月分給与')
+    expect(rows[0]).toHaveTextContent('収入')
+    expect(rows[1]).toHaveTextContent('ランチ')
+    expect(rows[1]).toHaveTextContent('支出')
   })
 
-  it('支出が空のときプレースホルダーを表示する', async () => {
+  it('収支の記録が0件のときプレースホルダーを表示する', async () => {
     setupApi()
     renderKakeiboPage()
 
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
   })
 
-  it('カテゴリー絞り込みでcategoryIdパラメータ付きで再取得する', async () => {
+  it('種別を支出に切り替えるとカテゴリー絞り込みが表示され支出のみ表示される', async () => {
+    setupApi({ expenses: [lunchExpense], incomes: [salaryIncome] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    expect(screen.queryByLabelText('カテゴリー絞り込み')).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+
+    expect(screen.getByLabelText('カテゴリー絞り込み')).toBeInTheDocument()
+    expect(screen.getByText('ランチ')).toBeInTheDocument()
+    expect(screen.queryByText('1月分給与')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('カテゴリー絞り込み')).getByText('食費')).toBeInTheDocument()
+  })
+
+  it('種別を収入に切り替えるとカテゴリー絞り込みが表示され収入のみ表示される', async () => {
+    setupApi({ expenses: [lunchExpense], incomes: [salaryIncome] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
+
+    expect(screen.getByLabelText('カテゴリー絞り込み')).toBeInTheDocument()
+    expect(screen.getByText('1月分給与')).toBeInTheDocument()
+    expect(screen.queryByText('ランチ')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('カテゴリー絞り込み')).getByText('給与')).toBeInTheDocument()
+  })
+
+  it('種別をすべてに戻すとカテゴリー絞り込みが非表示になる', async () => {
+    setupApi({ expenses: [lunchExpense] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+    expect(screen.getByLabelText('カテゴリー絞り込み')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), 'すべて')
+
+    expect(screen.queryByLabelText('カテゴリー絞り込み')).not.toBeInTheDocument()
+  })
+
+  it('支出のカテゴリー絞り込みでcategoryIdパラメータ付きで再取得する', async () => {
     const { calls } = setupApi({ expenses: [lunchExpense, suppliesExpense] })
     const user = userEvent.setup()
     renderKakeiboPage()
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
 
     await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
 
@@ -183,79 +211,77 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
   })
 
-  it('カテゴリー絞り込みの取得に失敗した場合は選択状態と一覧を変更しない', async () => {
-    setupApi({ expenses: [lunchExpense, suppliesExpense] })
-    server.use(
-      http.get('/api/expenses', ({ request }) => {
-        const categoryId = new URL(request.url).searchParams.get('categoryId')
-        if (categoryId === '1') {
-          return HttpResponse.json({ message: '一覧を取得できませんでした' }, { status: 500 })
-        }
-        return HttpResponse.json([lunchExpense, suppliesExpense])
-      }),
-    )
+  it('収入のカテゴリー絞り込みでcategoryIdパラメータ付きで再取得する', async () => {
+    const { calls } = setupApi({ incomes: [salaryIncome, bonusIncome] })
     const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('1月分給与')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
 
-    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '給与')
 
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('一覧を取得できませんでした'),
+      expect(calls.some((c) => c.url === '/api/incomes?categoryId=11')).toBe(true),
     )
-    expect(screen.getByLabelText('カテゴリー絞り込み')).toHaveValue('')
-    expect(screen.getByText('ランチ')).toBeInTheDocument()
-    expect(screen.getByText('洗剤')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument())
   })
 
-  it('カテゴリー絞り込みを連続変更しても最新のレスポンスだけを表示する', async () => {
-    setupApi({ expenses: [lunchExpense, suppliesExpense] })
-    let resolveFirstRequest: (() => void) | undefined
-    let firstRequestCompleted = false
-    server.use(
-      http.get('/api/expenses', async ({ request }) => {
-        const categoryId = new URL(request.url).searchParams.get('categoryId')
-        if (categoryId === '1') {
-          await new Promise<void>((resolve) => {
-            resolveFirstRequest = resolve
-          })
-          firstRequestCompleted = true
-          return HttpResponse.json([lunchExpense])
-        }
-        if (categoryId === '2') return HttpResponse.json([suppliesExpense])
-        return HttpResponse.json([lunchExpense, suppliesExpense])
-      }),
-    )
+  it('登録ボタンを押すとモーダルが開き、すべて表示中は支出タブがデフォルトで選択される', async () => {
+    setupApi()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+
+    await openModal()
+
+    const modal = screen.getByTestId('transaction-modal')
+    expect(within(modal).getByRole('tab', { name: '支出' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(modal).getByLabelText('使用用途')).toBeInTheDocument()
+    expect(within(modal).getByLabelText('世帯合計に含める')).toBeInTheDocument()
+  })
+
+  it('種別が収入のときに登録ボタンを押すと収入タブがデフォルトで選択される', async () => {
+    setupApi()
     const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
 
-    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
-    await waitFor(() => expect(resolveFirstRequest).toBeDefined())
-    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '日用品')
-    await waitFor(() => expect(screen.getByText('洗剤')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '登録' }))
 
-    resolveFirstRequest?.()
+    const modal = screen.getByTestId('transaction-modal')
+    expect(within(modal).getByRole('tab', { name: '収入' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(modal).getByLabelText('収入内容')).toBeInTheDocument()
+    expect(within(modal).queryByLabelText('世帯合計に含める')).not.toBeInTheDocument()
+  })
 
-    await waitFor(() => expect(firstRequestCompleted).toBe(true))
-    expect(screen.queryByText('ランチ')).not.toBeInTheDocument()
-    expect(screen.getByText('洗剤')).toBeInTheDocument()
+  it('モーダル内でタブを収入に切り替えると使用用途が収入内容に変わり世帯合計チェックボックスが消える', async () => {
+    setupApi()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+
+    await user.click(within(modal).getByRole('tab', { name: '収入' }))
+
+    expect(within(modal).getByLabelText('収入内容')).toBeInTheDocument()
+    expect(within(modal).queryByLabelText('使用用途')).not.toBeInTheDocument()
+    expect(within(modal).queryByLabelText('世帯合計に含める')).not.toBeInTheDocument()
   })
 
   it('支出を登録すると一覧に反映されモーダルが閉じる', async () => {
     const { calls } = setupApi()
-    const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
 
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '1500')
     await user.type(screen.getByLabelText('使用用途'), '書籍')
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('書籍')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: '登録' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument()
     const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/expenses')
     expect(postCall?.body).toMatchObject({
       amount: 1500,
@@ -265,114 +291,105 @@ describe('KakeiboPage', () => {
     })
   })
 
-  it('支出登録後の一覧再取得に失敗した場合はToastを表示してモーダルを開いたままにする', async () => {
+  it('収入を登録すると一覧に反映されモーダルが閉じ、リクエストに世帯合計フラグを含めない', async () => {
     const { calls } = setupApi()
-    let expenseGetCount = 0
-    server.use(
-      http.get('/api/expenses', () => {
-        expenseGetCount += 1
-        if (expenseGetCount === 1) return HttpResponse.json([])
-        return HttpResponse.json({ message: '一覧を更新できませんでした' }, { status: 500 })
-      }),
-    )
-    const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+    await user.click(within(modal).getByRole('tab', { name: '収入' }))
 
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
-    await user.type(screen.getByLabelText('金額'), '1500')
-    await user.type(screen.getByLabelText('使用用途'), '書籍')
-    await user.click(screen.getByRole('button', { name: '登録' }))
-
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('一覧を更新できませんでした'),
-    )
-    const submitButton = screen.getByRole('button', { name: '登録' })
-    expect(submitButton).toBeDisabled()
-
-    await user.click(submitButton)
-
-    expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/expenses')).toHaveLength(1)
-  })
-
-  it('世帯合計対象フラグをチェックすると送信内容に反映される', async () => {
-    const { calls } = setupApi()
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
     await user.clear(screen.getByLabelText('金額'))
-    await user.type(screen.getByLabelText('金額'), '3000')
-    await user.type(screen.getByLabelText('使用用途'), '家族の食事')
-    await user.click(screen.getByLabelText('世帯合計に含める'))
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.type(screen.getByLabelText('金額'), '250000')
+    await user.type(screen.getByLabelText('収入内容'), '7月分給与')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
 
-    await waitFor(() => {
-      const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/expenses')
-      expect(postCall?.body).toMatchObject({ includeInHouseholdTotal: true })
+    await waitFor(() => expect(screen.getByText('7月分給与')).toBeInTheDocument())
+    expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument()
+    const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/incomes')
+    expect(postCall?.body).toMatchObject({
+      amount: 250000,
+      content: '7月分給与',
+      categoryId: 11,
     })
+    expect(postCall?.body).not.toHaveProperty('includeInHouseholdTotal')
   })
 
   it('金額0以下はクライアント側でエラー表示しAPIを呼ばない', async () => {
     const { calls } = setupApi()
-    const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
 
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '0')
     await user.type(screen.getByLabelText('使用用途'), '書籍')
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('金額は1以上の整数で入力してください')).toBeInTheDocument())
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/expenses')).toBe(false)
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
   it('使用用途が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
     const { calls } = setupApi()
-    const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
 
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '1000')
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('使用用途は1〜100文字で入力してください')).toBeInTheDocument())
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/expenses')).toBe(false)
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
+  })
+
+  it('収入内容が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
+    const { calls } = setupApi()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+    await user.click(within(modal).getByRole('tab', { name: '収入' }))
+
+    await user.clear(screen.getByLabelText('金額'))
+    await user.type(screen.getByLabelText('金額'), '1000')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+
+    await waitFor(() => expect(screen.getByText('収入内容は1〜100文字で入力してください')).toBeInTheDocument())
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
   it('キャンセルボタンでモーダルを閉じる', async () => {
     setupApi()
-    const user = userEvent.setup()
     renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    await openModal()
+    expect(screen.getByTestId('transaction-modal')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '支出を登録' }))
-    expect(screen.getByRole('button', { name: '登録' })).toBeInTheDocument()
-
+    const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
 
-    expect(screen.queryByRole('button', { name: '登録' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument()
   })
 
-  it('カテゴリーが0件のとき支出登録ボタンを無効化する', async () => {
+  it('支出・収入いずれのカテゴリーも0件のとき登録ボタンを無効化する', async () => {
     setupApi()
     server.use(
       http.get('/api/kakeibo-categories', () => HttpResponse.json([])),
+      http.get('/api/income-categories', () => HttpResponse.json([])),
     )
     renderKakeiboPage()
 
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
 
-    expect(screen.getByRole('button', { name: '支出を登録' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
   })
 
-  it('初期取得で支出一覧だけ失敗しても取得できたカテゴリーを反映する', async () => {
-    setupApi()
+  it('初期取得で支出一覧だけ失敗しても取得できた収入を反映する', async () => {
+    setupApi({ incomes: [salaryIncome] })
     server.use(
       http.get('/api/expenses', () =>
         HttpResponse.json({ message: '支出一覧を取得できませんでした' }, { status: 500 }),
@@ -384,124 +401,6 @@ describe('KakeiboPage', () => {
       expect(screen.getByRole('status')).toHaveTextContent('支出一覧を取得できませんでした'),
     )
 
-    expect(screen.getByRole('button', { name: '支出を登録' })).toBeEnabled()
-    expect(screen.getByLabelText('カテゴリー絞り込み')).toHaveTextContent('食費')
-  })
-
-  it('収入タブに切り替えると収入一覧がカテゴリー名付きで表示される', async () => {
-    setupApi({ incomes: [salaryIncome] })
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-
-    await waitFor(() => expect(screen.getByText('1月分給与')).toBeInTheDocument())
-    const table = screen.getByRole('table')
-    expect(within(table).getByText('給与')).toBeInTheDocument()
-    expect(within(table).getByText('300000')).toBeInTheDocument()
-  })
-
-  it('収入が空のときプレースホルダーを表示する', async () => {
-    setupApi()
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.getByText('支出はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-
-    await waitFor(() => expect(screen.getByText('収入はありません')).toBeInTheDocument())
-  })
-
-  it('収入カテゴリー絞り込みでcategoryIdパラメータ付きで再取得する', async () => {
-    const { calls } = setupApi({ incomes: [salaryIncome, bonusIncome] })
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-    await waitFor(() => expect(screen.getByText('1月分給与')).toBeInTheDocument())
-
-    await user.selectOptions(screen.getByLabelText('収入カテゴリー絞り込み'), '給与')
-
-    await waitFor(() =>
-      expect(calls.some((c) => c.url === '/api/incomes?categoryId=11')).toBe(true),
-    )
-    await waitFor(() => expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument())
-  })
-
-  it('収入を登録すると一覧に反映されモーダルが閉じ、世帯合計チェックボックスは存在しない', async () => {
-    const { calls } = setupApi()
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-    await waitFor(() => expect(screen.getByText('収入はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('button', { name: '収入を登録' }))
-    expect(screen.queryByLabelText('世帯合計に含める')).not.toBeInTheDocument()
-    await user.clear(screen.getByLabelText('金額'))
-    await user.type(screen.getByLabelText('金額'), '250000')
-    await user.type(screen.getByLabelText('収入内容'), '7月分給与')
-    await user.click(screen.getByRole('button', { name: '登録' }))
-
-    await waitFor(() => expect(screen.getByText('7月分給与')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: '登録' })).not.toBeInTheDocument()
-    const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/incomes')
-    expect(postCall?.body).toMatchObject({
-      amount: 250000,
-      content: '7月分給与',
-      categoryId: 11,
-    })
-    expect(postCall?.body).not.toHaveProperty('includeInHouseholdTotal')
-  })
-
-  it('収入の金額0以下はクライアント側でエラー表示しAPIを呼ばない', async () => {
-    const { calls } = setupApi()
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-    await waitFor(() => expect(screen.getByText('収入はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('button', { name: '収入を登録' }))
-    await user.clear(screen.getByLabelText('金額'))
-    await user.type(screen.getByLabelText('金額'), '0')
-    await user.type(screen.getByLabelText('収入内容'), '給与')
-    await user.click(screen.getByRole('button', { name: '登録' }))
-
-    await waitFor(() => expect(screen.getByText('金額は1以上の整数で入力してください')).toBeInTheDocument())
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/incomes')).toBe(false)
-  })
-
-  it('収入内容が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
-    const { calls } = setupApi()
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-    await waitFor(() => expect(screen.getByText('収入はありません')).toBeInTheDocument())
-
-    await user.click(screen.getByRole('button', { name: '収入を登録' }))
-    await user.clear(screen.getByLabelText('金額'))
-    await user.type(screen.getByLabelText('金額'), '1000')
-    await user.click(screen.getByRole('button', { name: '登録' }))
-
-    await waitFor(() => expect(screen.getByText('収入内容は1〜100文字で入力してください')).toBeInTheDocument())
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/incomes')).toBe(false)
-  })
-
-  it('収入カテゴリーが0件のとき収入登録ボタンを無効化する', async () => {
-    setupApi()
-    server.use(
-      http.get('/api/income-categories', () => HttpResponse.json([])),
-    )
-    const user = userEvent.setup()
-    renderKakeiboPage()
-    await waitFor(() => expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('tab', { name: '収入' }))
-
-    await waitFor(() => expect(screen.getByText('収入はありません')).toBeInTheDocument())
-
-    expect(screen.getByRole('button', { name: '収入を登録' })).toBeDisabled()
+    expect(screen.getByText('1月分給与')).toBeInTheDocument()
   })
 })

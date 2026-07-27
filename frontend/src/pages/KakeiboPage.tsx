@@ -3,27 +3,25 @@ import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
-import { ExpenseListPanel } from '../components/kakeibo/ExpenseListPanel'
-import { ExpenseModal } from '../components/kakeibo/ExpenseModal'
-import { IncomeListPanel } from '../components/kakeibo/IncomeListPanel'
-import { IncomeModal } from '../components/kakeibo/IncomeModal'
+import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
+import { TransactionModal } from '../components/kakeibo/TransactionModal'
 
-type Tab = 'expense' | 'income'
+type TypeFilter = 'all' | 'expense' | 'income'
 
 export function KakeiboPage() {
-  const [tab, setTab] = useState<Tab>('expense')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const latestExpenseRequestId = useRef(0)
 
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategory[]>([])
   const [incomes, setIncomes] = useState<Income[]>([])
   const [incomeCategoryFilter, setIncomeCategoryFilter] = useState('')
-  const [incomeModalOpen, setIncomeModalOpen] = useState(false)
   const latestIncomeRequestId = useRef(0)
+
+  const [modalOpen, setModalOpen] = useState(false)
 
   const [expenseLoading, setExpenseLoading] = useState(true)
   const [incomeLoading, setIncomeLoading] = useState(true)
@@ -142,108 +140,81 @@ export function KakeiboPage() {
     }
   }, [showToast])
 
-  const handleCategoryFilterChange = async (categoryId: string) => {
+  const handleActiveCategoryFilterChange = async (categoryIdValue: string) => {
+    if (typeFilter === 'income') {
+      try {
+        const applied = await fetchIncomes(categoryIdValue)
+        if (applied) setIncomeCategoryFilter(categoryIdValue)
+      } catch (err) {
+        showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
+      }
+      return
+    }
     try {
-      const applied = await fetchExpenses(categoryId)
-      if (applied) setCategoryFilter(categoryId)
+      const applied = await fetchExpenses(categoryIdValue)
+      if (applied) setCategoryFilter(categoryIdValue)
     } catch (err) {
       showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
     }
   }
 
-  const handleExpenseSaved = async () => {
-    try {
-      await fetchExpenses(categoryFilter)
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
-      throw err
+  const handleSaved = async (kind: 'expense' | 'income') => {
+    if (kind === 'expense') {
+      try {
+        await fetchExpenses(categoryFilter)
+      } catch (err) {
+        showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
+        throw err
+      }
+      setModalOpen(false)
+      showToast('支出を登録しました')
+      return
     }
-    setExpenseModalOpen(false)
-    showToast('支出を登録しました')
-  }
-
-  const handleIncomeCategoryFilterChange = async (categoryId: string) => {
-    try {
-      const applied = await fetchIncomes(categoryId)
-      if (applied) setIncomeCategoryFilter(categoryId)
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
-    }
-  }
-
-  const handleIncomeSaved = async () => {
     try {
       await fetchIncomes(incomeCategoryFilter)
     } catch (err) {
       showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
       throw err
     }
-    setIncomeModalOpen(false)
+    setModalOpen(false)
     showToast('収入を登録しました')
   }
 
+  const loading =
+    typeFilter === 'income' ? incomeLoading : typeFilter === 'expense' ? expenseLoading : expenseLoading || incomeLoading
+
+  if (loading) {
+    return <p>読み込み中...</p>
+  }
+
+  const initialKind = typeFilter === 'income' ? 'income' : 'expense'
+  const activeCategoryFilter = typeFilter === 'income' ? incomeCategoryFilter : categoryFilter
+  const activeCategoryOptions = typeFilter === 'income' ? incomeCategories : categories
+  const addDisabled = categories.length === 0 && incomeCategories.length === 0
+
   return (
     <div className="page">
-      <div className="tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'expense'}
-          className={tab === 'expense' ? 'tab is-active' : 'tab'}
-          onClick={() => setTab('expense')}
-        >
-          支出
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'income'}
-          className={tab === 'income' ? 'tab is-active' : 'tab'}
-          onClick={() => setTab('income')}
-        >
-          収入
-        </button>
-      </div>
-      {tab === 'expense' && expenseLoading ? (
-        <p>読み込み中...</p>
-      ) : tab === 'income' && incomeLoading ? (
-        <p>読み込み中...</p>
-      ) : tab === 'expense' ? (
-        <>
-          <ExpenseListPanel
-            expenses={expenses}
-            categories={categories}
-            categoryFilter={categoryFilter}
-            onCategoryFilterChange={handleCategoryFilterChange}
-            onAddClick={() => setExpenseModalOpen(true)}
-            addDisabled={categories.length === 0}
-          />
-          {expenseModalOpen && (
-            <ExpenseModal
-              categories={categories}
-              onClose={() => setExpenseModalOpen(false)}
-              onSaved={handleExpenseSaved}
-            />
-          )}
-        </>
-      ) : (
-        <>
-          <IncomeListPanel
-            incomes={incomes}
-            categories={incomeCategories}
-            categoryFilter={incomeCategoryFilter}
-            onCategoryFilterChange={handleIncomeCategoryFilterChange}
-            onAddClick={() => setIncomeModalOpen(true)}
-            addDisabled={incomeCategories.length === 0}
-          />
-          {incomeModalOpen && (
-            <IncomeModal
-              categories={incomeCategories}
-              onClose={() => setIncomeModalOpen(false)}
-              onSaved={handleIncomeSaved}
-            />
-          )}
-        </>
+      <TransactionListPanel
+        expenses={expenses}
+        incomes={incomes}
+        expenseCategories={categories}
+        incomeCategories={incomeCategories}
+        typeFilter={typeFilter}
+        onTypeFilterChange={setTypeFilter}
+        activeCategoryFilter={activeCategoryFilter}
+        activeCategoryOptions={activeCategoryOptions}
+        onActiveCategoryFilterChange={handleActiveCategoryFilterChange}
+        onAddClick={() => setModalOpen(true)}
+        addDisabled={addDisabled}
+      />
+      {modalOpen && (
+        <TransactionModal
+          expenseCategories={categories}
+          incomeCategories={incomeCategories}
+          initialKind={initialKind}
+          onClose={() => setModalOpen(false)}
+          onSaved={handleSaved}
+        />
       )}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
