@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.IncomeMapper">
+
+    <resultMap id="incomeResultMap" type="com.homelog.kakeibo.entity.IncomeEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="earnerUserId" column="earner_user_id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="amount" column="amount"/>
+        <result property="content" column="content"/>
+        <result property="memo" column="memo"/>
+        <result property="incomeDate" column="income_date"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.IncomeEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO incomes
+            (household_id, earner_user_id, category_id, amount, content, memo, income_date, created_at)
+        VALUES
+            (#{householdId}, #{earnerUserId}, #{categoryId}, #{amount}, #{content}, #{memo}, #{incomeDate},
+             #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="incomeResultMap">
+        SELECT id, household_id, earner_user_id, category_id, amount, content, memo, income_date, created_at
+        FROM incomes
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByEarnerUserId" resultMap="incomeResultMap">
+        SELECT id, household_id, earner_user_id, category_id, amount, content, memo, income_date, created_at
+        FROM incomes
+        WHERE household_id = #{householdId}
+          AND earner_user_id = #{earnerUserId}
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        ORDER BY income_date DESC, id DESC
+    </select>
+
+    <select id="countByCategoryId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM incomes WHERE category_id = #{categoryId}
+    </select>
+
+</mapper>
