@@ -6,6 +6,7 @@ import { RequireHousehold } from './routes/RequireHousehold'
 import { DashboardPage } from './pages/DashboardPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage'
+import { KakeiboPage } from './pages/KakeiboPage'
 import { LoginPage } from './pages/LoginPage'
 import { PasswordResetPage } from './pages/PasswordResetPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -27,6 +28,7 @@ function App() {
               <Route element={<AppLayout />}>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/zaiko" element={<ZaikoPage />} />
+                <Route path="/kakeibo" element={<KakeiboPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
               </Route>
             </Route>
