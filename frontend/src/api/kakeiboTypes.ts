@@ -13,3 +13,18 @@ export interface Expense {
   memo: string | null
   includeInHouseholdTotal: boolean
 }
+
+export interface IncomeCategory {
+  id: number
+  name: string
+  isDefault: boolean
+}
+
+export interface Income {
+  id: number
+  incomeDate: string
+  amount: number
+  content: string
+  categoryId: number
+  memo: string | null
+}
