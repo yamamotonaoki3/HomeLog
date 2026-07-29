@@ -16,7 +16,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AccountService {
@@ -98,10 +97,12 @@ public class AccountService {
         return account.getId();
     }
 
-    @Transactional
-    public void decrementBalance(Long accountId, BigDecimal amount) {
-        AccountEntity account = accountMapper.lockById(accountId);
-        accountMapper.updateBalance(accountId, account.getBalance().subtract(amount));
+    public AccountEntity lockAccountForUpdate(Long accountId) {
+        return accountMapper.lockById(accountId);
+    }
+
+    public void updateBalance(Long accountId, BigDecimal balance) {
+        accountMapper.updateBalance(accountId, balance);
     }
 
     private AccountEntity findOwnedAccount(Long userId, Long householdId, Long accountId) {

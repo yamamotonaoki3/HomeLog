@@ -5,6 +5,7 @@ import com.homelog.common.exception.ResourceNotFoundException;
 import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateExpenseRequest;
 import com.homelog.kakeibo.dto.response.ExpenseResponse;
+import com.homelog.kakeibo.entity.AccountEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
@@ -46,20 +47,28 @@ public class ExpenseService {
         validateCategory(householdId, request.categoryId());
         Long resolvedAccountId = resolveAccountId(userId, householdId, request);
 
+        BigDecimal amount = BigDecimal.valueOf(request.amount());
+        AccountEntity lockedAccount = null;
+        if (resolvedAccountId != null) {
+            // 支出INSERTのFK参照チェックが先に口座行の共有ロックを取得すると、後続のFOR UPDATEへの
+            // ロック昇格が競合しデッドロックしうるため、INSERT前に排他ロックを取得しておく。
+            lockedAccount = accountService.lockAccountForUpdate(resolvedAccountId);
+        }
+
         ExpenseEntity expense = new ExpenseEntity();
         expense.setHouseholdId(householdId);
         expense.setPayerUserId(userId);
         expense.setCategoryId(request.categoryId());
         expense.setAccountId(resolvedAccountId);
-        expense.setAmount(BigDecimal.valueOf(request.amount()));
+        expense.setAmount(amount);
         expense.setPurpose(request.purpose());
         expense.setMemo(request.memo());
         expense.setExpenseDate(request.expenseDate());
         expense.setIncludeInHouseholdTotal(Boolean.TRUE.equals(request.includeInHouseholdTotal()));
         expense.setCreatedAt(LocalDateTime.now());
         expenseMapper.insert(expense);
-        if (resolvedAccountId != null) {
-            accountService.decrementBalance(resolvedAccountId, expense.getAmount());
+        if (lockedAccount != null) {
+            accountService.updateBalance(resolvedAccountId, lockedAccount.getBalance().subtract(amount));
         }
         return toResponse(expense);
     }

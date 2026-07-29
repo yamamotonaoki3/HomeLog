@@ -13,6 +13,7 @@ import com.homelog.household.entity.HouseholdMemberEntity;
 import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateExpenseRequest;
 import com.homelog.kakeibo.dto.response.ExpenseResponse;
+import com.homelog.kakeibo.entity.AccountEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
@@ -162,10 +163,18 @@ class ExpenseServiceTest {
         assertThat(response.includeInHouseholdTotal()).isTrue();
     }
 
+    private AccountEntity accountWithBalance(long id, String balance) {
+        AccountEntity account = new AccountEntity();
+        account.setId(id);
+        account.setBalance(new BigDecimal(balance));
+        return account;
+    }
+
     @Test
     void createExpense_口座指定ありの場合は所有チェック後に残高を減算する() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
+        when(accountService.lockAccountForUpdate(7L)).thenReturn(accountWithBalance(7L, "10000"));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
                 LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L, null);
@@ -173,7 +182,8 @@ class ExpenseServiceTest {
 
         assertThat(response.accountId()).isEqualTo(7L);
         verify(accountService).validateOwnedAccountForExpense(1L, 10L, 7L);
-        verify(accountService).decrementBalance(7L, new BigDecimal("1000"));
+        verify(accountService).lockAccountForUpdate(7L);
+        verify(accountService).updateBalance(7L, new BigDecimal("9000"));
     }
 
     @Test
@@ -188,7 +198,8 @@ class ExpenseServiceTest {
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
         verify(expenseMapper, never()).insert(any());
-        verify(accountService, never()).decrementBalance(any(), any());
+        verify(accountService, never()).lockAccountForUpdate(any());
+        verify(accountService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -201,7 +212,8 @@ class ExpenseServiceTest {
         service().createExpense(1L, request);
 
         verify(accountService, never()).validateOwnedAccountForExpense(any(), any(), any());
-        verify(accountService, never()).decrementBalance(any(), any());
+        verify(accountService, never()).lockAccountForUpdate(any());
+        verify(accountService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -209,6 +221,7 @@ class ExpenseServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
         when(accountService.resolveAccountIdFromCard(1L, 10L, 70L)).thenReturn(7L);
+        when(accountService.lockAccountForUpdate(7L)).thenReturn(accountWithBalance(7L, "10000"));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
                 LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, 70L);
@@ -216,7 +229,8 @@ class ExpenseServiceTest {
 
         assertThat(response.accountId()).isEqualTo(7L);
         verify(accountService).resolveAccountIdFromCard(1L, 10L, 70L);
-        verify(accountService).decrementBalance(7L, new BigDecimal("1000"));
+        verify(accountService).lockAccountForUpdate(7L);
+        verify(accountService).updateBalance(7L, new BigDecimal("9000"));
         verify(accountService, never()).validateOwnedAccountForExpense(any(), any(), any());
     }
 
@@ -232,7 +246,8 @@ class ExpenseServiceTest {
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
         verify(expenseMapper, never()).insert(any());
-        verify(accountService, never()).decrementBalance(any(), any());
+        verify(accountService, never()).lockAccountForUpdate(any());
+        verify(accountService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -245,6 +260,7 @@ class ExpenseServiceTest {
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
         verify(expenseMapper, never()).insert(any());
-        verify(accountService, never()).decrementBalance(any(), any());
+        verify(accountService, never()).lockAccountForUpdate(any());
+        verify(accountService, never()).updateBalance(any(), any());
     }
 }

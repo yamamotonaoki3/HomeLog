@@ -3,7 +3,6 @@ package com.homelog.kakeibo.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +23,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -192,16 +190,22 @@ class AccountServiceTest {
     }
 
     @Test
-    void decrementBalance_行ロック後に残高を減算する() {
+    void lockAccountForUpdate_口座行をロックして取得する() {
         AccountEntity account = accountOf(5L, 10L, 1L);
         account.setBalance(new BigDecimal("10000"));
         when(accountMapper.lockById(5L)).thenReturn(account);
 
-        service().decrementBalance(5L, new BigDecimal("3000"));
+        AccountEntity locked = service().lockAccountForUpdate(5L);
 
-        InOrder inOrder = inOrder(accountMapper);
-        inOrder.verify(accountMapper).lockById(5L);
-        inOrder.verify(accountMapper).updateBalance(5L, new BigDecimal("7000"));
+        assertThat(locked.getBalance()).isEqualByComparingTo("10000");
+        verify(accountMapper).lockById(5L);
+    }
+
+    @Test
+    void updateBalance_残高を更新する() {
+        service().updateBalance(5L, new BigDecimal("7000"));
+
+        verify(accountMapper).updateBalance(5L, new BigDecimal("7000"));
     }
 
     private CardEntity cardOf(long id, long accountId) {
