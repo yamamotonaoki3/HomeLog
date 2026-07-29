@@ -14,5 +14,6 @@ public record CreateExpenseRequest(
         @NotNull Long categoryId,
         @Size(max = 255) String memo,
         Boolean includeInHouseholdTotal,
-        Long accountId) {
+        Long accountId,
+        Long cardId) {
 }

@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExpenseService {
 
     private static final String CATEGORY_NOT_FOUND_MESSAGE = "指定されたカテゴリーが見つかりません";
+    private static final String ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE = "口座とカードは同時に指定できません";
 
     private final ExpenseMapper expenseMapper;
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
@@ -43,15 +44,13 @@ public class ExpenseService {
     public ExpenseResponse createExpense(Long userId, CreateExpenseRequest request) {
         Long householdId = resolveHouseholdId(userId);
         validateCategory(householdId, request.categoryId());
-        if (request.accountId() != null) {
-            accountService.validateOwnedAccountForExpense(userId, householdId, request.accountId());
-        }
+        Long resolvedAccountId = resolveAccountId(userId, householdId, request);
 
         ExpenseEntity expense = new ExpenseEntity();
         expense.setHouseholdId(householdId);
         expense.setPayerUserId(userId);
         expense.setCategoryId(request.categoryId());
-        expense.setAccountId(request.accountId());
+        expense.setAccountId(resolvedAccountId);
         expense.setAmount(BigDecimal.valueOf(request.amount()));
         expense.setPurpose(request.purpose());
         expense.setMemo(request.memo());
@@ -59,10 +58,24 @@ public class ExpenseService {
         expense.setIncludeInHouseholdTotal(Boolean.TRUE.equals(request.includeInHouseholdTotal()));
         expense.setCreatedAt(LocalDateTime.now());
         expenseMapper.insert(expense);
-        if (request.accountId() != null) {
-            accountService.decrementBalance(request.accountId(), expense.getAmount());
+        if (resolvedAccountId != null) {
+            accountService.decrementBalance(resolvedAccountId, expense.getAmount());
         }
         return toResponse(expense);
+    }
+
+    private Long resolveAccountId(Long userId, Long householdId, CreateExpenseRequest request) {
+        if (request.accountId() != null && request.cardId() != null) {
+            throw new BadRequestException(ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE);
+        }
+        if (request.cardId() != null) {
+            return accountService.resolveAccountIdFromCard(userId, householdId, request.cardId());
+        }
+        if (request.accountId() != null) {
+            accountService.validateOwnedAccountForExpense(userId, householdId, request.accountId());
+            return request.accountId();
+        }
+        return null;
     }
 
     private void validateCategory(Long householdId, Long categoryId) {

@@ -104,7 +104,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, "メモ", null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, "メモ", null, null, null);
         ExpenseResponse response = service().createExpense(1L, request);
 
         assertThat(response.purpose()).isEqualTo("ランチ");
@@ -121,7 +121,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 999L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
         verify(expenseMapper, never()).insert(any());
@@ -133,7 +133,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(null);
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
     }
@@ -144,7 +144,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
         ExpenseResponse response = service().createExpense(1L, request);
 
         assertThat(response.includeInHouseholdTotal()).isFalse();
@@ -156,7 +156,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, true, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, true, null, null);
         ExpenseResponse response = service().createExpense(1L, request);
 
         assertThat(response.includeInHouseholdTotal()).isTrue();
@@ -168,7 +168,7 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L, null);
         ExpenseResponse response = service().createExpense(1L, request);
 
         assertThat(response.accountId()).isEqualTo(7L);
@@ -184,7 +184,7 @@ class ExpenseServiceTest {
                 .when(accountService).validateOwnedAccountForExpense(1L, 10L, 7L);
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L, null);
 
         assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
         verify(expenseMapper, never()).insert(any());
@@ -197,10 +197,54 @@ class ExpenseServiceTest {
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
         service().createExpense(1L, request);
 
         verify(accountService, never()).validateOwnedAccountForExpense(any(), any(), any());
+        verify(accountService, never()).decrementBalance(any(), any());
+    }
+
+    @Test
+    void createExpense_カード指定ありの場合は親口座を解決して残高を減算する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
+        when(accountService.resolveAccountIdFromCard(1L, 10L, 70L)).thenReturn(7L);
+
+        CreateExpenseRequest request = new CreateExpenseRequest(
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, 70L);
+        ExpenseResponse response = service().createExpense(1L, request);
+
+        assertThat(response.accountId()).isEqualTo(7L);
+        verify(accountService).resolveAccountIdFromCard(1L, 10L, 70L);
+        verify(accountService).decrementBalance(7L, new BigDecimal("1000"));
+        verify(accountService, never()).validateOwnedAccountForExpense(any(), any(), any());
+    }
+
+    @Test
+    void createExpense_他人のカード指定は400() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
+        Mockito.doThrow(new BadRequestException("指定されたカードが見つかりません"))
+                .when(accountService).resolveAccountIdFromCard(1L, 10L, 70L);
+
+        CreateExpenseRequest request = new CreateExpenseRequest(
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, 70L);
+
+        assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
+        verify(expenseMapper, never()).insert(any());
+        verify(accountService, never()).decrementBalance(any(), any());
+    }
+
+    @Test
+    void createExpense_口座とカードを同時に指定すると400() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
+
+        CreateExpenseRequest request = new CreateExpenseRequest(
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, 7L, 70L);
+
+        assertThatThrownBy(() -> service().createExpense(1L, request)).isInstanceOf(BadRequestException.class);
+        verify(expenseMapper, never()).insert(any());
         verify(accountService, never()).decrementBalance(any(), any());
     }
 }

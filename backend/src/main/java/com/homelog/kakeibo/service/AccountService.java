@@ -8,6 +8,7 @@ import com.homelog.kakeibo.dto.request.UpdateAccountRequest;
 import com.homelog.kakeibo.dto.response.AccountResponse;
 import com.homelog.kakeibo.dto.response.CardResponse;
 import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.mapper.AccountMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
@@ -23,6 +24,7 @@ public class AccountService {
     private static final String NOT_FOUND_MESSAGE = "口座が見つかりません";
     private static final String IN_USE_MESSAGE = "使用中の口座は削除できません";
     private static final String INVALID_ACCOUNT_MESSAGE = "指定された口座が見つかりません";
+    private static final String INVALID_CARD_MESSAGE = "指定されたカードが見つかりません";
 
     private final AccountMapper accountMapper;
     private final CardMapper cardMapper;
@@ -79,6 +81,19 @@ public class AccountService {
                 || !account.getHouseholdId().equals(householdId)) {
             throw new BadRequestException(INVALID_ACCOUNT_MESSAGE);
         }
+    }
+
+    public Long resolveAccountIdFromCard(Long userId, Long householdId, Long cardId) {
+        CardEntity card = cardMapper.findById(cardId);
+        if (card == null) {
+            throw new BadRequestException(INVALID_CARD_MESSAGE);
+        }
+        AccountEntity account = accountMapper.findById(card.getAccountId());
+        if (account == null || !account.getOwnerUserId().equals(userId)
+                || !account.getHouseholdId().equals(householdId)) {
+            throw new BadRequestException(INVALID_CARD_MESSAGE);
+        }
+        return account.getId();
     }
 
     @Transactional

@@ -180,4 +180,38 @@ class AccountServiceTest {
         inOrder.verify(accountMapper).lockById(5L);
         inOrder.verify(accountMapper).updateBalance(5L, new BigDecimal("7000"));
     }
+
+    private CardEntity cardOf(long id, long accountId) {
+        CardEntity card = new CardEntity();
+        card.setId(id);
+        card.setAccountId(accountId);
+        return card;
+    }
+
+    @Test
+    void resolveAccountIdFromCard_本人所有かつ現在の世帯なら親口座IDを返す() {
+        when(cardMapper.findById(70L)).thenReturn(cardOf(70L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+
+        Long accountId = service().resolveAccountIdFromCard(1L, 10L, 70L);
+
+        assertThat(accountId).isEqualTo(5L);
+    }
+
+    @Test
+    void resolveAccountIdFromCard_他人のカード指定は400() {
+        when(cardMapper.findById(70L)).thenReturn(cardOf(70L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 999L));
+
+        assertThatThrownBy(() -> service().resolveAccountIdFromCard(1L, 10L, 70L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void resolveAccountIdFromCard_存在しないカード指定は400() {
+        when(cardMapper.findById(70L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service().resolveAccountIdFromCard(1L, 10L, 70L))
+                .isInstanceOf(BadRequestException.class);
+    }
 }

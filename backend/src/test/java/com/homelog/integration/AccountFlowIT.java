@@ -81,6 +81,51 @@ class AccountFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("カードを指定して支出を登録すると、親口座の残高が支出金額分だけ減算される")
+    void createExpenseWithCardDecrementsParentAccountBalance() {
+        String token = registerAndLogin(uniqueEmail("account-card-expense"));
+        createHousehold(token, "カード残高減算テスト家");
+        long categoryId = firstExpenseCategoryId(token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "カード紐付き口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "生活費カード"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> expenseResponse = postJson("/api/expenses",
+                Map.of("expenseDate", "2026-01-01", "amount", 3000, "purpose", "カード指定の支出",
+                        "categoryId", categoryId, "cardId", cardId),
+                token);
+        assertThat(expenseResponse.getStatusCode().value()).isEqualTo(201);
+        assertThat(((Number) expenseResponse.getBody().get("accountId")).longValue()).isEqualTo(accountId);
+
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(7000);
+    }
+
+    @Test
+    @DisplayName("口座とカードを同時に指定した支出登録は400を返す")
+    void createExpenseWithBothAccountAndCardReturns400() {
+        String token = registerAndLogin(uniqueEmail("account-card-both"));
+        createHousehold(token, "口座カード同時指定テスト家");
+        long categoryId = firstExpenseCategoryId(token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "カード"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> response = postJson("/api/expenses",
+                Map.of("expenseDate", "2026-01-01", "amount", 1000, "purpose", "同時指定エラー",
+                        "categoryId", categoryId, "accountId", accountId, "cardId", cardId),
+                token);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
     @DisplayName("他人の口座を指定した支出登録は400を返す")
     void createExpenseWithOtherUsersAccountReturns400() {
         String tokenOwner = registerAndLogin(uniqueEmail("account-owner"));
