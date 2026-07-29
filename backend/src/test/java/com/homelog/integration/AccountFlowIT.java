@@ -81,6 +81,32 @@ class AccountFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("世帯を退出後、退出前の世帯に残った口座を更新・削除しようとすると404を返す")
+    void mutatingAccountFromFormerHouseholdReturns404() {
+        String token = registerAndLogin(uniqueEmail("account-former-house"));
+        String inviteCode = createHousehold(token, "退出前の世帯");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "退出前の世帯の口座", "type", "bank", "balance", 1000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+
+        String tokenOtherMember = registerAndLogin(uniqueEmail("account-former-house-member"));
+        postJson("/api/households/join", Map.of("inviteCode", inviteCode), tokenOtherMember);
+        ResponseEntity<Map<String, Object>> leaveResponse = postJson("/api/households/leave", null, token);
+        assertThat(leaveResponse.getStatusCode().value()).isEqualTo(204);
+
+        String tokenInviter = registerAndLogin(uniqueEmail("account-former-house-inviter"));
+        String newInviteCode = createHousehold(tokenInviter, "新しい世帯");
+        postJson("/api/households/join", Map.of("inviteCode", newInviteCode), token);
+
+        ResponseEntity<Map<String, Object>> updateResponse = patchJson("/api/accounts/" + accountId,
+                Map.of("name", "不正な更新", "type", "bank"), token);
+        assertThat(updateResponse.getStatusCode().value()).isEqualTo(404);
+
+        ResponseEntity<Map<String, Object>> deleteResponse = deleteJson("/api/accounts/" + accountId, token);
+        assertThat(deleteResponse.getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
     @DisplayName("カードを指定して支出を登録すると、親口座の残高が支出金額分だけ減算される")
     void createExpenseWithCardDecrementsParentAccountBalance() {
         String token = registerAndLogin(uniqueEmail("account-card-expense"));

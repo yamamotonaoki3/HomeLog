@@ -60,7 +60,8 @@ public class AccountService {
     }
 
     public AccountResponse updateAccount(Long userId, Long accountId, UpdateAccountRequest request) {
-        AccountEntity account = findOwnedAccount(userId, accountId);
+        Long householdId = resolveHouseholdId(userId);
+        AccountEntity account = findOwnedAccount(userId, householdId, accountId);
         accountMapper.update(accountId, request.name(), request.type());
         account.setName(request.name());
         account.setType(request.type());
@@ -68,7 +69,8 @@ public class AccountService {
     }
 
     public void deleteAccount(Long userId, Long accountId) {
-        findOwnedAccount(userId, accountId);
+        Long householdId = resolveHouseholdId(userId);
+        findOwnedAccount(userId, householdId, accountId);
         if (expenseMapper.countByAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
@@ -102,9 +104,10 @@ public class AccountService {
         accountMapper.updateBalance(accountId, account.getBalance().subtract(amount));
     }
 
-    private AccountEntity findOwnedAccount(Long userId, Long accountId) {
+    private AccountEntity findOwnedAccount(Long userId, Long householdId, Long accountId) {
         AccountEntity account = accountMapper.findById(accountId);
-        if (account == null || !account.getOwnerUserId().equals(userId)) {
+        if (account == null || !account.getOwnerUserId().equals(userId)
+                || !account.getHouseholdId().equals(householdId)) {
             throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
         }
         return account;

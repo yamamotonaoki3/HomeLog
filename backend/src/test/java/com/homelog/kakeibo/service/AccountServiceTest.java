@@ -102,6 +102,7 @@ class AccountServiceTest {
 
     @Test
     void updateAccount_正常系() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
 
         AccountResponse response = service().updateAccount(1L, 5L, new UpdateAccountRequest("新名義", "bank"));
@@ -112,6 +113,7 @@ class AccountServiceTest {
 
     @Test
     void updateAccount_他人の口座は404() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 999L));
 
         assertThatThrownBy(() -> service().updateAccount(1L, 5L, new UpdateAccountRequest("新名義", "bank")))
@@ -119,7 +121,17 @@ class AccountServiceTest {
     }
 
     @Test
+    void updateAccount_退出前の世帯に残った口座は404() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(20L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+
+        assertThatThrownBy(() -> service().updateAccount(1L, 5L, new UpdateAccountRequest("新名義", "bank")))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void deleteAccount_正常系() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(0);
 
@@ -130,6 +142,7 @@ class AccountServiceTest {
 
     @Test
     void deleteAccount_使用中は削除不可() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(1);
 
@@ -139,7 +152,17 @@ class AccountServiceTest {
 
     @Test
     void deleteAccount_他人の口座は404() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 999L));
+
+        assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(ResourceNotFoundException.class);
+        verify(accountMapper, never()).delete(anyLong());
+    }
+
+    @Test
+    void deleteAccount_退出前の世帯に残った口座は404() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(20L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
 
         assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(ResourceNotFoundException.class);
         verify(accountMapper, never()).delete(anyLong());
