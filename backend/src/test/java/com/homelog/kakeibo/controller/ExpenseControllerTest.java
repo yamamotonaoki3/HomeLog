@@ -67,7 +67,7 @@ class ExpenseControllerTest {
     void listExpenses_正常系は200() throws Exception {
         when(expenseService.listExpenses(anyLong(), any()))
                 .thenReturn(List.of(new ExpenseResponse(1L, LocalDate.of(2026, 1, 1),
-                        new BigDecimal("1000"), "ランチ", 5L, null, false)));
+                        new BigDecimal("1000"), "ランチ", 5L, null, false, null)));
 
         mockMvc.perform(get("/api/expenses"))
                 .andExpect(status().isOk())
@@ -78,10 +78,10 @@ class ExpenseControllerTest {
     void createExpense_正常系は201() throws Exception {
         when(expenseService.createExpense(anyLong(), any()))
                 .thenReturn(new ExpenseResponse(1L, LocalDate.of(2026, 1, 1),
-                        new BigDecimal("1000"), "ランチ", 5L, null, false));
+                        new BigDecimal("1000"), "ランチ", 5L, null, false, null));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -96,7 +96,7 @@ class ExpenseControllerTest {
                 .thenThrow(new BadRequestException("指定されたカテゴリーが見つかりません"));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -107,7 +107,7 @@ class ExpenseControllerTest {
     @Test
     void createExpense_金額0以下は400() throws Exception {
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 0L, "ランチ", 5L, null, null);
+                LocalDate.of(2026, 1, 1), 0L, "ランチ", 5L, null, null, null, null);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -118,7 +118,7 @@ class ExpenseControllerTest {
     @Test
     void createExpense_金額上限超過は400() throws Exception {
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 10_000_000_000L, "ランチ", 5L, null, null);
+                LocalDate.of(2026, 1, 1), 10_000_000_000L, "ランチ", 5L, null, null, null, null);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -131,7 +131,7 @@ class ExpenseControllerTest {
     @Test
     void createExpense_使用用途が空は400() throws Exception {
         CreateExpenseRequest request = new CreateExpenseRequest(
-                LocalDate.of(2026, 1, 1), 1000L, "", 5L, null, null);
+                LocalDate.of(2026, 1, 1), 1000L, "", 5L, null, null, null, null);
 
         mockMvc.perform(post("/api/expenses")
                         .contentType(MediaType.APPLICATION_JSON)
