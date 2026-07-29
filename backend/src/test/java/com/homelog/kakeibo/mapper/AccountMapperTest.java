@@ -87,6 +87,19 @@ class AccountMapperTest {
     }
 
     @Test
+    void updateBalance_単発の支出上限を超える桁数の累積減算後残高でも更新できる() {
+        Long householdId = createHousehold("acc-house7", "ACCCODE00000009");
+        Long userId = createUser("owner7@example.com");
+        AccountEntity account = newAccount(householdId, userId, "口座", "bank", "0");
+        accountMapper.insert(account);
+
+        accountMapper.updateBalance(account.getId(), new BigDecimal("-12345678901"));
+
+        AccountEntity found = accountMapper.findById(account.getId());
+        assertThat(found.getBalance()).isEqualByComparingTo("-12345678901");
+    }
+
+    @Test
     void updateBalance_残高を更新できる() {
         Long householdId = createHousehold("acc-house4", "ACCCODE00000004");
         Long userId = createUser("owner4@example.com");

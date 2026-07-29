@@ -8,7 +8,8 @@ CREATE TABLE accounts (
     owner_user_id BIGINT NOT NULL REFERENCES users (id),
     name VARCHAR(50) NOT NULL,
     type VARCHAR(20) NOT NULL,
-    balance NUMERIC(10, 0) NOT NULL,
+    -- 単発の支出上限（9,999,999,999）より広い桁数を確保し、支出の累積減算で桁あふれしないようにする
+    balance NUMERIC(15, 0) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
