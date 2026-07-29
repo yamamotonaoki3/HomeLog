@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.AccountMapper">
+
+    <resultMap id="accountResultMap" type="com.homelog.kakeibo.entity.AccountEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="ownerUserId" column="owner_user_id"/>
+        <result property="name" column="name"/>
+        <result property="type" column="type"/>
+        <result property="balance" column="balance"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.AccountEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO accounts
+            (household_id, owner_user_id, name, type, balance, created_at)
+        VALUES
+            (#{householdId}, #{ownerUserId}, #{name}, #{type}, #{balance}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="accountResultMap">
+        SELECT id, household_id, owner_user_id, name, type, balance, created_at
+        FROM accounts
+        WHERE id = #{id}
+    </select>
+
+    <select id="lockById" parameterType="long" resultMap="accountResultMap">
+        SELECT id, household_id, owner_user_id, name, type, balance, created_at
+        FROM accounts
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <select id="findByHouseholdIdAndOwnerUserId" resultMap="accountResultMap">
+        SELECT id, household_id, owner_user_id, name, type, balance, created_at
+        FROM accounts
+        WHERE household_id = #{householdId}
+          AND owner_user_id = #{ownerUserId}
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE accounts
+        SET name = #{name}, type = #{type}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateBalance">
+        UPDATE accounts
+        SET balance = #{balance}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM accounts WHERE id = #{id}
+    </delete>
+
+</mapper>

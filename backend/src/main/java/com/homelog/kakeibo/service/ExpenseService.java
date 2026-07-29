@@ -23,12 +23,14 @@ public class ExpenseService {
     private final ExpenseMapper expenseMapper;
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
     private final HouseholdMemberMapper householdMemberMapper;
+    private final AccountService accountService;
 
     public ExpenseService(ExpenseMapper expenseMapper, KakeiboCategoryMapper kakeiboCategoryMapper,
-            HouseholdMemberMapper householdMemberMapper) {
+            HouseholdMemberMapper householdMemberMapper, AccountService accountService) {
         this.expenseMapper = expenseMapper;
         this.kakeiboCategoryMapper = kakeiboCategoryMapper;
         this.householdMemberMapper = householdMemberMapper;
+        this.accountService = accountService;
     }
 
     public List<ExpenseResponse> listExpenses(Long userId, Long categoryId) {
@@ -41,11 +43,15 @@ public class ExpenseService {
     public ExpenseResponse createExpense(Long userId, CreateExpenseRequest request) {
         Long householdId = resolveHouseholdId(userId);
         validateCategory(householdId, request.categoryId());
+        if (request.accountId() != null) {
+            accountService.validateOwnedAccountForExpense(userId, householdId, request.accountId());
+        }
 
         ExpenseEntity expense = new ExpenseEntity();
         expense.setHouseholdId(householdId);
         expense.setPayerUserId(userId);
         expense.setCategoryId(request.categoryId());
+        expense.setAccountId(request.accountId());
         expense.setAmount(BigDecimal.valueOf(request.amount()));
         expense.setPurpose(request.purpose());
         expense.setMemo(request.memo());
@@ -53,6 +59,9 @@ public class ExpenseService {
         expense.setIncludeInHouseholdTotal(Boolean.TRUE.equals(request.includeInHouseholdTotal()));
         expense.setCreatedAt(LocalDateTime.now());
         expenseMapper.insert(expense);
+        if (request.accountId() != null) {
+            accountService.decrementBalance(request.accountId(), expense.getAmount());
+        }
         return toResponse(expense);
     }
 
@@ -74,6 +83,6 @@ public class ExpenseService {
     private ExpenseResponse toResponse(ExpenseEntity expense) {
         return new ExpenseResponse(expense.getId(), expense.getExpenseDate(), expense.getAmount(),
                 expense.getPurpose(), expense.getCategoryId(), expense.getMemo(),
-                expense.isIncludeInHouseholdTotal());
+                expense.isIncludeInHouseholdTotal(), expense.getAccountId());
     }
 }

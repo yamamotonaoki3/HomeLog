@@ -17,4 +17,6 @@ public interface ExpenseMapper {
             @Param("categoryId") Long categoryId);
 
     int countByCategoryId(long categoryId);
+
+    int countByAccountId(long accountId);
 }

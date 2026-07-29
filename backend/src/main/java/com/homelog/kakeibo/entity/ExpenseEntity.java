@@ -10,6 +10,7 @@ public class ExpenseEntity {
     private Long householdId;
     private Long payerUserId;
     private Long categoryId;
+    private Long accountId;
     private BigDecimal amount;
     private String purpose;
     private String memo;
@@ -47,6 +48,14 @@ public class ExpenseEntity {
 
     public void setCategoryId(Long categoryId) {
         this.categoryId = categoryId;
+    }
+
+    public Long getAccountId() {
+        return accountId;
+    }
+
+    public void setAccountId(Long accountId) {
+        this.accountId = accountId;
     }
 
     public BigDecimal getAmount() {

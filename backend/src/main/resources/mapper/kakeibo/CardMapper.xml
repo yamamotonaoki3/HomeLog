@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.CardMapper">
+
+    <resultMap id="cardResultMap" type="com.homelog.kakeibo.entity.CardEntity">
+        <id property="id" column="id"/>
+        <result property="accountId" column="account_id"/>
+        <result property="name" column="name"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.CardEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cards
+            (account_id, name, created_at)
+        VALUES
+            (#{accountId}, #{name}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="cardResultMap">
+        SELECT id, account_id, name, created_at
+        FROM cards
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByAccountId" parameterType="long" resultMap="cardResultMap">
+        SELECT id, account_id, name, created_at
+        FROM cards
+        WHERE account_id = #{accountId}
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE cards
+        SET name = #{name}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM cards WHERE id = #{id}
+    </delete>
+
+</mapper>

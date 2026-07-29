@@ -7,6 +7,7 @@
         <result property="householdId" column="household_id"/>
         <result property="payerUserId" column="payer_user_id"/>
         <result property="categoryId" column="category_id"/>
+        <result property="accountId" column="account_id"/>
         <result property="amount" column="amount"/>
         <result property="purpose" column="purpose"/>
         <result property="memo" column="memo"/>
@@ -18,22 +19,22 @@
     <insert id="insert" parameterType="com.homelog.kakeibo.entity.ExpenseEntity"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO expenses
-            (household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+            (household_id, payer_user_id, category_id, account_id, amount, purpose, memo, expense_date,
              include_in_household_total, created_at)
         VALUES
-            (#{householdId}, #{payerUserId}, #{categoryId}, #{amount}, #{purpose}, #{memo}, #{expenseDate},
-             #{includeInHouseholdTotal}, #{createdAt})
+            (#{householdId}, #{payerUserId}, #{categoryId}, #{accountId}, #{amount}, #{purpose}, #{memo},
+             #{expenseDate}, #{includeInHouseholdTotal}, #{createdAt})
     </insert>
 
     <select id="findById" parameterType="long" resultMap="expenseResultMap">
-        SELECT id, household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+        SELECT id, household_id, payer_user_id, category_id, account_id, amount, purpose, memo, expense_date,
                include_in_household_total, created_at
         FROM expenses
         WHERE id = #{id}
     </select>
 
     <select id="findByPayerUserId" resultMap="expenseResultMap">
-        SELECT id, household_id, payer_user_id, category_id, amount, purpose, memo, expense_date,
+        SELECT id, household_id, payer_user_id, category_id, account_id, amount, purpose, memo, expense_date,
                include_in_household_total, created_at
         FROM expenses
         WHERE household_id = #{householdId}
@@ -46,6 +47,10 @@
 
     <select id="countByCategoryId" parameterType="long" resultType="int">
         SELECT COUNT(*) FROM expenses WHERE category_id = #{categoryId}
+    </select>
+
+    <select id="countByAccountId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM expenses WHERE account_id = #{accountId}
     </select>
 
 </mapper>
