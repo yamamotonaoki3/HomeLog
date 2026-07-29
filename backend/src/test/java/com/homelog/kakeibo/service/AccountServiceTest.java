@@ -205,6 +205,13 @@ class AccountServiceTest {
     }
 
     @Test
+    void lockAccountForUpdate_ロック時点で口座が既に削除されていた場合は400() {
+        when(accountMapper.lockById(5L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service().lockAccountForUpdate(5L)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
     void updateBalance_残高を更新する() {
         service().updateBalance(5L, new BigDecimal("7000"));
 

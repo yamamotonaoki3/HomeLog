@@ -101,7 +101,11 @@ public class AccountService {
     }
 
     public AccountEntity lockAccountForUpdate(Long accountId) {
-        return accountMapper.lockById(accountId);
+        AccountEntity account = accountMapper.lockById(accountId);
+        if (account == null) {
+            throw new BadRequestException(INVALID_ACCOUNT_MESSAGE);
+        }
+        return account;
     }
 
     public void updateBalance(Long accountId, BigDecimal balance) {
