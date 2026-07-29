@@ -135,7 +135,10 @@ class AccountServiceTest {
 
         service().deleteAccount(1L, 5L);
 
-        verify(accountMapper).delete(5L);
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(accountMapper, expenseMapper);
+        inOrder.verify(accountMapper).lockById(5L);
+        inOrder.verify(expenseMapper).countByAccountId(5L);
+        inOrder.verify(accountMapper).delete(5L);
     }
 
     @Test

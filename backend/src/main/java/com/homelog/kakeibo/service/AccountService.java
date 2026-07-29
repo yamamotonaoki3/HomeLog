@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AccountService {
@@ -67,9 +68,11 @@ public class AccountService {
         return toResponse(account);
     }
 
+    @Transactional
     public void deleteAccount(Long userId, Long accountId) {
         Long householdId = resolveHouseholdId(userId);
         findOwnedAccount(userId, householdId, accountId);
+        accountMapper.lockById(accountId);
         if (expenseMapper.countByAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
