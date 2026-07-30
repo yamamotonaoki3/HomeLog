@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
+import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type TypeFilter = 'all' | 'expense' | 'income'
 
@@ -11,6 +11,7 @@ interface TransactionRow {
   categoryName: string
   amount: number
   includeInHouseholdTotal: boolean | null
+  accountName: string
   memo: string | null
 }
 
@@ -19,6 +20,7 @@ interface Props {
   incomes: Income[]
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
+  accounts: Account[]
   typeFilter: TypeFilter
   onTypeFilterChange: (value: TypeFilter) => void
   activeCategoryFilter: string
@@ -39,6 +41,7 @@ export function TransactionListPanel({
   incomes,
   expenseCategories,
   incomeCategories,
+  accounts,
   typeFilter,
   onTypeFilterChange,
   activeCategoryFilter,
@@ -50,6 +53,7 @@ export function TransactionListPanel({
   const rows = useMemo<TransactionRow[]>(() => {
     const findExpenseCategoryName = (id: number) => expenseCategories.find((c) => c.id === id)?.name ?? ''
     const findIncomeCategoryName = (id: number) => incomeCategories.find((c) => c.id === id)?.name ?? ''
+    const findAccountName = (id: number | null) => accounts.find((a) => a.id === id)?.name ?? ''
 
     const expenseRows: TransactionRow[] = expenses.map((expense) => ({
       id: `expense-${expense.id}`,
@@ -59,6 +63,7 @@ export function TransactionListPanel({
       categoryName: findExpenseCategoryName(expense.categoryId),
       amount: expense.amount,
       includeInHouseholdTotal: expense.includeInHouseholdTotal,
+      accountName: findAccountName(expense.accountId),
       memo: expense.memo,
     }))
     const incomeRows: TransactionRow[] = incomes.map((income) => ({
@@ -69,13 +74,14 @@ export function TransactionListPanel({
       categoryName: findIncomeCategoryName(income.categoryId),
       amount: income.amount,
       includeInHouseholdTotal: null,
+      accountName: '',
       memo: income.memo,
     }))
 
     if (typeFilter === 'expense') return expenseRows
     if (typeFilter === 'income') return incomeRows
     return [...expenseRows, ...incomeRows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [expenses, incomes, expenseCategories, incomeCategories, typeFilter])
+  }, [expenses, incomes, expenseCategories, incomeCategories, accounts, typeFilter])
 
   return (
     <div className="panel" data-testid="transaction-panel">
@@ -117,13 +123,14 @@ export function TransactionListPanel({
             <th>カテゴリー</th>
             <th>金額</th>
             <th>世帯合算対象</th>
+            <th>口座</th>
             <th>メモ</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={7}>{emptyMessage(typeFilter)}</td>
+              <td colSpan={8}>{emptyMessage(typeFilter)}</td>
             </tr>
           ) : (
             rows.map((row) => (
@@ -134,6 +141,7 @@ export function TransactionListPanel({
                 <td>{row.categoryName}</td>
                 <td>{row.amount}</td>
                 <td>{row.includeInHouseholdTotal ? '○' : ''}</td>
+                <td>{row.accountName}</td>
                 <td>{row.memo}</td>
               </tr>
             ))

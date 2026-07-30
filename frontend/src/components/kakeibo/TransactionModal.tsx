@@ -1,13 +1,14 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
-import type { IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
+import type { Account, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type Kind = 'expense' | 'income'
 
 interface Props {
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
+  accounts: Account[]
   initialKind: Kind
   onClose: () => void
   onSaved: (kind: Kind) => Promise<void>
@@ -25,7 +26,14 @@ function firstCategoryId(categories: KakeiboCategory[] | IncomeCategory[]) {
   return categories[0] ? String(categories[0].id) : ''
 }
 
-export function TransactionModal({ expenseCategories, incomeCategories, initialKind, onClose, onSaved }: Props) {
+export function TransactionModal({
+  expenseCategories,
+  incomeCategories,
+  accounts,
+  initialKind,
+  onClose,
+  onSaved,
+}: Props) {
   const [kind, setKind] = useState<Kind>(initialKind)
   const [date, setDate] = useState(today())
   const [amount, setAmount] = useState('')
@@ -35,6 +43,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
     firstCategoryId(initialKind === 'expense' ? expenseCategories : incomeCategories),
   )
   const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(false)
+  const [accountSelection, setAccountSelection] = useState('')
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -44,6 +53,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
   const handleKindChange = (nextKind: Kind) => {
     setKind(nextKind)
     setCategoryId(firstCategoryId(nextKind === 'expense' ? expenseCategories : incomeCategories))
+    setAccountSelection('')
     setError('')
   }
 
@@ -69,6 +79,7 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
     setSubmitting(true)
     try {
       if (kind === 'expense') {
+        const [selectionType, selectionId] = accountSelection === '' ? [null, null] : accountSelection.split(':')
         await apiClient.post('/expenses', {
           expenseDate: date,
           amount: amountValue,
@@ -76,6 +87,8 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
           categoryId: Number(categoryId),
           memo: trimmedMemo === '' ? null : trimmedMemo,
           includeInHouseholdTotal,
+          accountId: selectionType === 'account' ? Number(selectionId) : null,
+          cardId: selectionType === 'card' ? Number(selectionId) : null,
         })
       } else {
         await apiClient.post('/incomes', {
@@ -169,15 +182,35 @@ export function TransactionModal({ expenseCategories, incomeCategories, initialK
             ))}
           </select>
           {kind === 'expense' && (
-            <label htmlFor="tx-household-total">
-              <input
-                id="tx-household-total"
-                type="checkbox"
-                checked={includeInHouseholdTotal}
-                onChange={(e) => setIncludeInHouseholdTotal(e.target.checked)}
-              />{' '}
-              世帯合計に含める
-            </label>
+            <>
+              <label htmlFor="tx-account">口座/カード（任意）</label>
+              <select
+                id="tx-account"
+                value={accountSelection}
+                onChange={(e) => setAccountSelection(e.target.value)}
+              >
+                <option value="">選択しない</option>
+                {accounts.map((account) => (
+                  <Fragment key={account.id}>
+                    <option value={`account:${account.id}`}>{account.name}</option>
+                    {account.cards.map((card) => (
+                      <option key={card.id} value={`card:${card.id}`}>
+                        　└ {card.name}
+                      </option>
+                    ))}
+                  </Fragment>
+                ))}
+              </select>
+              <label htmlFor="tx-household-total">
+                <input
+                  id="tx-household-total"
+                  type="checkbox"
+                  checked={includeInHouseholdTotal}
+                  onChange={(e) => setIncludeInHouseholdTotal(e.target.checked)}
+                />{' '}
+                世帯合計に含める
+              </label>
+            </>
           )}
           <label htmlFor="tx-memo">メモ</label>
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />

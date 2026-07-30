@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
-import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
+import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
 import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
 import { TransactionModal } from '../components/kakeibo/TransactionModal'
@@ -20,6 +20,8 @@ export function KakeiboPage() {
   const [incomes, setIncomes] = useState<Income[]>([])
   const [incomeCategoryFilter, setIncomeCategoryFilter] = useState('')
   const latestIncomeRequestId = useRef(0)
+
+  const [accounts, setAccounts] = useState<Account[]>([])
 
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -135,6 +137,18 @@ export function KakeiboPage() {
       .finally(() => {
         if (!cancelled) setIncomeLoading(false)
       })
+
+    apiClient
+      .get<Account[]>('/accounts')
+      .then((response) => {
+        if (!cancelled) setAccounts(response.data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          showToast(getApiErrorMessage(err, '口座の取得に失敗しました。時間をおいて再度お試しください'))
+        }
+      })
+
     return () => {
       cancelled = true
     }
@@ -221,6 +235,7 @@ export function KakeiboPage() {
         incomes={incomes}
         expenseCategories={categories}
         incomeCategories={incomeCategories}
+        accounts={accounts}
         typeFilter={typeFilter}
         onTypeFilterChange={handleTypeFilterChange}
         activeCategoryFilter={activeCategoryFilter}
@@ -233,6 +248,7 @@ export function KakeiboPage() {
         <TransactionModal
           expenseCategories={categories}
           incomeCategories={incomeCategories}
+          accounts={accounts}
           initialKind={initialKind}
           onClose={() => setModalOpen(false)}
           onSaved={handleSaved}
