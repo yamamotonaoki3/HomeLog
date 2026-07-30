@@ -42,8 +42,10 @@ export function AccountModal({ onClose, onSaved }: Props) {
 
     try {
       await onSaved()
-    } catch (err) {
-      setError(getApiErrorMessage(err, '口座一覧の更新に失敗しました'))
+    } catch {
+      // The caller is responsible for notifying the user about refresh failures.
+    } finally {
+      onClose()
     }
   }
 
@@ -78,7 +80,7 @@ export function AccountModal({ onClose, onSaved }: Props) {
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               登録
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
               キャンセル
             </button>
           </div>

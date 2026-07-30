@@ -11,6 +11,7 @@ function setupApi(options: {
   inventory?: InventoryItem[]
   accounts?: { id: number; name: string; type: string; balance: number; cards: [] }[]
   summaryError?: boolean
+  accountsError?: boolean
 } = {}) {
   server.use(
     http.get('/api/dashboard/summary', () => {
@@ -20,7 +21,12 @@ function setupApi(options: {
       return HttpResponse.json(options.summary ?? { shoppingListCount: 0, lowStockCount: 0 })
     }),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
-    http.get('/api/accounts', () => HttpResponse.json(options.accounts ?? [])),
+    http.get('/api/accounts', () => {
+      if (options.accountsError) {
+        return HttpResponse.json({ code: 'INTERNAL_ERROR', message: '口座情報の取得に失敗しました' }, { status: 500 })
+      }
+      return HttpResponse.json(options.accounts ?? [])
+    }),
   )
 }
 
@@ -71,6 +77,31 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('サマリーの取得に失敗しました')).toBeInTheDocument())
+  })
+
+  it('複数のAPIが同時に失敗した場合はすべてのエラーをトーストに表示する', async () => {
+    setupApi({ summaryError: true, accountsError: true })
+    renderDashboardPage()
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('サマリーの取得に失敗しました、口座情報の取得に失敗しました'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('口座情報だけ失敗してもサマリーと在庫情報を表示する', async () => {
+    setupApi({
+      summary: { shoppingListCount: 3, lowStockCount: 2 },
+      inventory,
+      accountsError: true,
+    })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText('口座情報の取得に失敗しました')).toBeInTheDocument())
+    expect(screen.getByText(/買い物リスト: 3件/)).toBeInTheDocument()
+    expect(screen.getByText(/在庫不足: 2件/)).toBeInTheDocument()
+    expect(screen.getByText(/よく使う品目: 卵・牛乳・醤油/)).toBeInTheDocument()
   })
 
   it('「個人の財政」カードに自分の口座残高合計を表示する', async () => {

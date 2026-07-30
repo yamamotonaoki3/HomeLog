@@ -18,26 +18,59 @@ export function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([
+    Promise.allSettled([
       apiClient.get<DashboardSummary>('/dashboard/summary'),
       apiClient.get<InventoryItem[]>('/inventory-items'),
       apiClient.get<Account[]>('/accounts'),
     ])
-      .then(([summaryRes, inventoryRes, accountsRes]) => {
+      .then(([summaryResult, inventoryResult, accountsResult]) => {
         if (cancelled) return
-        setSummary(summaryRes.data)
-        setCommonItems(
-          inventoryRes.data
+
+        const errorMessages: string[] = []
+
+        if (summaryResult.status === 'fulfilled') {
+          setSummary(summaryResult.value.data)
+        } else {
+          errorMessages.push(
+            getApiErrorMessage(
+              summaryResult.reason,
+              'ダッシュボードの取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
+        }
+
+        if (inventoryResult.status === 'fulfilled') {
+          setCommonItems(
+            inventoryResult.value.data
             .slice(0, COMMON_ITEMS_COUNT)
             .map((item) => item.name)
             .join('・'),
-        )
-        setAccountBalanceTotal(accountsRes.data.reduce((total, account) => total + account.balance, 0))
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
+          )
+        } else {
+          errorMessages.push(
+            getApiErrorMessage(
+              inventoryResult.reason,
+              '在庫情報の取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
+        }
+
+        if (accountsResult.status === 'fulfilled') {
+          setAccountBalanceTotal(
+            accountsResult.value.data.reduce((total, account) => total + account.balance, 0),
+          )
+        } else {
+          errorMessages.push(
+            getApiErrorMessage(
+              accountsResult.reason,
+              '口座情報の取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
+        }
+
+        if (errorMessages.length > 0) {
           setToast((prev) => ({
-            message: getApiErrorMessage(err, 'ダッシュボードの取得に失敗しました。時間をおいて再度お試しください'),
+            message: errorMessages.join('、'),
             showKey: prev.showKey + 1,
           }))
         }

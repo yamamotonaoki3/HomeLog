@@ -94,6 +94,32 @@ describe('AccountsPage', () => {
     expect(postCall?.body).toMatchObject({ name: 'PayPay', type: 'e_money', balance: 3000 })
   })
 
+  it('口座登録後の一覧再取得に失敗してもモーダルが閉じる', async () => {
+    const { calls } = setupApi()
+    let getCount = 0
+    server.use(
+      http.get('/api/accounts', () => {
+        getCount += 1
+        return getCount === 1
+          ? HttpResponse.json([])
+          : HttpResponse.json({ message: '口座一覧の取得に失敗しました' }, { status: 500 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderAccountsPage()
+    await waitFor(() => expect(screen.getByText('口座はありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '口座を登録' }))
+    await user.type(screen.getByLabelText('口座名'), 'PayPay')
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: '口座を登録' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('口座一覧の取得に失敗しました')).toBeInTheDocument()
+    expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/accounts')).toHaveLength(1)
+  })
+
   it('口座名が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
     const { calls } = setupApi()
     const user = userEvent.setup()
@@ -131,6 +157,34 @@ describe('AccountsPage', () => {
     await waitFor(() => expect(screen.getByText('新カード')).toBeInTheDocument())
     const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/cards')
     expect(postCall?.body).toMatchObject({ accountId: 5, name: '新カード' })
+  })
+
+  it('カード登録後の一覧再取得に失敗してもモーダルが閉じる', async () => {
+    const accounts = [{ id: 5, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [] }]
+    const { calls } = setupApi({ accounts })
+    let getCount = 0
+    server.use(
+      http.get('/api/accounts', () => {
+        getCount += 1
+        return getCount === 1
+          ? HttpResponse.json(accounts)
+          : HttpResponse.json({ message: '口座一覧の取得に失敗しました' }, { status: 500 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderAccountsPage()
+    await waitFor(() => expect(screen.getByText(/〇〇銀行/)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'カードを登録' }))
+    const modal = screen.getByRole('heading', { name: 'カードを登録' }).closest('.modal') as HTMLElement
+    await user.type(within(modal).getByLabelText('カード名'), '新カード')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'カードを登録' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('口座一覧の取得に失敗しました')).toBeInTheDocument()
+    expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/cards')).toHaveLength(1)
   })
 
   it('キャンセルボタンで口座登録モーダルを閉じる', async () => {
