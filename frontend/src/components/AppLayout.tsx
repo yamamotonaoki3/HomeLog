@@ -28,6 +28,9 @@ export function AppLayout() {
           <NavLink to="/kakeibo" className={navLinkClass}>
             家計簿
           </NavLink>
+          <NavLink to="/accounts" className={navLinkClass}>
+            口座・カード管理
+          </NavLink>
           <NavLink to="/household/settings" className={navLinkClass}>
             世帯設定
           </NavLink>

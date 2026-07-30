@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { DashboardSummary } from '../api/dashboardTypes'
+import type { Account } from '../api/kakeiboTypes'
 import type { InventoryItem } from '../api/zaikoTypes'
 import { Toast } from '../components/Toast'
 
@@ -11,6 +12,7 @@ const COMMON_ITEMS_COUNT = 3
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [commonItems, setCommonItems] = useState('')
+  const [accountBalanceTotal, setAccountBalanceTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
@@ -19,8 +21,9 @@ export function DashboardPage() {
     Promise.all([
       apiClient.get<DashboardSummary>('/dashboard/summary'),
       apiClient.get<InventoryItem[]>('/inventory-items'),
+      apiClient.get<Account[]>('/accounts'),
     ])
-      .then(([summaryRes, inventoryRes]) => {
+      .then(([summaryRes, inventoryRes, accountsRes]) => {
         if (cancelled) return
         setSummary(summaryRes.data)
         setCommonItems(
@@ -29,6 +32,7 @@ export function DashboardPage() {
             .map((item) => item.name)
             .join('・'),
         )
+        setAccountBalanceTotal(accountsRes.data.reduce((total, account) => total + account.balance, 0))
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -64,6 +68,12 @@ export function DashboardPage() {
             </>
           )}
           <p>よく使う品目: {commonItems || 'なし'}</p>
+        </div>
+        <div className="card">
+          <h2>個人の財政</h2>
+          <p>
+            口座残高合計: {accountBalanceTotal}円　<Link to="/accounts">口座・カード管理を見る</Link>
+          </p>
         </div>
       </div>
       <Toast message={toast.message} showKey={toast.showKey} />

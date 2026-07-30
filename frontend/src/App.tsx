@@ -3,6 +3,7 @@ import { AppLayout } from './components/AppLayout'
 import { AuthProvider } from './context/AuthContext'
 import { RequireAuth } from './routes/RequireAuth'
 import { RequireHousehold } from './routes/RequireHousehold'
+import { AccountsPage } from './pages/AccountsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage'
@@ -29,6 +30,7 @@ function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/zaiko" element={<ZaikoPage />} />
                 <Route path="/kakeibo" element={<KakeiboPage />} />
+                <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
               </Route>
             </Route>

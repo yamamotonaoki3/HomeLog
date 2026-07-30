@@ -34,6 +34,7 @@ describe('AppLayout', () => {
 
     expect(screen.getByRole('link', { name: 'トップ' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: '在庫管理' })).toHaveAttribute('href', '/zaiko')
+    expect(screen.getByRole('link', { name: '口座・カード管理' })).toHaveAttribute('href', '/accounts')
     expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument()
     expect(screen.getByText('ダッシュボード本体')).toBeInTheDocument()
   })

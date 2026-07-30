@@ -9,6 +9,7 @@ import type { InventoryItem } from '../../api/zaikoTypes'
 function setupApi(options: {
   summary?: { shoppingListCount: number; lowStockCount: number }
   inventory?: InventoryItem[]
+  accounts?: { id: number; name: string; type: string; balance: number; cards: [] }[]
   summaryError?: boolean
 } = {}) {
   server.use(
@@ -19,6 +20,7 @@ function setupApi(options: {
       return HttpResponse.json(options.summary ?? { shoppingListCount: 0, lowStockCount: 0 })
     }),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
+    http.get('/api/accounts', () => HttpResponse.json(options.accounts ?? [])),
   )
 }
 
@@ -69,5 +71,19 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('サマリーの取得に失敗しました')).toBeInTheDocument())
+  })
+
+  it('「個人の財政」カードに自分の口座残高合計を表示する', async () => {
+    setupApi({
+      accounts: [
+        { id: 1, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [] },
+        { id: 2, name: 'PayPay', type: 'e_money', balance: 3000, cards: [] },
+      ],
+    })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText('個人の財政')).toBeInTheDocument())
+    expect(screen.getByText(/口座残高合計: 13000円/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '口座・カード管理を見る' })).toHaveAttribute('href', '/accounts')
   })
 })
