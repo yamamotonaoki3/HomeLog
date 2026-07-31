@@ -136,7 +136,7 @@ class AccountServiceTest {
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(0);
         when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
-        when(cardMapper.countChargeCardsWithBalanceByAccountId(5L)).thenReturn(0);
+        when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(0);
 
         service().deleteAccount(1L, 5L);
 
@@ -145,7 +145,7 @@ class AccountServiceTest {
         inOrder.verify(accountMapper).lockById(5L);
         inOrder.verify(expenseMapper).countByAccountId(5L);
         inOrder.verify(cardChargeMapper).countByFromAccountId(5L);
-        inOrder.verify(cardMapper).countChargeCardsWithBalanceByAccountId(5L);
+        inOrder.verify(cardMapper).countUndeletableCardsByAccountId(5L);
         inOrder.verify(accountMapper).delete(5L);
     }
 
@@ -171,12 +171,12 @@ class AccountServiceTest {
     }
 
     @Test
-    void deleteAccount_残高付きchargeカードを子に持つ場合は削除不可() {
+    void deleteAccount_削除できない子カード_支出_チャージ履歴_残高のいずれかを持つ場合は削除不可() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(0);
         when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
-        when(cardMapper.countChargeCardsWithBalanceByAccountId(5L)).thenReturn(1);
+        when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(1);
 
         assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
         verify(accountMapper, never()).delete(anyLong());

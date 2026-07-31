@@ -65,13 +65,13 @@ class CardControllerTest {
     }
 
     @Test
-    void createCard_正常系は201() throws Exception {
+    void createCard_cardType省略時も201() throws Exception {
         when(cardService.createCard(anyLong(), any()))
                 .thenReturn(new CardResponse(1L, "〇〇カード", 5L, "credit", BigDecimal.ZERO));
 
         mockMvc.perform(post("/api/cards")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new CreateCardRequest(5L, "〇〇カード", "credit"))))
+                        .content("{\"accountId\":5,\"name\":\"〇〇カード\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("〇〇カード"));
     }

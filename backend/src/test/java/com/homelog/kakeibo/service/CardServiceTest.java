@@ -97,6 +97,17 @@ class CardServiceTest {
     }
 
     @Test
+    void createCard_cardType省略時はcreditで登録する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+
+        CardResponse response = service().createCard(1L, new CreateCardRequest(5L, "〇〇カード", null));
+
+        assertThat(response.cardType()).isEqualTo("credit");
+        verify(cardMapper).insert(any(CardEntity.class));
+    }
+
+    @Test
     void createCard_他人の口座指定は400() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 999L));

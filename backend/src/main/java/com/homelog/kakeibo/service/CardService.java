@@ -49,7 +49,7 @@ public class CardService {
         CardEntity card = new CardEntity();
         card.setAccountId(request.accountId());
         card.setName(request.name());
-        card.setCardType(request.cardType());
+        card.setCardType(request.cardType() == null ? "credit" : request.cardType());
         card.setCreatedAt(LocalDateTime.now());
         cardMapper.insert(card);
         card.setBalance(BigDecimal.ZERO);

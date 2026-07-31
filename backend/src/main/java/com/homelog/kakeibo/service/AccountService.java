@@ -82,7 +82,7 @@ public class AccountService {
         if (cardChargeMapper.countByFromAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
-        if (cardMapper.countChargeCardsWithBalanceByAccountId(accountId) > 0) {
+        if (cardMapper.countUndeletableCardsByAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
         accountMapper.delete(accountId);

@@ -51,11 +51,13 @@
         WHERE id = #{id}
     </update>
 
-    <select id="countChargeCardsWithBalanceByAccountId" parameterType="long" resultType="int">
-        SELECT COUNT(*) FROM cards
-        WHERE account_id = #{accountId}
-          AND card_type = 'charge'
-          AND balance != 0
+    <select id="countUndeletableCardsByAccountId" parameterType="long" resultType="int">
+        SELECT COUNT(*)
+        FROM cards c
+        WHERE c.account_id = #{accountId}
+          AND (c.balance != 0
+               OR EXISTS (SELECT 1 FROM expenses e WHERE e.card_id = c.id)
+               OR EXISTS (SELECT 1 FROM card_charges cc WHERE cc.card_id = c.id))
     </select>
 
     <delete id="delete" parameterType="long">

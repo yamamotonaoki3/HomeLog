@@ -8,5 +8,5 @@ import jakarta.validation.constraints.Size;
 public record CreateCardRequest(
         @NotNull Long accountId,
         @NotBlank @Size(max = 50) String name,
-        @NotBlank @Pattern(regexp = "credit|charge") String cardType) {
+        @Pattern(regexp = "credit|charge") String cardType) {
 }

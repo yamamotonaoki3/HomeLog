@@ -21,7 +21,7 @@ public interface CardMapper {
 
     void updateBalance(@Param("id") long id, @Param("balance") BigDecimal balance);
 
-    int countChargeCardsWithBalanceByAccountId(long accountId);
+    int countUndeletableCardsByAccountId(long accountId);
 
     void delete(long id);
 }
