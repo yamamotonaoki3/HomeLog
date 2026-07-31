@@ -54,6 +54,8 @@ export function TransactionListPanel({
     const findExpenseCategoryName = (id: number) => expenseCategories.find((c) => c.id === id)?.name ?? ''
     const findIncomeCategoryName = (id: number) => incomeCategories.find((c) => c.id === id)?.name ?? ''
     const findAccountName = (id: number | null) => accounts.find((a) => a.id === id)?.name ?? ''
+    const findCardName = (id: number | null) =>
+      accounts.flatMap((a) => a.cards).find((c) => c.id === id)?.name ?? ''
 
     const expenseRows: TransactionRow[] = expenses.map((expense) => ({
       id: `expense-${expense.id}`,
@@ -63,7 +65,7 @@ export function TransactionListPanel({
       categoryName: findExpenseCategoryName(expense.categoryId),
       amount: expense.amount,
       includeInHouseholdTotal: expense.includeInHouseholdTotal,
-      accountName: findAccountName(expense.accountId),
+      accountName: expense.accountId !== null ? findAccountName(expense.accountId) : findCardName(expense.cardId),
       memo: expense.memo,
     }))
     const incomeRows: TransactionRow[] = incomes.map((income) => ({

@@ -54,6 +54,7 @@ function setupApi(initial: Partial<MockState> = {}) {
         memo: (body.memo as string | null) ?? null,
         includeInHouseholdTotal: Boolean(body.includeInHouseholdTotal),
         accountId: (body.accountId as number | null) ?? (body.cardId ? 5 : null),
+        cardId: (body.cardId as number | null) ?? null,
       }
       state.expenses.push(expense)
       return HttpResponse.json(expense, { status: 201 })
@@ -104,6 +105,7 @@ const lunchExpense: Expense = {
   memo: null,
   includeInHouseholdTotal: false,
   accountId: null,
+  cardId: null,
 }
 const suppliesExpense: Expense = {
   id: 2,
@@ -114,6 +116,7 @@ const suppliesExpense: Expense = {
   memo: null,
   includeInHouseholdTotal: true,
   accountId: null,
+  cardId: null,
 }
 
 const salaryIncome: Income = {
@@ -445,7 +448,7 @@ describe('KakeiboPage', () => {
   it('支出登録モーダルに口座/カードの選択肢が表示され、口座を選ぶとaccountIdが送信される', async () => {
     const { calls } = setupApi({
       accounts: [
-        { id: 5, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [{ id: 50, name: '〇〇カード', accountId: 5 }] },
+        { id: 5, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [{ id: 50, name: '〇〇カード', accountId: 5, cardType: 'credit', balance: 0 }] },
       ],
     })
     renderKakeiboPage()
@@ -467,7 +470,7 @@ describe('KakeiboPage', () => {
   it('支出登録モーダルでカードを選ぶとcardIdが送信される', async () => {
     const { calls } = setupApi({
       accounts: [
-        { id: 5, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [{ id: 50, name: '〇〇カード', accountId: 5 }] },
+        { id: 5, name: '〇〇銀行', type: 'bank', balance: 10000, cards: [{ id: 50, name: '〇〇カード', accountId: 5, cardType: 'credit', balance: 0 }] },
       ],
     })
     renderKakeiboPage()
@@ -496,5 +499,25 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
     const table = screen.getByRole('table')
     expect(within(table).getByText('〇〇銀行')).toBeInTheDocument()
+  })
+
+  it('チャージ型カードでの支出はaccountIdがnullのため一覧の口座列にカード名が表示される', async () => {
+    setupApi({
+      expenses: [{ ...lunchExpense, accountId: null, cardId: 50 }],
+      accounts: [
+        {
+          id: 5,
+          name: '〇〇銀行',
+          type: 'bank',
+          balance: 10000,
+          cards: [{ id: 50, name: 'Suica', accountId: 5, cardType: 'charge', balance: 3000 }],
+        },
+      ],
+    })
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('Suica')).toBeInTheDocument()
   })
 })

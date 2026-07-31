@@ -57,7 +57,12 @@ export function DashboardPage() {
 
         if (accountsResult.status === 'fulfilled') {
           setAccountBalanceTotal(
-            accountsResult.value.data.reduce((total, account) => total + account.balance, 0),
+            accountsResult.value.data.reduce((total, account) => {
+              const chargeCardBalance = account.cards
+                .filter((card) => card.cardType === 'charge')
+                .reduce((cardTotal, card) => cardTotal + card.balance, 0)
+              return total + account.balance + chargeCardBalance
+            }, 0),
           )
         } else {
           errorMessages.push(

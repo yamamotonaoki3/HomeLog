@@ -9,7 +9,13 @@ import type { InventoryItem } from '../../api/zaikoTypes'
 function setupApi(options: {
   summary?: { shoppingListCount: number; lowStockCount: number }
   inventory?: InventoryItem[]
-  accounts?: { id: number; name: string; type: string; balance: number; cards: [] }[]
+  accounts?: {
+    id: number
+    name: string
+    type: string
+    balance: number
+    cards: { id: number; name: string; accountId: number; cardType: string; balance: number }[]
+  }[]
   summaryError?: boolean
   accountsError?: boolean
 } = {}) {
@@ -116,5 +122,25 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('個人の財政')).toBeInTheDocument())
     expect(screen.getByText(/口座残高合計: 13000円/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '口座・カード管理を見る' })).toHaveAttribute('href', '/accounts')
+  })
+
+  it('チャージ型カードの残高も口座残高合計に含める', async () => {
+    setupApi({
+      accounts: [
+        {
+          id: 1,
+          name: '〇〇銀行',
+          type: 'bank',
+          balance: 7000,
+          cards: [
+            { id: 10, name: 'Suica', accountId: 1, cardType: 'charge', balance: 3000 },
+            { id: 11, name: 'クレカ', accountId: 1, cardType: 'credit', balance: 0 },
+          ],
+        },
+      ],
+    })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText(/口座残高合計: 10000円/)).toBeInTheDocument())
   })
 })

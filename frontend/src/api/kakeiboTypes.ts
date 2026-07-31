@@ -13,6 +13,7 @@ export interface Expense {
   memo: string | null
   includeInHouseholdTotal: boolean
   accountId: number | null
+  cardId: number | null
 }
 
 export interface IncomeCategory {
@@ -34,6 +35,8 @@ export interface Card {
   id: number
   name: string
   accountId: number
+  cardType: 'credit' | 'charge'
+  balance: number
 }
 
 export interface Account {

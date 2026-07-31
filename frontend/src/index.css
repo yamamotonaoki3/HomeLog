@@ -59,6 +59,7 @@ a:hover { text-decoration: underline; }
 .btn-block { width: 100%; margin-top: 16px; }
 .btn-small { padding: 4px 10px; font-size: 13px; background: #e5e7eb; border-radius: 4px; }
 .btn-tiny { padding: 2px 8px; font-size: 13px; background: #e5e7eb; border-radius: 4px; cursor: pointer; }
+.link-button { border: none; background: none; padding: 0; font-size: inherit; color: #2563eb; text-decoration: underline; cursor: pointer; }
 
 /* ページ・パネル */
 .hidden { display: none !important; }
