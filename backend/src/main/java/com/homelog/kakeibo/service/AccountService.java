@@ -10,6 +10,7 @@ import com.homelog.kakeibo.dto.response.CardResponse;
 import com.homelog.kakeibo.entity.AccountEntity;
 import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.mapper.AccountMapper;
+import com.homelog.kakeibo.mapper.CardChargeMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import java.math.BigDecimal;
@@ -28,13 +29,15 @@ public class AccountService {
 
     private final AccountMapper accountMapper;
     private final CardMapper cardMapper;
+    private final CardChargeMapper cardChargeMapper;
     private final ExpenseMapper expenseMapper;
     private final HouseholdMemberMapper householdMemberMapper;
 
-    public AccountService(AccountMapper accountMapper, CardMapper cardMapper, ExpenseMapper expenseMapper,
-            HouseholdMemberMapper householdMemberMapper) {
+    public AccountService(AccountMapper accountMapper, CardMapper cardMapper, CardChargeMapper cardChargeMapper,
+            ExpenseMapper expenseMapper, HouseholdMemberMapper householdMemberMapper) {
         this.accountMapper = accountMapper;
         this.cardMapper = cardMapper;
+        this.cardChargeMapper = cardChargeMapper;
         this.expenseMapper = expenseMapper;
         this.householdMemberMapper = householdMemberMapper;
     }
@@ -76,6 +79,12 @@ public class AccountService {
         if (expenseMapper.countByAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
+        if (cardChargeMapper.countByFromAccountId(accountId) > 0) {
+            throw new BadRequestException(IN_USE_MESSAGE);
+        }
+        if (cardMapper.countChargeCardsWithBalanceByAccountId(accountId) > 0) {
+            throw new BadRequestException(IN_USE_MESSAGE);
+        }
         accountMapper.delete(accountId);
     }
 
@@ -88,6 +97,14 @@ public class AccountService {
     }
 
     public Long resolveAccountIdFromCard(Long userId, Long householdId, Long cardId) {
+        CardEntity card = findOwnedCardForExpense(userId, householdId, cardId);
+        if (!"credit".equals(card.getCardType())) {
+            throw new BadRequestException(INVALID_CARD_MESSAGE);
+        }
+        return card.getAccountId();
+    }
+
+    public CardEntity findOwnedCardForExpense(Long userId, Long householdId, Long cardId) {
         CardEntity card = cardMapper.findById(cardId);
         if (card == null) {
             throw new BadRequestException(INVALID_CARD_MESSAGE);
@@ -97,7 +114,7 @@ public class AccountService {
                 || !account.getHouseholdId().equals(householdId)) {
             throw new BadRequestException(INVALID_CARD_MESSAGE);
         }
-        return account.getId();
+        return card;
     }
 
     public AccountEntity lockAccountForUpdate(Long accountId) {
@@ -131,7 +148,8 @@ public class AccountService {
 
     private AccountResponse toResponse(AccountEntity account) {
         List<CardResponse> cards = cardMapper.findByAccountId(account.getId()).stream()
-                .map(card -> new CardResponse(card.getId(), card.getName(), card.getAccountId()))
+                .map(card -> new CardResponse(card.getId(), card.getName(), card.getAccountId(), card.getCardType(),
+                        card.getBalance()))
                 .toList();
         return new AccountResponse(account.getId(), account.getName(), account.getType(), account.getBalance(),
                 cards);

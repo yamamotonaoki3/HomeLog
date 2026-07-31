@@ -19,4 +19,6 @@ public interface ExpenseMapper {
     int countByCategoryId(long categoryId);
 
     int countByAccountId(long accountId);
+
+    int countByCardId(long cardId);
 }

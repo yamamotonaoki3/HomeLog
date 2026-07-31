@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.homelog.household.entity.HouseholdEntity;
 import com.homelog.household.mapper.HouseholdMapper;
+import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import java.math.BigDecimal;
@@ -30,6 +32,12 @@ class ExpenseMapperTest {
 
     @Autowired
     private KakeiboCategoryMapper kakeiboCategoryMapper;
+
+    @Autowired
+    private AccountMapper accountMapper;
+
+    @Autowired
+    private CardMapper cardMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -107,6 +115,63 @@ class ExpenseMapperTest {
         int count = expenseMapper.countByCategoryId(categoryId);
 
         assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void insertAndFindById_card_idを保存できる() {
+        Long householdId = createHousehold("exp-house5", "EXPCODE0000007");
+        Long userId = createUser("payer5@example.com");
+        Long categoryId = insertCategory(householdId, "交通費");
+        Long cardId = insertChargeCard(householdId, userId);
+
+        ExpenseEntity expense = newExpense(householdId, userId, categoryId, "500", "電車代");
+        expense.setCardId(cardId);
+        expenseMapper.insert(expense);
+
+        ExpenseEntity found = expenseMapper.findById(expense.getId());
+        assertThat(found.getCardId()).isEqualTo(cardId);
+        assertThat(found.getAccountId()).isNull();
+    }
+
+    @Test
+    void countByCardId_使用件数を返す() {
+        Long householdId = createHousehold("exp-house6", "EXPCODE0000008");
+        Long userId = createUser("payer6@example.com");
+        Long categoryId = insertCategory(householdId, "交通費");
+        Long cardId = insertChargeCard(householdId, userId);
+        ExpenseEntity expense = newExpense(householdId, userId, categoryId, "500", "電車代");
+        expense.setCardId(cardId);
+        expenseMapper.insert(expense);
+
+        assertThat(expenseMapper.countByCardId(cardId)).isEqualTo(1);
+    }
+
+    @Test
+    void countByCardId_使用されていなければ0() {
+        Long householdId = createHousehold("exp-house7", "EXPCODE0000009");
+        Long userId = createUser("payer7@example.com");
+        Long cardId = insertChargeCard(householdId, userId);
+
+        assertThat(expenseMapper.countByCardId(cardId)).isEqualTo(0);
+    }
+
+    private Long insertChargeCard(Long householdId, Long userId) {
+        AccountEntity account = new AccountEntity();
+        account.setHouseholdId(householdId);
+        account.setOwnerUserId(userId);
+        account.setName("口座");
+        account.setType("bank");
+        account.setBalance(new BigDecimal("10000"));
+        account.setCreatedAt(LocalDateTime.now());
+        accountMapper.insert(account);
+
+        CardEntity card = new CardEntity();
+        card.setAccountId(account.getId());
+        card.setName("チャージカード");
+        card.setCardType("charge");
+        card.setCreatedAt(LocalDateTime.now());
+        cardMapper.insert(card);
+        return card.getId();
     }
 
     private void insertExpense(Long householdId, Long userId, Long categoryId, String amount, String purpose) {

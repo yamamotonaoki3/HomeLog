@@ -67,7 +67,7 @@ class ExpenseControllerTest {
     void listExpenses_正常系は200() throws Exception {
         when(expenseService.listExpenses(anyLong(), any()))
                 .thenReturn(List.of(new ExpenseResponse(1L, LocalDate.of(2026, 1, 1),
-                        new BigDecimal("1000"), "ランチ", 5L, null, false, null)));
+                        new BigDecimal("1000"), "ランチ", 5L, null, false, null, null)));
 
         mockMvc.perform(get("/api/expenses"))
                 .andExpect(status().isOk())
@@ -78,7 +78,7 @@ class ExpenseControllerTest {
     void createExpense_正常系は201() throws Exception {
         when(expenseService.createExpense(anyLong(), any()))
                 .thenReturn(new ExpenseResponse(1L, LocalDate.of(2026, 1, 1),
-                        new BigDecimal("1000"), "ランチ", 5L, null, false, null));
+                        new BigDecimal("1000"), "ランチ", 5L, null, false, null, null));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
                 LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, null);

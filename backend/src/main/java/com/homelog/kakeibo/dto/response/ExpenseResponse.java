@@ -11,5 +11,6 @@ public record ExpenseResponse(
         Long categoryId,
         String memo,
         boolean includeInHouseholdTotal,
-        Long accountId) {
+        Long accountId,
+        Long cardId) {
 }

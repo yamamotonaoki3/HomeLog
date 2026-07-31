@@ -116,7 +116,7 @@ class AccountFlowIT extends IntegrationTestBase {
                 Map.of("name", "カード紐付き口座", "type", "bank", "balance", 10000), token);
         long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
         ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
-                Map.of("accountId", accountId, "name", "生活費カード"), token);
+                Map.of("accountId", accountId, "name", "生活費カード", "cardType", "credit"), token);
         long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
 
         ResponseEntity<Map<String, Object>> expenseResponse = postJson("/api/expenses",
@@ -140,7 +140,7 @@ class AccountFlowIT extends IntegrationTestBase {
                 Map.of("name", "口座", "type", "bank", "balance", 10000), token);
         long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
         ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
-                Map.of("accountId", accountId, "name", "カード"), token);
+                Map.of("accountId", accountId, "name", "カード", "cardType", "credit"), token);
         long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
 
         ResponseEntity<Map<String, Object>> response = postJson("/api/expenses",
@@ -192,6 +192,138 @@ class AccountFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("チャージ型カードにチャージすると、口座残高が減算されカード残高が加算される")
+    void chargeCardMovesBalanceFromAccountToCard() {
+        String token = registerAndLogin(uniqueEmail("charge-basic"));
+        createHousehold(token, "チャージテスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "チャージ元口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> chargeResponse = postJson("/api/cards/" + cardId + "/charges",
+                Map.of("fromAccountId", accountId, "amount", 3000), token);
+
+        assertThat(chargeResponse.getStatusCode().value()).isEqualTo(200);
+        assertThat(((Number) chargeResponse.getBody().get("cardBalanceAfter")).intValue()).isEqualTo(3000);
+        assertThat(((Number) chargeResponse.getBody().get("accountBalanceAfter")).intValue()).isEqualTo(7000);
+
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(7000);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cards = (List<Map<String, Object>>) accounts.get(0).get("cards");
+        assertThat(((Number) cards.get(0).get("balance")).intValue()).isEqualTo(3000);
+    }
+
+    @Test
+    @DisplayName("クレジット型カードへのチャージは400を返す")
+    void chargeCreditCardReturns400() {
+        String token = registerAndLogin(uniqueEmail("charge-credit"));
+        createHousehold(token, "チャージ不可テスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "クレジットカード", "cardType", "credit"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> chargeResponse = postJson("/api/cards/" + cardId + "/charges",
+                Map.of("fromAccountId", accountId, "amount", 3000), token);
+
+        assertThat(chargeResponse.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("チャージ型カードで支出を登録すると、カード自身の残高のみ減算され口座残高は変化しない")
+    void createExpenseWithChargeCardDecrementsCardBalanceOnly() {
+        String token = registerAndLogin(uniqueEmail("charge-expense"));
+        createHousehold(token, "チャージ支出テスト家");
+        long categoryId = firstExpenseCategoryId(token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "チャージ元口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/cards/" + cardId + "/charges", Map.of("fromAccountId", accountId, "amount", 5000), token);
+
+        ResponseEntity<Map<String, Object>> expenseResponse = postJson("/api/expenses",
+                Map.of("expenseDate", "2026-01-01", "amount", 2000, "purpose", "チャージ型カードでの支出",
+                        "categoryId", categoryId, "cardId", cardId),
+                token);
+        assertThat(expenseResponse.getStatusCode().value()).isEqualTo(201);
+        assertThat(expenseResponse.getBody().get("accountId")).isNull();
+        assertThat(((Number) expenseResponse.getBody().get("cardId")).longValue()).isEqualTo(cardId);
+
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(5000);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cards = (List<Map<String, Object>>) accounts.get(0).get("cards");
+        assertThat(((Number) cards.get(0).get("balance")).intValue()).isEqualTo(3000);
+    }
+
+    @Test
+    @DisplayName("支出で使用中のカードは削除できず400を返す")
+    void deleteCardInUseByExpenseReturns400() {
+        String token = registerAndLogin(uniqueEmail("card-inuse-expense"));
+        createHousehold(token, "カード使用中削除テスト家");
+        long categoryId = firstExpenseCategoryId(token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/cards/" + cardId + "/charges", Map.of("fromAccountId", accountId, "amount", 5000), token);
+        postJson("/api/expenses",
+                Map.of("expenseDate", "2026-01-01", "amount", 1000, "purpose", "カード使用中の支出",
+                        "categoryId", categoryId, "cardId", cardId),
+                token);
+
+        ResponseEntity<Map<String, Object>> deleteResponse = deleteJson("/api/cards/" + cardId, token);
+
+        assertThat(deleteResponse.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("チャージ履歴のあるカードは削除できず400を返す")
+    void deleteCardWithChargeHistoryReturns400() {
+        String token = registerAndLogin(uniqueEmail("card-inuse-charge"));
+        createHousehold(token, "カードチャージ履歴削除テスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/cards/" + cardId + "/charges", Map.of("fromAccountId", accountId, "amount", 5000), token);
+
+        ResponseEntity<Map<String, Object>> deleteResponse = deleteJson("/api/cards/" + cardId, token);
+
+        assertThat(deleteResponse.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("残高付きチャージ型カードを子に持つ口座は削除できず400を返す")
+    void deleteAccountWithChargeCardBalanceReturns400() {
+        String token = registerAndLogin(uniqueEmail("account-charge-balance"));
+        createHousehold(token, "残高付きカード削除テスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "チャージ元口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/cards/" + cardId + "/charges", Map.of("fromAccountId", accountId, "amount", 3000), token);
+
+        ResponseEntity<Map<String, Object>> deleteResponse = deleteJson("/api/accounts/" + accountId, token);
+
+        assertThat(deleteResponse.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
     @DisplayName("口座・カードが存在する世帯でも最後の1人が退出すると世帯ごとCASCADE削除される")
     void leaveAsLastMemberDeletesHouseholdWithAccountData() {
         String token = registerAndLogin(uniqueEmail("account-leave"));
@@ -199,7 +331,7 @@ class AccountFlowIT extends IntegrationTestBase {
         ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
                 Map.of("name", "退出前の口座", "type", "bank", "balance", 5000), token);
         long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
-        postJson("/api/cards", Map.of("accountId", accountId, "name", "退出前のカード"), token);
+        postJson("/api/cards", Map.of("accountId", accountId, "name", "退出前のカード", "cardType", "credit"), token);
 
         ResponseEntity<Map<String, Object>> leaveResponse = postJson("/api/households/leave", null, token);
 

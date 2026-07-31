@@ -43,6 +43,45 @@ class CardMapperTest {
         assertThat(card.getId()).isNotNull();
         CardEntity found = cardMapper.findById(card.getId());
         assertThat(found.getName()).isEqualTo("〇〇カード");
+        assertThat(found.getCardType()).isEqualTo("credit");
+        assertThat(found.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void insertAndFindById_charge型カードは指定した種別で登録される() {
+        Long accountId = createAccount();
+
+        CardEntity card = newCard(accountId, "Suica");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        CardEntity found = cardMapper.findById(card.getId());
+        assertThat(found.getCardType()).isEqualTo("charge");
+        assertThat(found.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void lockById_行ロックしつつ取得できる() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        CardEntity locked = cardMapper.lockById(card.getId());
+
+        assertThat(locked.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void updateBalance_残高を更新できる() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        cardMapper.updateBalance(card.getId(), new BigDecimal("3000"));
+
+        assertThat(cardMapper.findById(card.getId()).getBalance()).isEqualByComparingTo("3000");
     }
 
     @Test
@@ -70,6 +109,37 @@ class CardMapperTest {
     }
 
     @Test
+    void countChargeCardsWithBalanceByAccountId_残高付きchargeカードがあれば1以上() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+        cardMapper.updateBalance(card.getId(), new BigDecimal("1000"));
+
+        assertThat(cardMapper.countChargeCardsWithBalanceByAccountId(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void countChargeCardsWithBalanceByAccountId_残高0のchargeカードは含まない() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        assertThat(cardMapper.countChargeCardsWithBalanceByAccountId(accountId)).isEqualTo(0);
+    }
+
+    @Test
+    void countChargeCardsWithBalanceByAccountId_creditカードは残高があっても含まない() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "クレジットカード");
+        cardMapper.insert(card);
+        cardMapper.updateBalance(card.getId(), new BigDecimal("1000"));
+
+        assertThat(cardMapper.countChargeCardsWithBalanceByAccountId(accountId)).isEqualTo(0);
+    }
+
+    @Test
     void delete_カードを削除できる() {
         Long accountId = createAccount();
         CardEntity card = newCard(accountId, "カード");
@@ -84,6 +154,7 @@ class CardMapperTest {
         CardEntity card = new CardEntity();
         card.setAccountId(accountId);
         card.setName(name);
+        card.setCardType("credit");
         card.setCreatedAt(LocalDateTime.now());
         return card;
     }
