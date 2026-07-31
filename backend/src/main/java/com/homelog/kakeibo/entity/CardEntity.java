@@ -1,5 +1,6 @@
 package com.homelog.kakeibo.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class CardEntity {
@@ -7,6 +8,8 @@ public class CardEntity {
     private Long id;
     private Long accountId;
     private String name;
+    private String cardType;
+    private BigDecimal balance;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -31,6 +34,22 @@ public class CardEntity {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getCardType() {
+        return cardType;
+    }
+
+    public void setCardType(String cardType) {
+        this.cardType = cardType;
+    }
+
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.CardChargeMapper">
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.CardChargeEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO card_charges
+            (card_id, from_account_id, amount, created_at)
+        VALUES
+            (#{cardId}, #{fromAccountId}, #{amount}, #{createdAt})
+    </insert>
+
+    <select id="countByCardId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM card_charges WHERE card_id = #{cardId}
+    </select>
+
+    <select id="countByFromAccountId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM card_charges WHERE from_account_id = #{fromAccountId}
+    </select>
+
+</mapper>

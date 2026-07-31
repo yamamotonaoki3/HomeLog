@@ -73,6 +73,15 @@ erDiagram
         bigserial id PK
         bigint account_id FK
         varchar name
+        varchar card_type
+        numeric balance
+        timestamp created_at
+    }
+    card_charges {
+        bigserial id PK
+        bigint card_id FK
+        bigint from_account_id FK
+        numeric amount
         timestamp created_at
     }
     expenses {
@@ -82,6 +91,7 @@ erDiagram
         bigint category_id FK
         bigint event_id FK
         bigint account_id FK
+        bigint card_id FK
         numeric amount
         varchar purpose
         varchar memo
@@ -230,6 +240,9 @@ erDiagram
     accounts ||--o{ expenses : "出費元になる"
     users ||--o{ accounts : "所有する"
     accounts ||--o{ cards : "持つ(子エンティティ)"
+    cards ||--o{ expenses : "出費元になる(charge型)"
+    accounts ||--o{ card_charges : "チャージ元になる"
+    cards ||--o{ card_charges : "チャージ先になる"
     expenses ||--o{ expense_splits : "分割される"
     users ||--o{ expense_splits : "負担する(debtor)"
     external_persons ||--o{ expense_splits : "負担する(debtor)"
@@ -346,6 +359,20 @@ erDiagram
 | cards.id | BIGSERIAL | ○ | PK |
 | cards.account_id | BIGINT | ○ | FK → accounts.id（カードは口座の子エンティティ） |
 | cards.name | VARCHAR(50) | ○ | カード名 |
+| cards.card_type | VARCHAR(10) | ○ | 種別（`credit`/`charge`、既定`credit`）。登録後は変更不可 |
+| cards.balance | NUMERIC | ○ | `charge`型カードの残高（`credit`型は常に0で未使用）。所有者本人のみ閲覧可能 |
+
+### card_charges（カードチャージ履歴）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| card_charges.id | BIGSERIAL | ○ | PK |
+| card_charges.card_id | BIGINT | ○ | FK → cards.id（チャージ先のchargeカード） |
+| card_charges.from_account_id | BIGINT | ○ | FK → accounts.id（チャージ元口座） |
+| card_charges.amount | NUMERIC | ○ | チャージ金額 |
+| card_charges.created_at | TIMESTAMP | ○ | チャージ実行日時 |
+
+家計簿の支出・収入（収支）とは別に、口座→カードの資金移動履歴として記録する。
 
 ### expenses（支出）／expense_splits（割り勘内訳）
 
@@ -356,7 +383,8 @@ erDiagram
 | expenses.payer_user_id | BIGINT | ○ | FK → users.id（支払った人） |
 | expenses.category_id | BIGINT | ○ | FK → kakeibo_categories.id |
 | expenses.event_id | BIGINT | — | FK → events.id（イベント紐付け、任意） |
-| expenses.account_id | BIGINT | — | FK → accounts.id（どの口座/カードから出費したか、任意） |
+| expenses.account_id | BIGINT | — | FK → accounts.id（口座直接指定 または credit型カード選択時の親口座、任意） |
+| expenses.card_id | BIGINT | — | FK → cards.id（charge型カード選択時のみ設定。この場合account_idはNULL、カード自身の残高から減算） |
 | expenses.amount | NUMERIC | ○ | 支出金額 |
 | expenses.purpose | VARCHAR(100) | ○ | 使用用途 |
 | expenses.memo | VARCHAR(255) | — | メモ |

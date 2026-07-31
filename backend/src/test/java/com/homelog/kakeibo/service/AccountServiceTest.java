@@ -17,6 +17,7 @@ import com.homelog.kakeibo.dto.response.AccountResponse;
 import com.homelog.kakeibo.entity.AccountEntity;
 import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.mapper.AccountMapper;
+import com.homelog.kakeibo.mapper.CardChargeMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import java.math.BigDecimal;
@@ -34,12 +35,14 @@ class AccountServiceTest {
     @Mock
     private CardMapper cardMapper;
     @Mock
+    private CardChargeMapper cardChargeMapper;
+    @Mock
     private ExpenseMapper expenseMapper;
     @Mock
     private HouseholdMemberMapper householdMemberMapper;
 
     private AccountService service() {
-        return new AccountService(accountMapper, cardMapper, expenseMapper, householdMemberMapper);
+        return new AccountService(accountMapper, cardMapper, cardChargeMapper, expenseMapper, householdMemberMapper);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -132,12 +135,17 @@ class AccountServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(0);
+        when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
+        when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(0);
 
         service().deleteAccount(1L, 5L);
 
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(accountMapper, expenseMapper);
+        org.mockito.InOrder inOrder =
+                org.mockito.Mockito.inOrder(accountMapper, expenseMapper, cardChargeMapper, cardMapper);
         inOrder.verify(accountMapper).lockById(5L);
         inOrder.verify(expenseMapper).countByAccountId(5L);
+        inOrder.verify(cardChargeMapper).countByFromAccountId(5L);
+        inOrder.verify(cardMapper).countUndeletableCardsByAccountId(5L);
         inOrder.verify(accountMapper).delete(5L);
     }
 
@@ -146,6 +154,29 @@ class AccountServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByAccountId(5L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
+        verify(accountMapper, never()).delete(anyLong());
+    }
+
+    @Test
+    void deleteAccount_チャージ履歴があれば削除不可() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+        when(expenseMapper.countByAccountId(5L)).thenReturn(0);
+        when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
+        verify(accountMapper, never()).delete(anyLong());
+    }
+
+    @Test
+    void deleteAccount_削除できない子カード_支出_チャージ履歴_残高のいずれかを持つ場合は削除不可() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+        when(expenseMapper.countByAccountId(5L)).thenReturn(0);
+        when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
+        when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(1);
 
         assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
         verify(accountMapper, never()).delete(anyLong());
@@ -222,6 +253,15 @@ class AccountServiceTest {
         CardEntity card = new CardEntity();
         card.setId(id);
         card.setAccountId(accountId);
+        card.setCardType("credit");
+        return card;
+    }
+
+    private CardEntity chargeCardOf(long id, long accountId) {
+        CardEntity card = new CardEntity();
+        card.setId(id);
+        card.setAccountId(accountId);
+        card.setCardType("charge");
         return card;
     }
 
@@ -233,6 +273,15 @@ class AccountServiceTest {
         Long accountId = service().resolveAccountIdFromCard(1L, 10L, 70L);
 
         assertThat(accountId).isEqualTo(5L);
+    }
+
+    @Test
+    void resolveAccountIdFromCard_charge型カード指定は400() {
+        when(cardMapper.findById(70L)).thenReturn(chargeCardOf(70L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+
+        assertThatThrownBy(() -> service().resolveAccountIdFromCard(1L, 10L, 70L))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -249,6 +298,33 @@ class AccountServiceTest {
         when(cardMapper.findById(70L)).thenReturn(null);
 
         assertThatThrownBy(() -> service().resolveAccountIdFromCard(1L, 10L, 70L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void findOwnedCardForExpense_本人所有かつ現在の世帯ならカードを返す() {
+        when(cardMapper.findById(70L)).thenReturn(chargeCardOf(70L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+
+        CardEntity card = service().findOwnedCardForExpense(1L, 10L, 70L);
+
+        assertThat(card.getCardType()).isEqualTo("charge");
+    }
+
+    @Test
+    void findOwnedCardForExpense_他人のカード指定は400() {
+        when(cardMapper.findById(70L)).thenReturn(chargeCardOf(70L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 999L));
+
+        assertThatThrownBy(() -> service().findOwnedCardForExpense(1L, 10L, 70L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void findOwnedCardForExpense_存在しないカード指定は400() {
+        when(cardMapper.findById(70L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service().findOwnedCardForExpense(1L, 10L, 70L))
                 .isInstanceOf(BadRequestException.class);
     }
 }

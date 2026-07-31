@@ -11,6 +11,7 @@ public class ExpenseEntity {
     private Long payerUserId;
     private Long categoryId;
     private Long accountId;
+    private Long cardId;
     private BigDecimal amount;
     private String purpose;
     private String memo;
@@ -56,6 +57,14 @@ public class ExpenseEntity {
 
     public void setAccountId(Long accountId) {
         this.accountId = accountId;
+    }
+
+    public Long getCardId() {
+        return cardId;
+    }
+
+    public void setCardId(Long cardId) {
+        this.cardId = cardId;
     }
 
     public BigDecimal getAmount() {

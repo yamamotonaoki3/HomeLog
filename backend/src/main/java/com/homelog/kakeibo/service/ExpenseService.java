@@ -6,6 +6,7 @@ import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateExpenseRequest;
 import com.homelog.kakeibo.dto.response.ExpenseResponse;
 import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
@@ -26,13 +27,15 @@ public class ExpenseService {
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
     private final HouseholdMemberMapper householdMemberMapper;
     private final AccountService accountService;
+    private final CardService cardService;
 
     public ExpenseService(ExpenseMapper expenseMapper, KakeiboCategoryMapper kakeiboCategoryMapper,
-            HouseholdMemberMapper householdMemberMapper, AccountService accountService) {
+            HouseholdMemberMapper householdMemberMapper, AccountService accountService, CardService cardService) {
         this.expenseMapper = expenseMapper;
         this.kakeiboCategoryMapper = kakeiboCategoryMapper;
         this.householdMemberMapper = householdMemberMapper;
         this.accountService = accountService;
+        this.cardService = cardService;
     }
 
     public List<ExpenseResponse> listExpenses(Long userId, Long categoryId) {
@@ -45,46 +48,60 @@ public class ExpenseService {
     public ExpenseResponse createExpense(Long userId, CreateExpenseRequest request) {
         Long householdId = resolveHouseholdId(userId);
         validateCategory(householdId, request.categoryId());
-        Long resolvedAccountId = resolveAccountId(userId, householdId, request);
-
-        BigDecimal amount = BigDecimal.valueOf(request.amount());
-        AccountEntity lockedAccount = null;
-        if (resolvedAccountId != null) {
-            // 支出INSERTのFK参照チェックが先に口座行の共有ロックを取得すると、後続のFOR UPDATEへの
-            // ロック昇格が競合しデッドロックしうるため、INSERT前に排他ロックを取得しておく。
-            lockedAccount = accountService.lockAccountForUpdate(resolvedAccountId);
+        if (request.accountId() != null && request.cardId() != null) {
+            throw new BadRequestException(ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE);
         }
 
+        BigDecimal amount = BigDecimal.valueOf(request.amount());
         ExpenseEntity expense = new ExpenseEntity();
         expense.setHouseholdId(householdId);
         expense.setPayerUserId(userId);
         expense.setCategoryId(request.categoryId());
-        expense.setAccountId(resolvedAccountId);
         expense.setAmount(amount);
         expense.setPurpose(request.purpose());
         expense.setMemo(request.memo());
         expense.setExpenseDate(request.expenseDate());
         expense.setIncludeInHouseholdTotal(Boolean.TRUE.equals(request.includeInHouseholdTotal()));
         expense.setCreatedAt(LocalDateTime.now());
-        expenseMapper.insert(expense);
-        if (lockedAccount != null) {
-            accountService.updateBalance(resolvedAccountId, lockedAccount.getBalance().subtract(amount));
+
+        if (request.cardId() != null) {
+            insertExpenseForCard(userId, householdId, request.cardId(), expense, amount);
+        } else if (request.accountId() != null) {
+            insertExpenseForAccount(userId, householdId, request.accountId(), expense, amount);
+        } else {
+            expenseMapper.insert(expense);
         }
         return toResponse(expense);
     }
 
-    private Long resolveAccountId(Long userId, Long householdId, CreateExpenseRequest request) {
-        if (request.accountId() != null && request.cardId() != null) {
-            throw new BadRequestException(ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE);
+    private void insertExpenseForCard(Long userId, Long householdId, Long cardId, ExpenseEntity expense,
+            BigDecimal amount) {
+        CardEntity card = accountService.findOwnedCardForExpense(userId, householdId, cardId);
+        if ("charge".equals(card.getCardType())) {
+            // 支出INSERTのFK参照チェックが先にカード行の共有ロックを取得すると、後続のFOR UPDATEへの
+            // ロック昇格が競合しデッドロックしうるため、INSERT前に排他ロックを取得しておく。
+            CardEntity lockedCard = cardService.lockCardForUpdate(cardId);
+            expense.setCardId(cardId);
+            expenseMapper.insert(expense);
+            cardService.updateBalance(cardId, lockedCard.getBalance().subtract(amount));
+        } else {
+            Long accountId = card.getAccountId();
+            AccountEntity lockedAccount = accountService.lockAccountForUpdate(accountId);
+            expense.setAccountId(accountId);
+            expenseMapper.insert(expense);
+            accountService.updateBalance(accountId, lockedAccount.getBalance().subtract(amount));
         }
-        if (request.cardId() != null) {
-            return accountService.resolveAccountIdFromCard(userId, householdId, request.cardId());
-        }
-        if (request.accountId() != null) {
-            accountService.validateOwnedAccountForExpense(userId, householdId, request.accountId());
-            return request.accountId();
-        }
-        return null;
+    }
+
+    private void insertExpenseForAccount(Long userId, Long householdId, Long accountId, ExpenseEntity expense,
+            BigDecimal amount) {
+        accountService.validateOwnedAccountForExpense(userId, householdId, accountId);
+        // 支出INSERTのFK参照チェックが先に口座行の共有ロックを取得すると、後続のFOR UPDATEへの
+        // ロック昇格が競合しデッドロックしうるため、INSERT前に排他ロックを取得しておく。
+        AccountEntity lockedAccount = accountService.lockAccountForUpdate(accountId);
+        expense.setAccountId(accountId);
+        expenseMapper.insert(expense);
+        accountService.updateBalance(accountId, lockedAccount.getBalance().subtract(amount));
     }
 
     private void validateCategory(Long householdId, Long categoryId) {
@@ -105,6 +122,6 @@ public class ExpenseService {
     private ExpenseResponse toResponse(ExpenseEntity expense) {
         return new ExpenseResponse(expense.getId(), expense.getExpenseDate(), expense.getAmount(),
                 expense.getPurpose(), expense.getCategoryId(), expense.getMemo(),
-                expense.isIncludeInHouseholdTotal(), expense.getAccountId());
+                expense.isIncludeInHouseholdTotal(), expense.getAccountId(), expense.getCardId());
     }
 }

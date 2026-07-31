@@ -14,6 +14,7 @@ import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateExpenseRequest;
 import com.homelog.kakeibo.dto.response.ExpenseResponse;
 import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
@@ -38,9 +39,28 @@ class ExpenseServiceTest {
     private HouseholdMemberMapper householdMemberMapper;
     @Mock
     private AccountService accountService;
+    @Mock
+    private CardService cardService;
 
     private ExpenseService service() {
-        return new ExpenseService(expenseMapper, kakeiboCategoryMapper, householdMemberMapper, accountService);
+        return new ExpenseService(expenseMapper, kakeiboCategoryMapper, householdMemberMapper, accountService,
+                cardService);
+    }
+
+    private CardEntity creditCardOf(long id, long accountId) {
+        CardEntity card = new CardEntity();
+        card.setId(id);
+        card.setAccountId(accountId);
+        card.setCardType("credit");
+        return card;
+    }
+
+    private CardEntity chargeCardOf(long id, String balance) {
+        CardEntity card = new CardEntity();
+        card.setId(id);
+        card.setCardType("charge");
+        card.setBalance(new BigDecimal(balance));
+        return card;
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -217,10 +237,10 @@ class ExpenseServiceTest {
     }
 
     @Test
-    void createExpense_カード指定ありの場合は親口座を解決して残高を減算する() {
+    void createExpense_credit型カード指定ありの場合は親口座を解決して残高を減算する() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
-        when(accountService.resolveAccountIdFromCard(1L, 10L, 70L)).thenReturn(7L);
+        when(accountService.findOwnedCardForExpense(1L, 10L, 70L)).thenReturn(creditCardOf(70L, 7L));
         when(accountService.lockAccountForUpdate(7L)).thenReturn(accountWithBalance(7L, "10000"));
 
         CreateExpenseRequest request = new CreateExpenseRequest(
@@ -228,10 +248,31 @@ class ExpenseServiceTest {
         ExpenseResponse response = service().createExpense(1L, request);
 
         assertThat(response.accountId()).isEqualTo(7L);
-        verify(accountService).resolveAccountIdFromCard(1L, 10L, 70L);
+        assertThat(response.cardId()).isNull();
+        verify(accountService).findOwnedCardForExpense(1L, 10L, 70L);
         verify(accountService).lockAccountForUpdate(7L);
         verify(accountService).updateBalance(7L, new BigDecimal("9000"));
         verify(accountService, never()).validateOwnedAccountForExpense(any(), any(), any());
+        verify(cardService, never()).lockCardForUpdate(any());
+    }
+
+    @Test
+    void createExpense_charge型カード指定の場合はカード自身の残高を減算する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
+        when(accountService.findOwnedCardForExpense(1L, 10L, 70L)).thenReturn(chargeCardOf(70L, "0"));
+        when(cardService.lockCardForUpdate(70L)).thenReturn(chargeCardOf(70L, "5000"));
+
+        CreateExpenseRequest request = new CreateExpenseRequest(
+                LocalDate.of(2026, 1, 1), 1000L, "電車代", 5L, null, null, null, 70L);
+        ExpenseResponse response = service().createExpense(1L, request);
+
+        assertThat(response.cardId()).isEqualTo(70L);
+        assertThat(response.accountId()).isNull();
+        verify(cardService).lockCardForUpdate(70L);
+        verify(cardService).updateBalance(70L, new BigDecimal("4000"));
+        verify(accountService, never()).lockAccountForUpdate(any());
+        verify(accountService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -239,7 +280,7 @@ class ExpenseServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
         when(kakeiboCategoryMapper.findById(5L)).thenReturn(categoryOf(5L, 10L));
         Mockito.doThrow(new BadRequestException("指定されたカードが見つかりません"))
-                .when(accountService).resolveAccountIdFromCard(1L, 10L, 70L);
+                .when(accountService).findOwnedCardForExpense(1L, 10L, 70L);
 
         CreateExpenseRequest request = new CreateExpenseRequest(
                 LocalDate.of(2026, 1, 1), 1000L, "ランチ", 5L, null, null, null, 70L);
@@ -248,6 +289,7 @@ class ExpenseServiceTest {
         verify(expenseMapper, never()).insert(any());
         verify(accountService, never()).lockAccountForUpdate(any());
         verify(accountService, never()).updateBalance(any(), any());
+        verify(cardService, never()).lockCardForUpdate(any());
     }
 
     @Test

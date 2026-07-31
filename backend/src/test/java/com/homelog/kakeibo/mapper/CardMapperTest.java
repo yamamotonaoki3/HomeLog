@@ -43,6 +43,45 @@ class CardMapperTest {
         assertThat(card.getId()).isNotNull();
         CardEntity found = cardMapper.findById(card.getId());
         assertThat(found.getName()).isEqualTo("〇〇カード");
+        assertThat(found.getCardType()).isEqualTo("credit");
+        assertThat(found.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void insertAndFindById_charge型カードは指定した種別で登録される() {
+        Long accountId = createAccount();
+
+        CardEntity card = newCard(accountId, "Suica");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        CardEntity found = cardMapper.findById(card.getId());
+        assertThat(found.getCardType()).isEqualTo("charge");
+        assertThat(found.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void lockById_行ロックしつつ取得できる() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        CardEntity locked = cardMapper.lockById(card.getId());
+
+        assertThat(locked.getBalance()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void updateBalance_残高を更新できる() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+
+        cardMapper.updateBalance(card.getId(), new BigDecimal("3000"));
+
+        assertThat(cardMapper.findById(card.getId()).getBalance()).isEqualByComparingTo("3000");
     }
 
     @Test
@@ -70,6 +109,49 @@ class CardMapperTest {
     }
 
     @Test
+    void countUndeletableCardsByAccountId_残高付き子カードがあれば1以上() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+        cardMapper.updateBalance(card.getId(), new BigDecimal("1000"));
+
+        assertThat(cardMapper.countUndeletableCardsByAccountId(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void countUndeletableCardsByAccountId_子カードに支出があれば1以上() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+        insertExpenseForCard(accountId, card.getId());
+
+        assertThat(cardMapper.countUndeletableCardsByAccountId(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void countUndeletableCardsByAccountId_子カードにチャージ履歴があれば1以上() {
+        Long accountId = createAccount();
+        CardEntity card = newCard(accountId, "チャージカード");
+        card.setCardType("charge");
+        cardMapper.insert(card);
+        jdbcTemplate.update(
+                "INSERT INTO card_charges (card_id, from_account_id, amount, created_at) VALUES (?, ?, ?, ?)",
+                card.getId(), accountId, 1000, LocalDateTime.now());
+
+        assertThat(cardMapper.countUndeletableCardsByAccountId(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void countUndeletableCardsByAccountId_残高も参照もない子カードは含まない() {
+        Long accountId = createAccount();
+        cardMapper.insert(newCard(accountId, "未使用カード"));
+
+        assertThat(cardMapper.countUndeletableCardsByAccountId(accountId)).isEqualTo(0);
+    }
+
+    @Test
     void delete_カードを削除できる() {
         Long accountId = createAccount();
         CardEntity card = newCard(accountId, "カード");
@@ -84,6 +166,7 @@ class CardMapperTest {
         CardEntity card = new CardEntity();
         card.setAccountId(accountId);
         card.setName(name);
+        card.setCardType("credit");
         card.setCreatedAt(LocalDateTime.now());
         return card;
     }
@@ -100,6 +183,23 @@ class CardMapperTest {
         account.setCreatedAt(LocalDateTime.now());
         accountMapper.insert(account);
         return account.getId();
+    }
+
+    private void insertExpenseForCard(Long accountId, Long cardId) {
+        Long householdId = jdbcTemplate.queryForObject(
+                "SELECT household_id FROM accounts WHERE id = ?", Long.class, accountId);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT owner_user_id FROM accounts WHERE id = ?", Long.class, accountId);
+        jdbcTemplate.update(
+                "INSERT INTO kakeibo_categories (household_id, name, is_default) VALUES (?, ?, ?)",
+                householdId, "テストカテゴリ", false);
+        Long categoryId = jdbcTemplate.queryForObject(
+                "SELECT MAX(id) FROM kakeibo_categories WHERE household_id = ?", Long.class, householdId);
+        jdbcTemplate.update(
+                "INSERT INTO expenses (household_id, payer_user_id, category_id, card_id, amount, purpose, "
+                        + "expense_date, include_in_household_total, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                householdId, userId, categoryId, cardId, 1000, "カード支出", java.time.LocalDate.now(), false,
+                LocalDateTime.now());
     }
 
     private Long createHousehold() {
