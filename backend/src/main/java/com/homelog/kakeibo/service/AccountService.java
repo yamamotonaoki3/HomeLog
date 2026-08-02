@@ -13,6 +13,7 @@ import com.homelog.kakeibo.mapper.AccountMapper;
 import com.homelog.kakeibo.mapper.CardChargeMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
+import com.homelog.kakeibo.mapper.FixedCostMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,14 +32,17 @@ public class AccountService {
     private final CardMapper cardMapper;
     private final CardChargeMapper cardChargeMapper;
     private final ExpenseMapper expenseMapper;
+    private final FixedCostMapper fixedCostMapper;
     private final HouseholdMemberMapper householdMemberMapper;
 
     public AccountService(AccountMapper accountMapper, CardMapper cardMapper, CardChargeMapper cardChargeMapper,
-            ExpenseMapper expenseMapper, HouseholdMemberMapper householdMemberMapper) {
+            ExpenseMapper expenseMapper, FixedCostMapper fixedCostMapper,
+            HouseholdMemberMapper householdMemberMapper) {
         this.accountMapper = accountMapper;
         this.cardMapper = cardMapper;
         this.cardChargeMapper = cardChargeMapper;
         this.expenseMapper = expenseMapper;
+        this.fixedCostMapper = fixedCostMapper;
         this.householdMemberMapper = householdMemberMapper;
     }
 
@@ -83,6 +87,12 @@ public class AccountService {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
         if (cardMapper.countUndeletableCardsByAccountId(accountId) > 0) {
+            throw new BadRequestException(IN_USE_MESSAGE);
+        }
+        if (fixedCostMapper.countByAccountId(accountId) > 0) {
+            throw new BadRequestException(IN_USE_MESSAGE);
+        }
+        if (fixedCostMapper.countByCardAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
         accountMapper.delete(accountId);

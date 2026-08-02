@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.homelog.household.entity.HouseholdEntity;
 import com.homelog.household.mapper.HouseholdMapper;
+import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.FixedCostEntity;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -25,6 +27,12 @@ class FixedCostMapperTest {
 
     @Autowired
     private HouseholdMapper householdMapper;
+
+    @Autowired
+    private AccountMapper accountMapper;
+
+    @Autowired
+    private CardMapper cardMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -105,7 +113,7 @@ class FixedCostMapperTest {
         FixedCostEntity fixedCost = newFixedCost(householdId, userId, userId, "旧名称", "1000", 10);
         fixedCostMapper.insert(fixedCost);
 
-        fixedCostMapper.update(fixedCost.getId(), "新名称", new BigDecimal("2000"), 20, null, true);
+        fixedCostMapper.update(fixedCost.getId(), "新名称", new BigDecimal("2000"), 20, null, true, null, null);
 
         FixedCostEntity found = fixedCostMapper.findById(fixedCost.getId());
         assertThat(found.getName()).isEqualTo("新名称");
@@ -113,6 +121,139 @@ class FixedCostMapperTest {
         assertThat(found.getPaymentDay()).isEqualTo(20);
         assertThat(found.getOwnerUserId()).isNull();
         assertThat(found.isIncludeInHouseholdTotal()).isTrue();
+    }
+
+    @Test
+    void insertAndFindById_口座を引き落とし元として登録できる() {
+        Long householdId = createHousehold("fc-house14", "FCCODE00000014");
+        Long userId = createUser("owner14@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        FixedCostEntity fixedCost = newFixedCost(householdId, null, userId, "家賃", "80000", 27);
+        fixedCost.setAccountId(accountId);
+        fixedCostMapper.insert(fixedCost);
+
+        FixedCostEntity found = fixedCostMapper.findById(fixedCost.getId());
+        assertThat(found.getAccountId()).isEqualTo(accountId);
+        assertThat(found.getCardId()).isNull();
+    }
+
+    @Test
+    void insertAndFindById_カードを引き落とし元として登録できる() {
+        Long householdId = createHousehold("fc-house15", "FCCODE00000015");
+        Long userId = createUser("owner15@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        Long cardId = insertCard(accountId, "credit");
+        FixedCostEntity fixedCost = newFixedCost(householdId, null, userId, "携帯電話代", "5000", 5);
+        fixedCost.setCardId(cardId);
+        fixedCostMapper.insert(fixedCost);
+
+        FixedCostEntity found = fixedCostMapper.findById(fixedCost.getId());
+        assertThat(found.getCardId()).isEqualTo(cardId);
+        assertThat(found.getAccountId()).isNull();
+    }
+
+    @Test
+    void update_引き落とし元の口座とカードを更新できる() {
+        Long householdId = createHousehold("fc-house16", "FCCODE00000016");
+        Long userId = createUser("owner16@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        Long cardId = insertCard(accountId, "charge");
+        FixedCostEntity fixedCost = newFixedCost(householdId, null, userId, "サブスク", "1000", 1);
+        fixedCost.setAccountId(accountId);
+        fixedCostMapper.insert(fixedCost);
+
+        fixedCostMapper.update(fixedCost.getId(), "サブスク", new BigDecimal("1000"), 1, null, false, null, cardId);
+
+        FixedCostEntity found = fixedCostMapper.findById(fixedCost.getId());
+        assertThat(found.getCardId()).isEqualTo(cardId);
+        assertThat(found.getAccountId()).isNull();
+    }
+
+    @Test
+    void countByAccountId_引き落とし元として使用中の件数を返す() {
+        Long householdId = createHousehold("fc-house17", "FCCODE00000017");
+        Long userId = createUser("owner17@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        FixedCostEntity fixedCost = newFixedCost(householdId, null, userId, "家賃", "80000", 27);
+        fixedCost.setAccountId(accountId);
+        fixedCostMapper.insert(fixedCost);
+
+        assertThat(fixedCostMapper.countByAccountId(accountId)).isEqualTo(1);
+    }
+
+    @Test
+    void countByAccountId_使用されていなければ0() {
+        Long householdId = createHousehold("fc-house18", "FCCODE00000018");
+        Long userId = createUser("owner18@example.com");
+        Long accountId = insertAccount(householdId, userId);
+
+        assertThat(fixedCostMapper.countByAccountId(accountId)).isEqualTo(0);
+    }
+
+    @Test
+    void countByCardId_引き落とし元として使用中の件数を返す() {
+        Long householdId = createHousehold("fc-house19", "FCCODE00000019");
+        Long userId = createUser("owner19@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        Long cardId = insertCard(accountId, "charge");
+        FixedCostEntity fixedCost = newFixedCost(householdId, null, userId, "サブスク", "1000", 1);
+        fixedCost.setCardId(cardId);
+        fixedCostMapper.insert(fixedCost);
+
+        assertThat(fixedCostMapper.countByCardId(cardId)).isEqualTo(1);
+    }
+
+    @Test
+    void countByCardId_使用されていなければ0() {
+        Long householdId = createHousehold("fc-house20", "FCCODE00000020");
+        Long userId = createUser("owner20@example.com");
+        Long accountId = insertAccount(householdId, userId);
+        Long cardId = insertCard(accountId, "charge");
+
+        assertThat(fixedCostMapper.countByCardId(cardId)).isEqualTo(0);
+    }
+
+    @Test
+    void countByCardAccountId_口座の子カードを引き落とし元とする固定費だけを数える() {
+        Long householdId = createHousehold("fc-house21", "FCCODE00000021");
+        Long userId = createUser("owner21@example.com");
+        Long targetAccountId = insertAccount(householdId, userId);
+        Long otherAccountId = insertAccount(householdId, userId);
+        Long unusedAccountId = insertAccount(householdId, userId);
+        Long targetCardId = insertCard(targetAccountId, "credit");
+        Long otherCardId = insertCard(otherAccountId, "credit");
+        FixedCostEntity targetFixedCost = newFixedCost(householdId, null, userId, "対象固定費", "1000", 1);
+        targetFixedCost.setCardId(targetCardId);
+        fixedCostMapper.insert(targetFixedCost);
+        FixedCostEntity otherFixedCost = newFixedCost(householdId, null, userId, "別口座固定費", "2000", 2);
+        otherFixedCost.setCardId(otherCardId);
+        fixedCostMapper.insert(otherFixedCost);
+
+        assertThat(fixedCostMapper.countByCardAccountId(targetAccountId)).isEqualTo(1);
+        assertThat(fixedCostMapper.countByCardAccountId(otherAccountId)).isEqualTo(1);
+        assertThat(fixedCostMapper.countByCardAccountId(unusedAccountId)).isEqualTo(0);
+    }
+
+    private Long insertAccount(Long householdId, Long ownerUserId) {
+        AccountEntity account = new AccountEntity();
+        account.setHouseholdId(householdId);
+        account.setOwnerUserId(ownerUserId);
+        account.setName("口座");
+        account.setType("bank");
+        account.setBalance(new BigDecimal("100000"));
+        account.setCreatedAt(LocalDateTime.now());
+        accountMapper.insert(account);
+        return account.getId();
+    }
+
+    private Long insertCard(Long accountId, String cardType) {
+        CardEntity card = new CardEntity();
+        card.setAccountId(accountId);
+        card.setName("カード");
+        card.setCardType(cardType);
+        card.setCreatedAt(LocalDateTime.now());
+        cardMapper.insert(card);
+        return card.getId();
     }
 
     @Test

@@ -64,7 +64,8 @@ class FixedCostControllerTest {
     @Test
     void listFixedCosts_正常系は200() throws Exception {
         when(fixedCostService.listFixedCosts(anyLong()))
-                .thenReturn(List.of(new FixedCostResponse(1L, "家賃", new BigDecimal("80000"), 27, false, true, true)));
+                .thenReturn(List.of(
+                        new FixedCostResponse(1L, "家賃", new BigDecimal("80000"), 27, false, true, true, null, null)));
 
         mockMvc.perform(get("/api/fixed-costs"))
                 .andExpect(status().isOk())
@@ -74,12 +75,13 @@ class FixedCostControllerTest {
     @Test
     void createFixedCost_正常系は201() throws Exception {
         when(fixedCostService.createFixedCost(anyLong(), any()))
-                .thenReturn(new FixedCostResponse(1L, "家賃", new BigDecimal("80000"), 27, false, true, true));
+                .thenReturn(new FixedCostResponse(1L, "家賃", new BigDecimal("80000"), 27, false, true, true, null,
+                        null));
 
         mockMvc.perform(post("/api/fixed-costs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateFixedCostRequest("家賃", 80000L, 27, false, true))))
+                                new CreateFixedCostRequest("家賃", 80000L, 27, false, true, null, null))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("家賃"));
     }
@@ -87,12 +89,13 @@ class FixedCostControllerTest {
     @Test
     void updateFixedCost_正常系は200() throws Exception {
         when(fixedCostService.updateFixedCost(anyLong(), anyLong(), any()))
-                .thenReturn(new FixedCostResponse(1L, "新家賃", new BigDecimal("90000"), 28, false, true, true));
+                .thenReturn(new FixedCostResponse(1L, "新家賃", new BigDecimal("90000"), 28, false, true, true, null,
+                        null));
 
         mockMvc.perform(patch("/api/fixed-costs/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new UpdateFixedCostRequest("新家賃", 90000L, 28, false, true))))
+                                new UpdateFixedCostRequest("新家賃", 90000L, 28, false, true, null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("新家賃"));
     }
