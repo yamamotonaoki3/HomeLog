@@ -55,4 +55,6 @@ export interface FixedCost {
   personal: boolean
   includeInHouseholdTotal: boolean
   editable: boolean
+  accountId: number | null
+  cardId: number | null
 }

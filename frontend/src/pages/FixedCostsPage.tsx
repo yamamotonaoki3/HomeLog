@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
-import type { FixedCost } from '../api/kakeiboTypes'
+import type { Account, FixedCost } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
 import { FixedCostModal } from '../components/kakeibo/FixedCostModal'
 
 export function FixedCostsPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [modalTarget, setModalTarget] = useState<FixedCost | null | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<FixedCost | null>(null)
@@ -23,12 +24,33 @@ export function FixedCostsPage() {
     setFixedCosts(response.data)
   }, [])
 
+  const paymentSourceName = useCallback(
+    (fixedCost: FixedCost) => {
+      if (fixedCost.accountId !== null) {
+        return accounts.find((account) => account.id === fixedCost.accountId)?.name ?? ''
+      }
+      if (fixedCost.cardId !== null) {
+        return accounts.flatMap((account) => account.cards).find((card) => card.id === fixedCost.cardId)?.name ?? ''
+      }
+      return ''
+    },
+    [accounts],
+  )
+
   useEffect(() => {
     let cancelled = false
-    fetchFixedCosts()
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          showToast(getApiErrorMessage(err, '固定費の取得に失敗しました。時間をおいて再度お試しください'))
+    Promise.allSettled([fetchFixedCosts(), apiClient.get<Account[]>('/accounts')])
+      .then(([fixedCostsResult, accountsResult]) => {
+        if (cancelled) return
+        if (fixedCostsResult.status === 'rejected') {
+          showToast(
+            getApiErrorMessage(fixedCostsResult.reason, '固定費の取得に失敗しました。時間をおいて再度お試しください'),
+          )
+        }
+        if (accountsResult.status === 'fulfilled') {
+          setAccounts(accountsResult.value.data)
+        } else {
+          showToast(getApiErrorMessage(accountsResult.reason, '口座の取得に失敗しました。時間をおいて再度お試しください'))
         }
       })
       .finally(() => {
@@ -98,6 +120,7 @@ export function FixedCostsPage() {
               <th>支払日</th>
               <th>公開範囲</th>
               <th>世帯合計対象</th>
+              <th>引き落とし元</th>
               <th>割り勘</th>
               <th>操作</th>
             </tr>
@@ -105,7 +128,7 @@ export function FixedCostsPage() {
           <tbody>
             {fixedCosts.length === 0 ? (
               <tr>
-                <td colSpan={7}>固定費はありません</td>
+                <td colSpan={8}>固定費はありません</td>
               </tr>
             ) : (
               fixedCosts.map((fixedCost) => (
@@ -115,6 +138,7 @@ export function FixedCostsPage() {
                   <td>{fixedCost.paymentDay}日</td>
                   <td>{fixedCost.personal ? '個人' : '世帯共有'}</td>
                   <td>{fixedCost.includeInHouseholdTotal ? '○' : ''}</td>
+                  <td>{paymentSourceName(fixedCost)}</td>
                   <td></td>
                   <td>
                     {fixedCost.editable && (
@@ -135,7 +159,12 @@ export function FixedCostsPage() {
         </table>
       </div>
       {modalTarget !== undefined && (
-        <FixedCostModal fixedCost={modalTarget} onClose={() => setModalTarget(undefined)} onSaved={handleSaved} />
+        <FixedCostModal
+          fixedCost={modalTarget}
+          accounts={accounts}
+          onClose={() => setModalTarget(undefined)}
+          onSaved={handleSaved}
+        />
       )}
       {deleteTarget && (
         <div className="modal-overlay">

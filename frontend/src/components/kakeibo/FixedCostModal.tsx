@@ -1,17 +1,25 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
-import type { FixedCost } from '../../api/kakeiboTypes'
+import type { Account, FixedCost } from '../../api/kakeiboTypes'
 
 const PRESET_NAMES = ['家賃', '水道代', '電気代', 'ガス代', 'インターネット代', '携帯電話代', 'サブスクリプション']
 
 interface Props {
   fixedCost: FixedCost | null
+  accounts: Account[]
   onClose: () => void
   onSaved: () => Promise<void>
 }
 
-export function FixedCostModal({ fixedCost, onClose, onSaved }: Props) {
+function initialAccountSelection(fixedCost: FixedCost | null): string {
+  if (!fixedCost) return ''
+  if (fixedCost.accountId !== null) return `account:${fixedCost.accountId}`
+  if (fixedCost.cardId !== null) return `card:${fixedCost.cardId}`
+  return ''
+}
+
+export function FixedCostModal({ fixedCost, accounts, onClose, onSaved }: Props) {
   const isEdit = fixedCost !== null
   const [name, setName] = useState(fixedCost?.name ?? '')
   const [amount, setAmount] = useState(fixedCost ? String(fixedCost.amount) : '')
@@ -20,6 +28,7 @@ export function FixedCostModal({ fixedCost, onClose, onSaved }: Props) {
   const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(
     fixedCost?.includeInHouseholdTotal ?? false,
   )
+  const [accountSelection, setAccountSelection] = useState(initialAccountSelection(fixedCost))
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -42,12 +51,15 @@ export function FixedCostModal({ fixedCost, onClose, onSaved }: Props) {
     }
     setError('')
     setSubmitting(true)
+    const [selectionType, selectionId] = accountSelection === '' ? [null, null] : accountSelection.split(':')
     const payload = {
       name: trimmedName,
       amount: amountValue,
       paymentDay: paymentDayValue,
       personal,
       includeInHouseholdTotal,
+      accountId: selectionType === 'account' ? Number(selectionId) : null,
+      cardId: selectionType === 'card' ? Number(selectionId) : null,
     }
     try {
       if (isEdit) {
@@ -101,6 +113,20 @@ export function FixedCostModal({ fixedCost, onClose, onSaved }: Props) {
             value={paymentDay}
             onChange={(e) => setPaymentDay(e.target.value)}
           />
+          <label htmlFor="fc-account">引き落とし元（任意）</label>
+          <select id="fc-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)}>
+            <option value="">選択しない</option>
+            {accounts.map((account) => (
+              <Fragment key={account.id}>
+                <option value={`account:${account.id}`}>{account.name}</option>
+                {account.cards.map((card) => (
+                  <option key={card.id} value={`card:${card.id}`}>
+                    　└ {card.name}
+                  </option>
+                ))}
+              </Fragment>
+            ))}
+          </select>
           <fieldset>
             <legend>公開範囲</legend>
             <label>
