@@ -78,6 +78,22 @@ class FixedCostServiceTest {
     }
 
     @Test
+    void listFixedCosts_他ユーザーが世帯共有固定費を閲覧すると口座とカードのIDを返さない() {
+        when(householdMemberMapper.findByUserId(2L)).thenReturn(memberOf(10L));
+        FixedCostEntity shared = fixedCostOf(50L, 10L, null, 1L);
+        shared.setAccountId(5L);
+        when(fixedCostMapper.findVisibleByHouseholdIdAndUserId(10L, 2L)).thenReturn(List.of(shared));
+
+        List<FixedCostResponse> response = service().listFixedCosts(2L);
+
+        assertThat(response).singleElement().satisfies(fixedCost -> {
+            assertThat(fixedCost.editable()).isFalse();
+            assertThat(fixedCost.accountId()).isNull();
+            assertThat(fixedCost.cardId()).isNull();
+        });
+    }
+
+    @Test
     void createFixedCost_personalがtrueならowner_user_idに自分を設定する() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
 

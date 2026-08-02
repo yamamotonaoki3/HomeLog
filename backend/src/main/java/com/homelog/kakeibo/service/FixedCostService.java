@@ -113,6 +113,6 @@ public class FixedCostService {
         boolean editable = fixedCost.getCreatedByUserId().equals(userId);
         return new FixedCostResponse(fixedCost.getId(), fixedCost.getName(), fixedCost.getAmount(),
                 fixedCost.getPaymentDay(), personal, fixedCost.isIncludeInHouseholdTotal(), editable,
-                fixedCost.getAccountId(), fixedCost.getCardId());
+                editable ? fixedCost.getAccountId() : null, editable ? fixedCost.getCardId() : null);
     }
 }
