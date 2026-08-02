@@ -37,9 +37,11 @@ class FixedCostServiceTest {
     private HouseholdMemberMapper householdMemberMapper;
     @Mock
     private AccountService accountService;
+    @Mock
+    private CardService cardService;
 
     private FixedCostService service() {
-        return new FixedCostService(fixedCostMapper, householdMemberMapper, accountService);
+        return new FixedCostService(fixedCostMapper, householdMemberMapper, accountService, cardService);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -134,6 +136,7 @@ class FixedCostServiceTest {
         assertThat(response.accountId()).isEqualTo(5L);
         assertThat(response.cardId()).isNull();
         verify(accountService).validateOwnedAccountForExpense(1L, 10L, 5L);
+        verify(accountService).lockAccountForUpdate(5L);
         ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
         verify(fixedCostMapper).insert(captor.capture());
         assertThat(captor.getValue().getAccountId()).isEqualTo(5L);
@@ -150,6 +153,7 @@ class FixedCostServiceTest {
         assertThat(response.cardId()).isEqualTo(50L);
         assertThat(response.accountId()).isNull();
         verify(accountService).findOwnedCardForExpense(1L, 10L, 50L);
+        verify(cardService).lockCardForUpdate(50L);
         ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
         verify(fixedCostMapper).insert(captor.capture());
         assertThat(captor.getValue().getCardId()).isEqualTo(50L);
@@ -201,6 +205,7 @@ class FixedCostServiceTest {
 
         assertThat(response.accountId()).isEqualTo(5L);
         verify(accountService).validateOwnedAccountForExpense(1L, 10L, 5L);
+        verify(accountService).lockAccountForUpdate(5L);
         verify(fixedCostMapper).update(50L, "家賃", new BigDecimal("80000"), 27, null, false, 5L, null);
     }
 

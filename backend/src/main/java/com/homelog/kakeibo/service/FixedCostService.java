@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FixedCostService {
@@ -22,12 +23,14 @@ public class FixedCostService {
     private final FixedCostMapper fixedCostMapper;
     private final HouseholdMemberMapper householdMemberMapper;
     private final AccountService accountService;
+    private final CardService cardService;
 
     public FixedCostService(FixedCostMapper fixedCostMapper, HouseholdMemberMapper householdMemberMapper,
-            AccountService accountService) {
+            AccountService accountService, CardService cardService) {
         this.fixedCostMapper = fixedCostMapper;
         this.householdMemberMapper = householdMemberMapper;
         this.accountService = accountService;
+        this.cardService = cardService;
     }
 
     public List<FixedCostResponse> listFixedCosts(Long userId) {
@@ -37,6 +40,7 @@ public class FixedCostService {
                 .toList();
     }
 
+    @Transactional
     public FixedCostResponse createFixedCost(Long userId, CreateFixedCostRequest request) {
         Long householdId = resolveHouseholdId(userId);
         validateAndResolveAccountOrCard(userId, householdId, request.accountId(), request.cardId());
@@ -55,6 +59,7 @@ public class FixedCostService {
         return toResponse(fixedCost, userId);
     }
 
+    @Transactional
     public FixedCostResponse updateFixedCost(Long userId, Long fixedCostId, UpdateFixedCostRequest request) {
         Long householdId = resolveHouseholdId(userId);
         FixedCostEntity fixedCost = findEditable(userId, householdId, fixedCostId);
@@ -86,8 +91,10 @@ public class FixedCostService {
         }
         if (cardId != null) {
             accountService.findOwnedCardForExpense(userId, householdId, cardId);
+            cardService.lockCardForUpdate(cardId);
         } else if (accountId != null) {
             accountService.validateOwnedAccountForExpense(userId, householdId, accountId);
+            accountService.lockAccountForUpdate(accountId);
         }
     }
 
