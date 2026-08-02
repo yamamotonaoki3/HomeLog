@@ -86,7 +86,9 @@ flowchart TD
 
 [data-model.md](../data-model.md) の `fixed_costs`（`created_by_user_id`含む）, `fixed_cost_splits`, `expenses.fixed_cost_id` を参照。
 
-## 7-2. 自動計上バッチの実装方式（確定事項）
+## 7-2. 自動計上バッチの実装方式（設計決定・実装は別Issueで対応）
+
+現時点では未実装。以下は実装方針の設計決定であり、別Issueでこの方針に従って実装する。
 
 - `@Scheduled`（Spring Boot標準機能）により毎日1:00（Asia/Tokyo）に実行する。全世帯を対象に、`payment_day`が当日と一致する固定費、または当日がその月の末日かつ`payment_day`が当月の末日を超える固定費（例：`payment_day=31`の固定費を2月28日に計上）を抽出し、未計上（同一固定費・同月にまだexpensesが存在しない）であれば`expenses`へ計上する。1件の計上失敗は他の固定費の計上を妨げない。
 - カテゴリーは、家計簿カテゴリーの初期リスト（[F03_kakeibo_expense](F03_kakeibo_expense.md)参照）に追加した「固定費」というデフォルトカテゴリーを使用する。

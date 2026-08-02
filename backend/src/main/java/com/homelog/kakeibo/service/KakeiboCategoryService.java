@@ -11,6 +11,8 @@ import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import com.homelog.kakeibo.mapper.KakeiboCategoryMapper;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,8 +43,15 @@ public class KakeiboCategoryService {
         Long householdId = resolveHouseholdId(userId);
         householdMapper.lockById(householdId);
         List<KakeiboCategoryEntity> categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
-        if (categories.stream().noneMatch(KakeiboCategoryEntity::isDefault)) {
-            seedDefaultCategories(householdId);
+        Set<String> existingDefaultNames = categories.stream()
+                .filter(KakeiboCategoryEntity::isDefault)
+                .map(KakeiboCategoryEntity::getName)
+                .collect(Collectors.toSet());
+        List<String> missingDefaultNames = DEFAULT_CATEGORY_NAMES.stream()
+                .filter(name -> !existingDefaultNames.contains(name))
+                .toList();
+        if (!missingDefaultNames.isEmpty()) {
+            seedDefaultCategories(householdId, missingDefaultNames);
             categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
         }
         return categories.stream().map(this::toResponse).toList();
@@ -81,8 +90,8 @@ public class KakeiboCategoryService {
         kakeiboCategoryMapper.delete(categoryId);
     }
 
-    private void seedDefaultCategories(Long householdId) {
-        for (String name : DEFAULT_CATEGORY_NAMES) {
+    private void seedDefaultCategories(Long householdId, List<String> categoryNames) {
+        for (String name : categoryNames) {
             KakeiboCategoryEntity category = new KakeiboCategoryEntity();
             category.setHouseholdId(householdId);
             category.setName(name);
