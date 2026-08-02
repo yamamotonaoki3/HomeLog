@@ -92,6 +92,9 @@ public class AccountService {
         if (fixedCostMapper.countByAccountId(accountId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
+        if (fixedCostMapper.countByCardAccountId(accountId) > 0) {
+            throw new BadRequestException(IN_USE_MESSAGE);
+        }
         accountMapper.delete(accountId);
     }
 

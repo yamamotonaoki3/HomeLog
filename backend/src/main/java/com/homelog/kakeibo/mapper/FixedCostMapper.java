@@ -27,5 +27,7 @@ public interface FixedCostMapper {
 
     int countByAccountId(long accountId);
 
+    int countByCardAccountId(long accountId);
+
     int countByCardId(long cardId);
 }

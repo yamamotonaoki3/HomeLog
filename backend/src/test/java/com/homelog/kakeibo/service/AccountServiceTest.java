@@ -142,6 +142,7 @@ class AccountServiceTest {
         when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
         when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(0);
         when(fixedCostMapper.countByAccountId(5L)).thenReturn(0);
+        when(fixedCostMapper.countByCardAccountId(5L)).thenReturn(0);
 
         service().deleteAccount(1L, 5L);
 
@@ -153,6 +154,7 @@ class AccountServiceTest {
         inOrder.verify(cardChargeMapper).countByFromAccountId(5L);
         inOrder.verify(cardMapper).countUndeletableCardsByAccountId(5L);
         inOrder.verify(fixedCostMapper).countByAccountId(5L);
+        inOrder.verify(fixedCostMapper).countByCardAccountId(5L);
         inOrder.verify(accountMapper).delete(5L);
     }
 
@@ -164,6 +166,20 @@ class AccountServiceTest {
         when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
         when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(0);
         when(fixedCostMapper.countByAccountId(5L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
+        verify(accountMapper, never()).delete(anyLong());
+    }
+
+    @Test
+    void deleteAccount_子カードが固定費で使用中は削除不可() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+        when(expenseMapper.countByAccountId(5L)).thenReturn(0);
+        when(cardChargeMapper.countByFromAccountId(5L)).thenReturn(0);
+        when(cardMapper.countUndeletableCardsByAccountId(5L)).thenReturn(0);
+        when(fixedCostMapper.countByAccountId(5L)).thenReturn(0);
+        when(fixedCostMapper.countByCardAccountId(5L)).thenReturn(1);
 
         assertThatThrownBy(() -> service().deleteAccount(1L, 5L)).isInstanceOf(BadRequestException.class);
         verify(accountMapper, never()).delete(anyLong());

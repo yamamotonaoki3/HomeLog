@@ -342,6 +342,27 @@ class AccountFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("固定費の引き落とし元として使用中の子カードを持つ口座は削除できず400を返す")
+    void deleteAccountWithCardInUseByFixedCostReturns400() {
+        String token = registerAndLogin(uniqueEmail("account-card-fixedcost-inuse"));
+        createHousehold(token, "固定費使用中子カード口座削除テスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "生活費口座", "type", "bank", "balance", 0), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "クレジットカード", "cardType", "credit"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/fixed-costs",
+                Map.of("name", "動画配信サービス", "amount", 1000, "paymentDay", 10, "personal", false,
+                        "includeInHouseholdTotal", false, "cardId", cardId),
+                token);
+
+        ResponseEntity<Map<String, Object>> deleteResponse = deleteJson("/api/accounts/" + accountId, token);
+
+        assertThat(deleteResponse.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
     @DisplayName("固定費の引き落とし元として使用中のカードは削除できず400を返す")
     void deleteCardInUseByFixedCostReturns400() {
         String token = registerAndLogin(uniqueEmail("card-fixedcost-inuse"));

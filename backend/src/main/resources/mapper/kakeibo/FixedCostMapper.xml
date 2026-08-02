@@ -71,6 +71,13 @@
         SELECT COUNT(*) FROM fixed_costs WHERE account_id = #{accountId}
     </select>
 
+    <select id="countByCardAccountId" parameterType="long" resultType="int">
+        SELECT COUNT(*)
+        FROM fixed_costs fc
+        JOIN cards c ON fc.card_id = c.id
+        WHERE c.account_id = #{accountId}
+    </select>
+
     <select id="countByCardId" parameterType="long" resultType="int">
         SELECT COUNT(*) FROM fixed_costs WHERE card_id = #{cardId}
     </select>
