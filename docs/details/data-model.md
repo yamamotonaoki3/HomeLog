@@ -92,6 +92,7 @@ erDiagram
         bigint event_id FK
         bigint account_id FK
         bigint card_id FK
+        bigint fixed_cost_id FK
         numeric amount
         varchar purpose
         varchar memo
@@ -123,6 +124,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint owner_user_id FK
+        bigint created_by_user_id FK
         varchar name
         numeric amount
         int payment_day
@@ -225,6 +227,8 @@ erDiagram
     households ||--o{ fixed_costs : "持つ"
     fixed_costs ||--o{ fixed_cost_splits : "割り勘設定を持つ"
     users ||--o{ fixed_cost_splits : "負担する(debtor)"
+    users ||--o{ fixed_costs : "登録する(created_by)"
+    fixed_costs ||--o{ expenses : "自動計上する"
     households ||--o{ accounts : "持つ"
     households ||--o{ events : "持つ"
     households ||--o{ zaiko_categories : "持つ"
@@ -385,6 +389,7 @@ erDiagram
 | expenses.event_id | BIGINT | — | FK → events.id（イベント紐付け、任意） |
 | expenses.account_id | BIGINT | — | FK → accounts.id（口座直接指定 または credit型カード選択時の親口座、任意） |
 | expenses.card_id | BIGINT | — | FK → cards.id（charge型カード選択時のみ設定。この場合account_idはNULL、カード自身の残高から減算） |
+| expenses.fixed_cost_id | BIGINT | — | FK → fixed_costs.id（固定費の毎月自動計上により作成された支出のみ設定。固定費削除時はNULLになる） |
 | expenses.amount | NUMERIC | ○ | 支出金額 |
 | expenses.purpose | VARCHAR(100) | ○ | 使用用途 |
 | expenses.memo | VARCHAR(255) | — | メモ |
@@ -430,6 +435,7 @@ erDiagram
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | owner_user_id | BIGINT | — | FK → users.id。NULL＝世帯共有（メンバー全員が閲覧可能）、設定時＝個人所有（本人のみ閲覧・編集可能）。登録時に選択する（[common-notes.md](common-notes.md) 2章） |
+| created_by_user_id | BIGINT | ○ | FK → users.id（登録者）。世帯共有固定費の自動計上時は`expenses.payer_user_id`として使用する。編集・削除も登録者本人のみ可能（世帯共有でも他メンバーは不可） |
 | name | VARCHAR(50) | ○ | 固定費名（家賃、水道代 等） |
 | amount | NUMERIC | ○ | 金額 |
 | payment_day | INT | ○ | 毎月の支払日 |

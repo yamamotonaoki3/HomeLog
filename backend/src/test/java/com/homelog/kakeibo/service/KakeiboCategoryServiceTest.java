@@ -65,9 +65,9 @@ class KakeiboCategoryServiceTest {
 
         List<CategoryResponse> response = service().listCategories(1L);
 
-        assertThat(response).hasSize(9);
+        assertThat(response).hasSize(10);
         assertThat(response).allMatch(CategoryResponse::isDefault);
-        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
@@ -82,7 +82,7 @@ class KakeiboCategoryServiceTest {
         InOrder inOrder = inOrder(householdMapper, kakeiboCategoryMapper);
         inOrder.verify(householdMapper).lockById(10L);
         inOrder.verify(kakeiboCategoryMapper).findByHouseholdId(10L);
-        inOrder.verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        inOrder.verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
@@ -121,9 +121,9 @@ class KakeiboCategoryServiceTest {
 
         List<CategoryResponse> response = service().listCategories(1L);
 
-        assertThat(response).hasSize(10);
-        assertThat(response).filteredOn(CategoryResponse::isDefault).hasSize(9);
-        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        assertThat(response).hasSize(11);
+        assertThat(response).filteredOn(CategoryResponse::isDefault).hasSize(10);
+        verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test

@@ -9,6 +9,7 @@
         <result property="categoryId" column="category_id"/>
         <result property="accountId" column="account_id"/>
         <result property="cardId" column="card_id"/>
+        <result property="fixedCostId" column="fixed_cost_id"/>
         <result property="amount" column="amount"/>
         <result property="purpose" column="purpose"/>
         <result property="memo" column="memo"/>
@@ -20,23 +21,23 @@
     <insert id="insert" parameterType="com.homelog.kakeibo.entity.ExpenseEntity"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO expenses
-            (household_id, payer_user_id, category_id, account_id, card_id, amount, purpose, memo, expense_date,
-             include_in_household_total, created_at)
+            (household_id, payer_user_id, category_id, account_id, card_id, fixed_cost_id, amount, purpose, memo,
+             expense_date, include_in_household_total, created_at)
         VALUES
-            (#{householdId}, #{payerUserId}, #{categoryId}, #{accountId}, #{cardId}, #{amount}, #{purpose}, #{memo},
-             #{expenseDate}, #{includeInHouseholdTotal}, #{createdAt})
+            (#{householdId}, #{payerUserId}, #{categoryId}, #{accountId}, #{cardId}, #{fixedCostId}, #{amount},
+             #{purpose}, #{memo}, #{expenseDate}, #{includeInHouseholdTotal}, #{createdAt})
     </insert>
 
     <select id="findById" parameterType="long" resultMap="expenseResultMap">
-        SELECT id, household_id, payer_user_id, category_id, account_id, card_id, amount, purpose, memo, expense_date,
-               include_in_household_total, created_at
+        SELECT id, household_id, payer_user_id, category_id, account_id, card_id, fixed_cost_id, amount, purpose,
+               memo, expense_date, include_in_household_total, created_at
         FROM expenses
         WHERE id = #{id}
     </select>
 
     <select id="findByPayerUserId" resultMap="expenseResultMap">
-        SELECT id, household_id, payer_user_id, category_id, account_id, card_id, amount, purpose, memo, expense_date,
-               include_in_household_total, created_at
+        SELECT id, household_id, payer_user_id, category_id, account_id, card_id, fixed_cost_id, amount, purpose,
+               memo, expense_date, include_in_household_total, created_at
         FROM expenses
         WHERE household_id = #{householdId}
           AND payer_user_id = #{payerUserId}

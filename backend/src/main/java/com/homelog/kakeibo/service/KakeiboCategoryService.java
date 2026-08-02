@@ -21,7 +21,7 @@ public class KakeiboCategoryService {
     private static final String IN_USE_MESSAGE = "使用中のカテゴリーは削除できません";
     private static final String DEFAULT_IMMUTABLE_MESSAGE = "デフォルトカテゴリーは編集・削除できません";
     private static final List<String> DEFAULT_CATEGORY_NAMES = List.of(
-            "食費", "日用品", "交際費", "光熱費", "住居費", "通信費", "医療費", "趣味・娯楽", "その他");
+            "食費", "日用品", "交際費", "光熱費", "住居費", "通信費", "医療費", "趣味・娯楽", "固定費", "その他");
 
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
     private final ExpenseMapper expenseMapper;
