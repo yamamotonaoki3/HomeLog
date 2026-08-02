@@ -8,8 +8,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.FixedCostEntity;
+import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,9 +31,16 @@ class FixedCostPostingExecutorTest {
     private ExpenseMapper expenseMapper;
     @Mock
     private KakeiboCategoryService kakeiboCategoryService;
+    @Mock
+    private CardMapper cardMapper;
+    @Mock
+    private AccountService accountService;
+    @Mock
+    private CardService cardService;
 
     private FixedCostPostingExecutor executor() {
-        return new FixedCostPostingExecutor(expenseMapper, kakeiboCategoryService);
+        return new FixedCostPostingExecutor(expenseMapper, kakeiboCategoryService, cardMapper, accountService,
+                cardService);
     }
 
     private FixedCostEntity fixedCost(long id, long householdId, long createdByUserId, String name,
@@ -45,6 +55,22 @@ class FixedCostPostingExecutorTest {
         fixedCost.setIncludeInHouseholdTotal(includeInHouseholdTotal);
         fixedCost.setCreatedAt(LocalDateTime.now());
         return fixedCost;
+    }
+
+    private AccountEntity account(long id, String balance) {
+        AccountEntity account = new AccountEntity();
+        account.setId(id);
+        account.setBalance(new BigDecimal(balance));
+        return account;
+    }
+
+    private CardEntity card(long id, long accountId, String cardType, String balance) {
+        CardEntity card = new CardEntity();
+        card.setId(id);
+        card.setAccountId(accountId);
+        card.setCardType(cardType);
+        card.setBalance(new BigDecimal(balance));
+        return card;
     }
 
     @Test
@@ -68,6 +94,8 @@ class FixedCostPostingExecutorTest {
         assertThat(inserted.getPurpose()).isEqualTo("家賃");
         assertThat(inserted.getExpenseDate()).isEqualTo(today);
         assertThat(inserted.isIncludeInHouseholdTotal()).isTrue();
+        assertThat(inserted.getAccountId()).isNull();
+        assertThat(inserted.getCardId()).isNull();
     }
 
     @Test
@@ -117,5 +145,79 @@ class FixedCostPostingExecutorTest {
         ArgumentCaptor<ExpenseEntity> captor = ArgumentCaptor.forClass(ExpenseEntity.class);
         verify(expenseMapper).insert(captor.capture());
         assertThat(captor.getValue().getCategoryId()).isEqualTo(6L);
+    }
+
+    @Test
+    void postSingleFixedCost_口座指定時は口座残高から減算する() {
+        FixedCostEntity fixedCost = fixedCost(7L, 10L, 100L, "家賃", true);
+        fixedCost.setAccountId(20L);
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        when(expenseMapper.countByFixedCostIdAndMonth(7L, 2026, 3)).thenReturn(0);
+        when(kakeiboCategoryService.resolveDefaultCategoryId(10L, "固定費")).thenReturn(5L);
+        when(accountService.lockAccountForUpdate(20L)).thenReturn(account(20L, "100000"));
+
+        executor().postSingleFixedCost(fixedCost, today);
+
+        ArgumentCaptor<ExpenseEntity> captor = ArgumentCaptor.forClass(ExpenseEntity.class);
+        verify(expenseMapper).insert(captor.capture());
+        assertThat(captor.getValue().getAccountId()).isEqualTo(20L);
+        assertThat(captor.getValue().getCardId()).isNull();
+        verify(accountService).updateBalance(20L, new BigDecimal("20000"));
+    }
+
+    @Test
+    void postSingleFixedCost_チャージ型カード指定時はカード残高から減算する() {
+        FixedCostEntity fixedCost = fixedCost(8L, 10L, 100L, "サブスク", false);
+        fixedCost.setAmount(new BigDecimal("1000"));
+        fixedCost.setCardId(30L);
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        when(expenseMapper.countByFixedCostIdAndMonth(8L, 2026, 3)).thenReturn(0);
+        when(kakeiboCategoryService.resolveDefaultCategoryId(10L, "固定費")).thenReturn(5L);
+        when(cardMapper.findById(30L)).thenReturn(card(30L, 20L, "charge", "5000"));
+        when(cardService.lockCardForUpdate(30L)).thenReturn(card(30L, 20L, "charge", "5000"));
+
+        executor().postSingleFixedCost(fixedCost, today);
+
+        ArgumentCaptor<ExpenseEntity> captor = ArgumentCaptor.forClass(ExpenseEntity.class);
+        verify(expenseMapper).insert(captor.capture());
+        assertThat(captor.getValue().getCardId()).isEqualTo(30L);
+        assertThat(captor.getValue().getAccountId()).isNull();
+        verify(cardService).updateBalance(30L, new BigDecimal("4000"));
+        verify(accountService, never()).updateBalance(any(), any());
+    }
+
+    @Test
+    void postSingleFixedCost_クレジット型カード指定時は紐づく口座残高から減算する() {
+        FixedCostEntity fixedCost = fixedCost(9L, 10L, 100L, "携帯電話代", false);
+        fixedCost.setAmount(new BigDecimal("5000"));
+        fixedCost.setCardId(31L);
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        when(expenseMapper.countByFixedCostIdAndMonth(9L, 2026, 3)).thenReturn(0);
+        when(kakeiboCategoryService.resolveDefaultCategoryId(10L, "固定費")).thenReturn(5L);
+        when(cardMapper.findById(31L)).thenReturn(card(31L, 21L, "credit", "0"));
+        when(accountService.lockAccountForUpdate(21L)).thenReturn(account(21L, "50000"));
+
+        executor().postSingleFixedCost(fixedCost, today);
+
+        ArgumentCaptor<ExpenseEntity> captor = ArgumentCaptor.forClass(ExpenseEntity.class);
+        verify(expenseMapper).insert(captor.capture());
+        assertThat(captor.getValue().getAccountId()).isEqualTo(21L);
+        assertThat(captor.getValue().getCardId()).isNull();
+        verify(accountService).updateBalance(21L, new BigDecimal("45000"));
+        verify(cardService, never()).updateBalance(any(), any());
+    }
+
+    @Test
+    void postSingleFixedCost_引き落とし元のカードが見つからない場合は例外をスローする() {
+        FixedCostEntity fixedCost = fixedCost(10L, 10L, 100L, "サブスク", false);
+        fixedCost.setCardId(99L);
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        when(expenseMapper.countByFixedCostIdAndMonth(10L, 2026, 3)).thenReturn(0);
+        when(kakeiboCategoryService.resolveDefaultCategoryId(10L, "固定費")).thenReturn(5L);
+        when(cardMapper.findById(99L)).thenReturn(null);
+
+        assertThatThrownBy(() -> executor().postSingleFixedCost(fixedCost, today))
+                .isInstanceOf(IllegalStateException.class);
+        verify(expenseMapper, never()).insert(any());
     }
 }

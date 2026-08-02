@@ -15,6 +15,7 @@ import com.homelog.kakeibo.mapper.AccountMapper;
 import com.homelog.kakeibo.mapper.CardChargeMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
+import com.homelog.kakeibo.mapper.FixedCostMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
@@ -32,14 +33,17 @@ public class CardService {
     private final AccountMapper accountMapper;
     private final CardChargeMapper cardChargeMapper;
     private final ExpenseMapper expenseMapper;
+    private final FixedCostMapper fixedCostMapper;
     private final HouseholdMemberMapper householdMemberMapper;
 
     public CardService(CardMapper cardMapper, AccountMapper accountMapper, CardChargeMapper cardChargeMapper,
-            ExpenseMapper expenseMapper, HouseholdMemberMapper householdMemberMapper) {
+            ExpenseMapper expenseMapper, FixedCostMapper fixedCostMapper,
+            HouseholdMemberMapper householdMemberMapper) {
         this.cardMapper = cardMapper;
         this.accountMapper = accountMapper;
         this.cardChargeMapper = cardChargeMapper;
         this.expenseMapper = expenseMapper;
+        this.fixedCostMapper = fixedCostMapper;
         this.householdMemberMapper = householdMemberMapper;
     }
 
@@ -69,7 +73,8 @@ public class CardService {
         Long householdId = resolveHouseholdId(userId);
         findOwnedCard(userId, householdId, cardId);
         cardMapper.lockById(cardId);
-        if (expenseMapper.countByCardId(cardId) > 0 || cardChargeMapper.countByCardId(cardId) > 0) {
+        if (expenseMapper.countByCardId(cardId) > 0 || cardChargeMapper.countByCardId(cardId) > 0
+                || fixedCostMapper.countByCardId(cardId) > 0) {
             throw new BadRequestException(IN_USE_MESSAGE);
         }
         cardMapper.delete(cardId);

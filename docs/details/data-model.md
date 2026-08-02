@@ -125,6 +125,8 @@ erDiagram
         bigint household_id FK
         bigint owner_user_id FK
         bigint created_by_user_id FK
+        bigint account_id FK
+        bigint card_id FK
         varchar name
         numeric amount
         int payment_day
@@ -229,6 +231,8 @@ erDiagram
     users ||--o{ fixed_cost_splits : "負担する(debtor)"
     users ||--o{ fixed_costs : "登録する(created_by)"
     fixed_costs ||--o{ expenses : "自動計上する"
+    accounts ||--o{ fixed_costs : "引き落とし元(任意)"
+    cards ||--o{ fixed_costs : "引き落とし元(任意)"
     households ||--o{ accounts : "持つ"
     households ||--o{ events : "持つ"
     households ||--o{ zaiko_categories : "持つ"
@@ -436,6 +440,8 @@ erDiagram
 | household_id | BIGINT | ○ | FK → households.id |
 | owner_user_id | BIGINT | — | FK → users.id。NULL＝世帯共有（メンバー全員が閲覧可能）、設定時＝個人所有（本人のみ閲覧・編集可能）。登録時に選択する（[common-notes.md](common-notes.md) 2章） |
 | created_by_user_id | BIGINT | ○ | FK → users.id（登録者）。世帯共有固定費の自動計上時は`expenses.payer_user_id`として使用する。編集・削除も登録者本人のみ可能（世帯共有でも他メンバーは不可） |
+| account_id | BIGINT | — | FK → accounts.id（引き落とし元の口座直接指定 または credit型カード選択時の親口座、任意）。登録者本人が所有する口座に限る |
+| card_id | BIGINT | — | FK → cards.id（charge型カード選択時のみ設定。この場合account_idはNULL、カード自身の残高から減算）。登録者本人が所有するカードに限る |
 | name | VARCHAR(50) | ○ | 固定費名（家賃、水道代 等） |
 | amount | NUMERIC | ○ | 金額 |
 | payment_day | INT | ○ | 毎月の支払日 |

@@ -12,5 +12,7 @@ public record CreateFixedCostRequest(
         @NotNull @Positive @Max(9_999_999_999L) Long amount,
         @NotNull @Min(1) @Max(31) Integer paymentDay,
         @NotNull Boolean personal,
-        Boolean includeInHouseholdTotal) {
+        Boolean includeInHouseholdTotal,
+        Long accountId,
+        Long cardId) {
 }
