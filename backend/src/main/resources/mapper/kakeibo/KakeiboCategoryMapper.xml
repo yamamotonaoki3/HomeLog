@@ -28,6 +28,12 @@
         ORDER BY id
     </select>
 
+    <select id="findByHouseholdIdAndName" resultMap="categoryResultMap">
+        SELECT id, household_id, name, is_default
+        FROM kakeibo_categories
+        WHERE household_id = #{householdId} AND name = #{name}
+    </select>
+
     <update id="update">
         UPDATE kakeibo_categories
         SET name = #{name}

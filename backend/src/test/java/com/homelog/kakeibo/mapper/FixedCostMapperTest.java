@@ -127,6 +127,55 @@ class FixedCostMapperTest {
         assertThat(fixedCostMapper.findById(fixedCost.getId())).isNull();
     }
 
+    @Test
+    void findDueForPosting_支払日が当日と一致する固定費を抽出する() {
+        Long householdId = createHousehold("fc-house9", "FCCODE00000009");
+        Long userId = createUser("owner9@example.com");
+        fixedCostMapper.insert(newFixedCost(householdId, null, userId, "支払日一致", "1000", 27));
+        fixedCostMapper.insert(newFixedCost(householdId, null, userId, "支払日不一致", "1000", 26));
+
+        List<FixedCostEntity> found = fixedCostMapper.findDueForPosting(27, 31);
+
+        assertThat(found).extracting(FixedCostEntity::getName).containsExactly("支払日一致");
+    }
+
+    @Test
+    void findDueForPosting_月末クランプ対象の固定費を抽出する() {
+        Long householdId = createHousehold("fc-house10", "FCCODE00000010");
+        Long userId = createUser("owner10@example.com");
+        fixedCostMapper.insert(newFixedCost(householdId, null, userId, "31日払い", "1000", 31));
+
+        List<FixedCostEntity> found = fixedCostMapper.findDueForPosting(28, 28);
+
+        assertThat(found).extracting(FixedCostEntity::getName).containsExactly("31日払い");
+    }
+
+    @Test
+    void findDueForPosting_当月に存在する支払日はクランプ対象にならない() {
+        Long householdId = createHousehold("fc-house11", "FCCODE00000011");
+        Long userId = createUser("owner11@example.com");
+        fixedCostMapper.insert(newFixedCost(householdId, null, userId, "30日払い", "1000", 30));
+
+        List<FixedCostEntity> found = fixedCostMapper.findDueForPosting(29, 30);
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findDueForPosting_複数世帯にまたがる対象を全て抽出する() {
+        Long householdId1 = createHousehold("fc-house12", "FCCODE00000012");
+        Long householdId2 = createHousehold("fc-house13", "FCCODE00000013");
+        Long userId1 = createUser("owner12@example.com");
+        Long userId2 = createUser("owner13@example.com");
+        fixedCostMapper.insert(newFixedCost(householdId1, null, userId1, "世帯1の固定費", "1000", 15));
+        fixedCostMapper.insert(newFixedCost(householdId2, null, userId2, "世帯2の固定費", "1000", 15));
+
+        List<FixedCostEntity> found = fixedCostMapper.findDueForPosting(15, 31);
+
+        assertThat(found).extracting(FixedCostEntity::getName)
+                .containsExactlyInAnyOrder("世帯1の固定費", "世帯2の固定費");
+    }
+
     private FixedCostEntity newFixedCost(Long householdId, Long ownerUserId, Long createdByUserId, String name,
             String amount, int paymentDay) {
         FixedCostEntity fixedCost = new FixedCostEntity();

@@ -74,6 +74,37 @@ class KakeiboCategoryMapperTest {
         assertThat(kakeiboCategoryMapper.findById(categoryId)).isNull();
     }
 
+    @Test
+    void findByHouseholdIdAndName_名前が一致するカテゴリーを取得できる() {
+        Long householdId = createHousehold("cat-house5", "KAKEICODE000006");
+        insertCategory(householdId, "固定費", true);
+
+        KakeiboCategoryEntity found = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId, "固定費");
+
+        assertThat(found).isNotNull();
+        assertThat(found.getName()).isEqualTo("固定費");
+    }
+
+    @Test
+    void findByHouseholdIdAndName_一致するカテゴリーが無い場合はnull() {
+        Long householdId = createHousehold("cat-house6", "KAKEICODE000007");
+
+        KakeiboCategoryEntity found = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId, "固定費");
+
+        assertThat(found).isNull();
+    }
+
+    @Test
+    void findByHouseholdIdAndName_異なる世帯のカテゴリーは取得しない() {
+        Long householdId1 = createHousehold("cat-house7", "KAKEICODE000008");
+        Long householdId2 = createHousehold("cat-house8", "KAKEICODE000009");
+        insertCategory(householdId1, "固定費", true);
+
+        KakeiboCategoryEntity found = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId2, "固定費");
+
+        assertThat(found).isNull();
+    }
+
     private Long insertCategory(Long householdId, String name, boolean isDefault) {
         KakeiboCategoryEntity category = new KakeiboCategoryEntity();
         category.setHouseholdId(householdId);

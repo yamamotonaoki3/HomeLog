@@ -7,6 +7,7 @@ import com.homelog.household.mapper.HouseholdMapper;
 import com.homelog.kakeibo.entity.AccountEntity;
 import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
+import com.homelog.kakeibo.entity.FixedCostEntity;
 import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -38,6 +39,9 @@ class ExpenseMapperTest {
 
     @Autowired
     private CardMapper cardMapper;
+
+    @Autowired
+    private FixedCostMapper fixedCostMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -153,6 +157,68 @@ class ExpenseMapperTest {
         Long cardId = insertChargeCard(householdId, userId);
 
         assertThat(expenseMapper.countByCardId(cardId)).isEqualTo(0);
+    }
+
+    @Test
+    void countByFixedCostIdAndMonth_同一固定費_同月の計上件数を返す() {
+        Long householdId = createHousehold("exp-house8", "EXPCODE0000010");
+        Long userId = createUser("payer8@example.com");
+        Long categoryId = insertCategory(householdId, "固定費");
+        Long fixedCostId = insertFixedCost(householdId, userId, "家賃");
+        ExpenseEntity expense = newExpense(householdId, userId, categoryId, "80000", "家賃");
+        expense.setFixedCostId(fixedCostId);
+        expense.setExpenseDate(LocalDate.of(2026, 3, 27));
+        expenseMapper.insert(expense);
+
+        int count = expenseMapper.countByFixedCostIdAndMonth(fixedCostId, 2026, 3);
+
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void countByFixedCostIdAndMonth_異なる月の計上は含まれない() {
+        Long householdId = createHousehold("exp-house9", "EXPCODE0000011");
+        Long userId = createUser("payer9@example.com");
+        Long categoryId = insertCategory(householdId, "固定費");
+        Long fixedCostId = insertFixedCost(householdId, userId, "家賃");
+        ExpenseEntity expense = newExpense(householdId, userId, categoryId, "80000", "家賃");
+        expense.setFixedCostId(fixedCostId);
+        expense.setExpenseDate(LocalDate.of(2026, 2, 27));
+        expenseMapper.insert(expense);
+
+        int count = expenseMapper.countByFixedCostIdAndMonth(fixedCostId, 2026, 3);
+
+        assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    void countByFixedCostIdAndMonth_異なる固定費の計上は含まれない() {
+        Long householdId = createHousehold("exp-house10", "EXPCODE0000012");
+        Long userId = createUser("payer10@example.com");
+        Long categoryId = insertCategory(householdId, "固定費");
+        Long fixedCostId1 = insertFixedCost(householdId, userId, "家賃");
+        Long fixedCostId2 = insertFixedCost(householdId, userId, "水道代");
+        ExpenseEntity expense = newExpense(householdId, userId, categoryId, "80000", "家賃");
+        expense.setFixedCostId(fixedCostId1);
+        expense.setExpenseDate(LocalDate.of(2026, 3, 27));
+        expenseMapper.insert(expense);
+
+        int count = expenseMapper.countByFixedCostIdAndMonth(fixedCostId2, 2026, 3);
+
+        assertThat(count).isEqualTo(0);
+    }
+
+    private Long insertFixedCost(Long householdId, Long userId, String name) {
+        FixedCostEntity fixedCost = new FixedCostEntity();
+        fixedCost.setHouseholdId(householdId);
+        fixedCost.setCreatedByUserId(userId);
+        fixedCost.setName(name);
+        fixedCost.setAmount(new BigDecimal("80000"));
+        fixedCost.setPaymentDay(27);
+        fixedCost.setIncludeInHouseholdTotal(false);
+        fixedCost.setCreatedAt(LocalDateTime.now());
+        fixedCostMapper.insert(fixedCost);
+        return fixedCost.getId();
     }
 
     private Long insertChargeCard(Long householdId, Long userId) {

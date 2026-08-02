@@ -21,4 +21,6 @@ public interface FixedCostMapper {
             @Param("includeInHouseholdTotal") boolean includeInHouseholdTotal);
 
     void delete(long id);
+
+    List<FixedCostEntity> findDueForPosting(@Param("day") int day, @Param("lastDayOfMonth") int lastDayOfMonth);
 }

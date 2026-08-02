@@ -59,4 +59,11 @@
         SELECT COUNT(*) FROM expenses WHERE card_id = #{cardId}
     </select>
 
+    <select id="countByFixedCostIdAndMonth" resultType="int">
+        SELECT COUNT(*) FROM expenses
+        WHERE fixed_cost_id = #{fixedCostId}
+          AND EXTRACT(YEAR FROM expense_date) = #{year}
+          AND EXTRACT(MONTH FROM expense_date) = #{month}
+    </select>
+
 </mapper>

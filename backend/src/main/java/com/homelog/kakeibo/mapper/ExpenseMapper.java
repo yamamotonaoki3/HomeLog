@@ -21,4 +21,7 @@ public interface ExpenseMapper {
     int countByAccountId(long accountId);
 
     int countByCardId(long cardId);
+
+    int countByFixedCostIdAndMonth(@Param("fixedCostId") long fixedCostId, @Param("year") int year,
+            @Param("month") int month);
 }
