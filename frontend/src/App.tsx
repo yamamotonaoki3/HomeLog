@@ -5,6 +5,7 @@ import { RequireAuth } from './routes/RequireAuth'
 import { RequireHousehold } from './routes/RequireHousehold'
 import { AccountsPage } from './pages/AccountsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { FixedCostsPage } from './pages/FixedCostsPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage'
 import { KakeiboPage } from './pages/KakeiboPage'
@@ -30,6 +31,7 @@ function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/zaiko" element={<ZaikoPage />} />
                 <Route path="/kakeibo" element={<KakeiboPage />} />
+                <Route path="/fixed-costs" element={<FixedCostsPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
               </Route>

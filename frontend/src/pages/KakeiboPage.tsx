@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
-import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
+import type { Account, Expense, FixedCost, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
 import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
 import { TransactionModal } from '../components/kakeibo/TransactionModal'
@@ -22,6 +22,7 @@ export function KakeiboPage() {
   const latestIncomeRequestId = useRef(0)
 
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
 
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -149,6 +150,17 @@ export function KakeiboPage() {
         }
       })
 
+    apiClient
+      .get<FixedCost[]>('/fixed-costs')
+      .then((response) => {
+        if (!cancelled) setFixedCosts(response.data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          showToast(getApiErrorMessage(err, '固定費の取得に失敗しました。時間をおいて再度お試しください'))
+        }
+      })
+
     return () => {
       cancelled = true
     }
@@ -227,9 +239,13 @@ export function KakeiboPage() {
   const activeCategoryFilter = typeFilter === 'income' ? incomeCategoryFilter : categoryFilter
   const activeCategoryOptions = typeFilter === 'income' ? incomeCategories : categories
   const addDisabled = categories.length === 0 && incomeCategories.length === 0
+  const fixedCostTotal = fixedCosts.reduce((sum, fixedCost) => sum + fixedCost.amount, 0)
 
   return (
     <div className="page">
+      <div className="panel" data-testid="fixed-cost-summary">
+        <p>今月の固定費予定額：{fixedCostTotal}円</p>
+      </div>
       <TransactionListPanel
         expenses={expenses}
         incomes={incomes}

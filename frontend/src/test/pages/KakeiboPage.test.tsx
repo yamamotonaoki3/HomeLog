@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { KakeiboPage } from '../../pages/KakeiboPage'
-import type { Account, Expense, Income } from '../../api/kakeiboTypes'
+import type { Account, Expense, FixedCost, Income } from '../../api/kakeiboTypes'
 
 const defaultCategories = [
   { id: 1, name: '食費', isDefault: true },
@@ -21,6 +21,7 @@ interface MockState {
   expenses: Expense[]
   incomes: Income[]
   accounts: Account[]
+  fixedCosts: FixedCost[]
 }
 
 /** 家計簿API一式を状態ベースでモックし、リクエスト記録と状態を返す */
@@ -29,6 +30,7 @@ function setupApi(initial: Partial<MockState> = {}) {
     expenses: initial.expenses ?? [],
     incomes: initial.incomes ?? [],
     accounts: initial.accounts ?? [],
+    fixedCosts: initial.fixedCosts ?? [],
   }
   const calls: { method: string; url: string; body?: unknown }[] = []
 
@@ -83,6 +85,7 @@ function setupApi(initial: Partial<MockState> = {}) {
       return HttpResponse.json(income, { status: 201 })
     }),
     http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
+    http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
   )
 
   return { state, calls }

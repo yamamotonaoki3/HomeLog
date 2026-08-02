@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type TypeFilter = 'all' | 'expense' | 'income'
@@ -115,6 +116,9 @@ export function TransactionListPanel({
         <button type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
           登録
         </button>
+        <Link to="/fixed-costs" className="btn btn-secondary">
+          固定費
+        </Link>
       </div>
       <table className="table">
         <thead>
