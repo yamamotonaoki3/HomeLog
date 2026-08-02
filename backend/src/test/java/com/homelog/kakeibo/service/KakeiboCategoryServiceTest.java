@@ -65,9 +65,9 @@ class KakeiboCategoryServiceTest {
 
         List<CategoryResponse> response = service().listCategories(1L);
 
-        assertThat(response).hasSize(9);
+        assertThat(response).hasSize(10);
         assertThat(response).allMatch(CategoryResponse::isDefault);
-        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
@@ -82,23 +82,40 @@ class KakeiboCategoryServiceTest {
         InOrder inOrder = inOrder(householdMapper, kakeiboCategoryMapper);
         inOrder.verify(householdMapper).lockById(10L);
         inOrder.verify(kakeiboCategoryMapper).findByHouseholdId(10L);
-        inOrder.verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        inOrder.verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
-    void listCategories_既にカテゴリーがある場合はそのまま返す() {
+    void listCategories_デフォルトカテゴリーが全て揃っている場合はそのまま返す() {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
-        KakeiboCategoryEntity existing = new KakeiboCategoryEntity();
-        existing.setId(1L);
-        existing.setHouseholdId(10L);
-        existing.setName("食費");
-        existing.setDefault(true);
-        when(kakeiboCategoryMapper.findByHouseholdId(10L)).thenReturn(List.of(existing));
+        List<KakeiboCategoryEntity> existing = defaultCategories();
+        when(kakeiboCategoryMapper.findByHouseholdId(10L)).thenReturn(existing);
 
         List<CategoryResponse> response = service().listCategories(1L);
 
-        assertThat(response).hasSize(1);
+        assertThat(response).hasSize(10);
         verify(kakeiboCategoryMapper, never()).insert(any());
+    }
+
+    @Test
+    void listCategories_デフォルトカテゴリーが一部だけ存在する場合は不足分だけ投入する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        List<KakeiboCategoryEntity> categories = new ArrayList<>();
+        categories.add(defaultCategory(1L, "食費"));
+        when(kakeiboCategoryMapper.findByHouseholdId(10L)).thenAnswer(invocation -> categories);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            KakeiboCategoryEntity category = invocation.getArgument(0);
+            category.setId((long) (categories.size() + 1));
+            categories.add(category);
+            return null;
+        }).when(kakeiboCategoryMapper).insert(any(KakeiboCategoryEntity.class));
+
+        List<CategoryResponse> response = service().listCategories(1L);
+
+        assertThat(response).hasSize(10);
+        assertThat(response).extracting(CategoryResponse::name).containsExactlyInAnyOrder(
+                "食費", "日用品", "交際費", "光熱費", "住居費", "通信費", "医療費", "趣味・娯楽", "固定費", "その他");
+        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
@@ -121,9 +138,9 @@ class KakeiboCategoryServiceTest {
 
         List<CategoryResponse> response = service().listCategories(1L);
 
-        assertThat(response).hasSize(10);
-        assertThat(response).filteredOn(CategoryResponse::isDefault).hasSize(9);
-        verify(kakeiboCategoryMapper, times(9)).insert(any(KakeiboCategoryEntity.class));
+        assertThat(response).hasSize(11);
+        assertThat(response).filteredOn(CategoryResponse::isDefault).hasSize(10);
+        verify(kakeiboCategoryMapper, times(10)).insert(any(KakeiboCategoryEntity.class));
     }
 
     @Test
@@ -131,6 +148,29 @@ class KakeiboCategoryServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(null);
 
         assertThatThrownBy(() -> service().listCategories(1L)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    private List<KakeiboCategoryEntity> defaultCategories() {
+        return List.of(
+                defaultCategory(1L, "食費"),
+                defaultCategory(2L, "日用品"),
+                defaultCategory(3L, "交際費"),
+                defaultCategory(4L, "光熱費"),
+                defaultCategory(5L, "住居費"),
+                defaultCategory(6L, "通信費"),
+                defaultCategory(7L, "医療費"),
+                defaultCategory(8L, "趣味・娯楽"),
+                defaultCategory(9L, "固定費"),
+                defaultCategory(10L, "その他"));
+    }
+
+    private KakeiboCategoryEntity defaultCategory(long id, String name) {
+        KakeiboCategoryEntity category = new KakeiboCategoryEntity();
+        category.setId(id);
+        category.setHouseholdId(10L);
+        category.setName(name);
+        category.setDefault(true);
+        return category;
     }
 
     @Test

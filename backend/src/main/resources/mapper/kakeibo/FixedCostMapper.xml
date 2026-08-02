@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homelog.kakeibo.mapper.FixedCostMapper">
+
+    <resultMap id="fixedCostResultMap" type="com.homelog.kakeibo.entity.FixedCostEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="ownerUserId" column="owner_user_id"/>
+        <result property="createdByUserId" column="created_by_user_id"/>
+        <result property="name" column="name"/>
+        <result property="amount" column="amount"/>
+        <result property="paymentDay" column="payment_day"/>
+        <result property="includeInHouseholdTotal" column="include_in_household_total"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.homelog.kakeibo.entity.FixedCostEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fixed_costs
+            (household_id, owner_user_id, created_by_user_id, name, amount, payment_day,
+             include_in_household_total, created_at)
+        VALUES
+            (#{householdId}, #{ownerUserId}, #{createdByUserId}, #{name}, #{amount}, #{paymentDay},
+             #{includeInHouseholdTotal}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="fixedCostResultMap">
+        SELECT id, household_id, owner_user_id, created_by_user_id, name, amount, payment_day,
+               include_in_household_total, created_at
+        FROM fixed_costs
+        WHERE id = #{id}
+    </select>
+
+    <select id="findVisibleByHouseholdIdAndUserId" resultMap="fixedCostResultMap">
+        SELECT id, household_id, owner_user_id, created_by_user_id, name, amount, payment_day,
+               include_in_household_total, created_at
+        FROM fixed_costs
+        WHERE household_id = #{householdId}
+          AND (owner_user_id IS NULL OR owner_user_id = #{userId})
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE fixed_costs
+        SET name = #{name},
+            amount = #{amount},
+            payment_day = #{paymentDay},
+            owner_user_id = #{ownerUserId},
+            include_in_household_total = #{includeInHouseholdTotal}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM fixed_costs WHERE id = #{id}
+    </delete>
+
+</mapper>

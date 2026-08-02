@@ -11,6 +11,8 @@ import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import com.homelog.kakeibo.mapper.KakeiboCategoryMapper;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,7 +23,7 @@ public class KakeiboCategoryService {
     private static final String IN_USE_MESSAGE = "使用中のカテゴリーは削除できません";
     private static final String DEFAULT_IMMUTABLE_MESSAGE = "デフォルトカテゴリーは編集・削除できません";
     private static final List<String> DEFAULT_CATEGORY_NAMES = List.of(
-            "食費", "日用品", "交際費", "光熱費", "住居費", "通信費", "医療費", "趣味・娯楽", "その他");
+            "食費", "日用品", "交際費", "光熱費", "住居費", "通信費", "医療費", "趣味・娯楽", "固定費", "その他");
 
     private final KakeiboCategoryMapper kakeiboCategoryMapper;
     private final ExpenseMapper expenseMapper;
@@ -41,8 +43,15 @@ public class KakeiboCategoryService {
         Long householdId = resolveHouseholdId(userId);
         householdMapper.lockById(householdId);
         List<KakeiboCategoryEntity> categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
-        if (categories.stream().noneMatch(KakeiboCategoryEntity::isDefault)) {
-            seedDefaultCategories(householdId);
+        Set<String> existingDefaultNames = categories.stream()
+                .filter(KakeiboCategoryEntity::isDefault)
+                .map(KakeiboCategoryEntity::getName)
+                .collect(Collectors.toSet());
+        List<String> missingDefaultNames = DEFAULT_CATEGORY_NAMES.stream()
+                .filter(name -> !existingDefaultNames.contains(name))
+                .toList();
+        if (!missingDefaultNames.isEmpty()) {
+            seedDefaultCategories(householdId, missingDefaultNames);
             categories = kakeiboCategoryMapper.findByHouseholdId(householdId);
         }
         return categories.stream().map(this::toResponse).toList();
@@ -81,8 +90,8 @@ public class KakeiboCategoryService {
         kakeiboCategoryMapper.delete(categoryId);
     }
 
-    private void seedDefaultCategories(Long householdId) {
-        for (String name : DEFAULT_CATEGORY_NAMES) {
+    private void seedDefaultCategories(Long householdId, List<String> categoryNames) {
+        for (String name : categoryNames) {
             KakeiboCategoryEntity category = new KakeiboCategoryEntity();
             category.setHouseholdId(householdId);
             category.setName(name);
