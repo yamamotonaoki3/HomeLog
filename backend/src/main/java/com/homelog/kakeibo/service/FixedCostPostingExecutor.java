@@ -7,6 +7,7 @@ import com.homelog.kakeibo.mapper.ExpenseMapper;
 import com.homelog.kakeibo.mapper.KakeiboCategoryMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,11 +42,16 @@ public class FixedCostPostingExecutor {
         expense.setPayerUserId(fixedCost.getCreatedByUserId());
         expense.setCategoryId(category.getId());
         expense.setFixedCostId(fixedCost.getId());
+        expense.setFixedCostYearMonth(String.format("%04d-%02d", today.getYear(), today.getMonthValue()));
         expense.setAmount(fixedCost.getAmount());
         expense.setPurpose(fixedCost.getName());
         expense.setExpenseDate(today);
         expense.setIncludeInHouseholdTotal(fixedCost.isIncludeInHouseholdTotal());
         expense.setCreatedAt(LocalDateTime.now());
-        expenseMapper.insert(expense);
+        try {
+            expenseMapper.insert(expense);
+        } catch (DuplicateKeyException exception) {
+            // 他のアプリケーションインスタンスが同じ固定費の当月分を先に計上済み。
+        }
     }
 }

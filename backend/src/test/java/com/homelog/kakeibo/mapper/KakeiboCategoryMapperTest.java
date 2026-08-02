@@ -86,6 +86,19 @@ class KakeiboCategoryMapperTest {
     }
 
     @Test
+    void findByHouseholdIdAndName_同名のカスタムカテゴリーが共存してもデフォルトカテゴリーを取得する() {
+        Long householdId = createHousehold("cat-house9", "KAKEICODE000010");
+        insertCategory(householdId, "固定費", false);
+        Long defaultCategoryId = insertCategory(householdId, "固定費", true);
+
+        KakeiboCategoryEntity found = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId, "固定費");
+
+        assertThat(found).isNotNull();
+        assertThat(found.getId()).isEqualTo(defaultCategoryId);
+        assertThat(found.isDefault()).isTrue();
+    }
+
+    @Test
     void findByHouseholdIdAndName_一致するカテゴリーが無い場合はnull() {
         Long householdId = createHousehold("cat-house6", "KAKEICODE000007");
 

@@ -42,6 +42,32 @@ class FixedCostPostingFlowIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("同名のカスタムカテゴリーがあってもデフォルトの固定費カテゴリーで自動計上される")
+    void postsWithDefaultCategoryWhenCustomCategoryHasSameName() {
+        String token = registerAndLogin(uniqueEmail("posting-custom-category"));
+        createHousehold(token, "同名カテゴリーテスト家");
+        postJson("/api/kakeibo-categories", Map.of("name", "固定費"), token);
+        List<Map<String, Object>> categories = getJsonList("/api/kakeibo-categories", token).getBody();
+        Long defaultCategoryId = categories.stream()
+                .filter(category -> "固定費".equals(category.get("name")))
+                .filter(category -> Boolean.TRUE.equals(category.get("isDefault")))
+                .map(category -> ((Number) category.get("id")).longValue())
+                .findFirst()
+                .orElseThrow();
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        postJson("/api/fixed-costs",
+                Map.of("name", "家賃", "amount", 80000, "paymentDay", today.getDayOfMonth(), "personal", false,
+                        "includeInHouseholdTotal", true),
+                token);
+
+        fixedCostPostingService.postForDate(today);
+
+        List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
+        assertThat(expenses).hasSize(1);
+        assertThat(((Number) expenses.get(0).get("categoryId")).longValue()).isEqualTo(defaultCategoryId);
+    }
+
+    @Test
     @DisplayName("支払日が当月に存在しない固定費は月末にクランプして計上される")
     void postsFixedCostOnLastDayOfMonthWhenPaymentDayDoesNotExist() {
         String token = registerAndLogin(uniqueEmail("posting-b"));

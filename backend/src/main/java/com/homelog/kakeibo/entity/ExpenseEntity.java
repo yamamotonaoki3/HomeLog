@@ -13,6 +13,7 @@ public class ExpenseEntity {
     private Long accountId;
     private Long cardId;
     private Long fixedCostId;
+    private String fixedCostYearMonth;
     private BigDecimal amount;
     private String purpose;
     private String memo;
@@ -74,6 +75,14 @@ public class ExpenseEntity {
 
     public void setFixedCostId(Long fixedCostId) {
         this.fixedCostId = fixedCostId;
+    }
+
+    public String getFixedCostYearMonth() {
+        return fixedCostYearMonth;
+    }
+
+    public void setFixedCostYearMonth(String fixedCostYearMonth) {
+        this.fixedCostYearMonth = fixedCostYearMonth;
     }
 
     public BigDecimal getAmount() {

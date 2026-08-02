@@ -1,6 +1,7 @@
 package com.homelog.kakeibo.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.homelog.household.entity.HouseholdEntity;
 import com.homelog.household.mapper.HouseholdMapper;
@@ -16,6 +17,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -206,6 +208,26 @@ class ExpenseMapperTest {
         int count = expenseMapper.countByFixedCostIdAndMonth(fixedCostId2, 2026, 3);
 
         assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    void insert_同一固定費の同月分が既に存在する場合は一意制約違反になる() {
+        Long householdId = createHousehold("exp-house11", "EXPCODE0000013");
+        Long userId = createUser("payer11@example.com");
+        Long categoryId = insertCategory(householdId, "固定費");
+        Long fixedCostId = insertFixedCost(householdId, userId, "家賃");
+        ExpenseEntity first = newExpense(householdId, userId, categoryId, "80000", "3月分家賃");
+        first.setFixedCostId(fixedCostId);
+        first.setFixedCostYearMonth("2026-03");
+        first.setExpenseDate(LocalDate.of(2026, 3, 1));
+        expenseMapper.insert(first);
+        ExpenseEntity duplicate = newExpense(householdId, userId, categoryId, "80000", "3月分家賃");
+        duplicate.setFixedCostId(fixedCostId);
+        duplicate.setFixedCostYearMonth("2026-03");
+        duplicate.setExpenseDate(LocalDate.of(2026, 3, 31));
+
+        assertThatThrownBy(() -> expenseMapper.insert(duplicate))
+                .isInstanceOf(DuplicateKeyException.class);
     }
 
     private Long insertFixedCost(Long householdId, Long userId, String name) {
