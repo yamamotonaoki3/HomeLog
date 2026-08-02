@@ -54,4 +54,13 @@
         DELETE FROM fixed_costs WHERE id = #{id}
     </delete>
 
+    <select id="findDueForPosting" resultMap="fixedCostResultMap">
+        SELECT id, household_id, owner_user_id, created_by_user_id, name, amount, payment_day,
+               include_in_household_total, created_at
+        FROM fixed_costs
+        WHERE payment_day = #{day}
+           OR (payment_day &gt; #{lastDayOfMonth} AND #{day} = #{lastDayOfMonth})
+        ORDER BY id
+    </select>
+
 </mapper>
