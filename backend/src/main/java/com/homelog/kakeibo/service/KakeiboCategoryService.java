@@ -57,6 +57,17 @@ public class KakeiboCategoryService {
         return categories.stream().map(this::toResponse).toList();
     }
 
+    @Transactional
+    public Long resolveDefaultCategoryId(Long householdId, String name) {
+        householdMapper.lockById(householdId);
+        KakeiboCategoryEntity category = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId, name);
+        if (category == null) {
+            seedDefaultCategories(householdId, List.of(name));
+            category = kakeiboCategoryMapper.findByHouseholdIdAndName(householdId, name);
+        }
+        return category.getId();
+    }
+
     public CategoryResponse createCategory(Long userId, CreateCategoryRequest request) {
         Long householdId = resolveHouseholdId(userId);
         KakeiboCategoryEntity category = new KakeiboCategoryEntity();
@@ -92,12 +103,17 @@ public class KakeiboCategoryService {
 
     private void seedDefaultCategories(Long householdId, List<String> categoryNames) {
         for (String name : categoryNames) {
-            KakeiboCategoryEntity category = new KakeiboCategoryEntity();
-            category.setHouseholdId(householdId);
-            category.setName(name);
-            category.setDefault(true);
-            kakeiboCategoryMapper.insert(category);
+            createDefaultCategory(householdId, name);
         }
+    }
+
+    private KakeiboCategoryEntity createDefaultCategory(Long householdId, String name) {
+        KakeiboCategoryEntity category = new KakeiboCategoryEntity();
+        category.setHouseholdId(householdId);
+        category.setName(name);
+        category.setDefault(true);
+        kakeiboCategoryMapper.insert(category);
+        return category;
     }
 
     private KakeiboCategoryEntity findOwnedCategory(Long householdId, Long categoryId) {

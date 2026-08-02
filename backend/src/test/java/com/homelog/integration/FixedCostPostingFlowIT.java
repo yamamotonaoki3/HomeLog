@@ -20,6 +20,24 @@ class FixedCostPostingFlowIT extends IntegrationTestBase {
     private FixedCostPostingService fixedCostPostingService;
 
     @Test
+    @DisplayName("カテゴリー一覧を未取得の世帯でも固定費が自動計上される")
+    void postsFixedCostBeforeCategoriesAreInitialized() {
+        String token = registerAndLogin(uniqueEmail("posting-without-categories"));
+        createHousehold(token, "カテゴリー未初期化テスト家");
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        postJson("/api/fixed-costs",
+                Map.of("name", "家賃", "amount", 80000, "paymentDay", today.getDayOfMonth(), "personal", false,
+                        "includeInHouseholdTotal", true),
+                token);
+
+        fixedCostPostingService.postForDate(today);
+
+        List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
+        assertThat(expenses).hasSize(1);
+        assertThat(expenses.get(0)).containsEntry("purpose", "家賃");
+    }
+
+    @Test
     @DisplayName("支払日が当日と一致する固定費は自動計上され、同日に再実行しても重複計上されない")
     void postsFixedCostOnPaymentDayAndPreventsDuplicatePosting() {
         String token = registerAndLogin(uniqueEmail("posting-a"));

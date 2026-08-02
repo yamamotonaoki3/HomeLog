@@ -2,9 +2,7 @@ package com.homelog.kakeibo.service;
 
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.FixedCostEntity;
-import com.homelog.kakeibo.entity.KakeiboCategoryEntity;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
-import com.homelog.kakeibo.mapper.KakeiboCategoryMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.springframework.dao.DuplicateKeyException;
@@ -17,11 +15,11 @@ public class FixedCostPostingExecutor {
     private static final String FIXED_COST_CATEGORY_NAME = "固定費";
 
     private final ExpenseMapper expenseMapper;
-    private final KakeiboCategoryMapper kakeiboCategoryMapper;
+    private final KakeiboCategoryService kakeiboCategoryService;
 
-    public FixedCostPostingExecutor(ExpenseMapper expenseMapper, KakeiboCategoryMapper kakeiboCategoryMapper) {
+    public FixedCostPostingExecutor(ExpenseMapper expenseMapper, KakeiboCategoryService kakeiboCategoryService) {
         this.expenseMapper = expenseMapper;
-        this.kakeiboCategoryMapper = kakeiboCategoryMapper;
+        this.kakeiboCategoryService = kakeiboCategoryService;
     }
 
     @Transactional
@@ -31,16 +29,12 @@ public class FixedCostPostingExecutor {
         if (alreadyPosted > 0) {
             return;
         }
-        KakeiboCategoryEntity category = kakeiboCategoryMapper.findByHouseholdIdAndName(fixedCost.getHouseholdId(),
+        Long categoryId = kakeiboCategoryService.resolveDefaultCategoryId(fixedCost.getHouseholdId(),
                 FIXED_COST_CATEGORY_NAME);
-        if (category == null) {
-            throw new IllegalStateException(
-                    "固定費カテゴリーが見つかりません。householdId=" + fixedCost.getHouseholdId());
-        }
         ExpenseEntity expense = new ExpenseEntity();
         expense.setHouseholdId(fixedCost.getHouseholdId());
         expense.setPayerUserId(fixedCost.getCreatedByUserId());
-        expense.setCategoryId(category.getId());
+        expense.setCategoryId(categoryId);
         expense.setFixedCostId(fixedCost.getId());
         expense.setFixedCostYearMonth(String.format("%04d-%02d", today.getYear(), today.getMonthValue()));
         expense.setAmount(fixedCost.getAmount());

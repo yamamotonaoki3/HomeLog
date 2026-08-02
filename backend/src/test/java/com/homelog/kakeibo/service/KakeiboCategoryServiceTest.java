@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -148,6 +149,46 @@ class KakeiboCategoryServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(null);
 
         assertThatThrownBy(() -> service().listCategories(1L)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void resolveDefaultCategoryId_カテゴリーが存在する場合はそのIDを返す() {
+        KakeiboCategoryEntity category = defaultCategory(9L, "固定費");
+        when(kakeiboCategoryMapper.findByHouseholdIdAndName(10L, "固定費")).thenReturn(category);
+
+        Long categoryId = service().resolveDefaultCategoryId(10L, "固定費");
+
+        assertThat(categoryId).isEqualTo(9L);
+        verify(kakeiboCategoryMapper, never()).insert(any());
+    }
+
+    @Test
+    void resolveDefaultCategoryId_カテゴリーが存在しない場合は作成してそのIDを返す() {
+        KakeiboCategoryEntity created = defaultCategory(11L, "固定費");
+        when(kakeiboCategoryMapper.findByHouseholdIdAndName(10L, "固定費"))
+                .thenReturn(null)
+                .thenReturn(created);
+
+        Long categoryId = service().resolveDefaultCategoryId(10L, "固定費");
+
+        assertThat(categoryId).isEqualTo(11L);
+        ArgumentCaptor<KakeiboCategoryEntity> captor = ArgumentCaptor.forClass(KakeiboCategoryEntity.class);
+        verify(kakeiboCategoryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getHouseholdId()).isEqualTo(10L);
+        assertThat(captor.getValue().getName()).isEqualTo("固定費");
+        assertThat(captor.getValue().isDefault()).isTrue();
+    }
+
+    @Test
+    void resolveDefaultCategoryId_世帯ロック取得後にカテゴリーを確認する() {
+        when(kakeiboCategoryMapper.findByHouseholdIdAndName(10L, "固定費"))
+                .thenReturn(defaultCategory(9L, "固定費"));
+
+        service().resolveDefaultCategoryId(10L, "固定費");
+
+        InOrder inOrder = inOrder(householdMapper, kakeiboCategoryMapper);
+        inOrder.verify(householdMapper).lockById(10L);
+        inOrder.verify(kakeiboCategoryMapper).findByHouseholdIdAndName(10L, "固定費");
     }
 
     private List<KakeiboCategoryEntity> defaultCategories() {
