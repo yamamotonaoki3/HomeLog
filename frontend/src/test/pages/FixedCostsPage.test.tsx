@@ -206,6 +206,50 @@ describe('FixedCostsPage', () => {
     expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/fixed-costs/1')).toBe(true)
   })
 
+  it('削除成功後の一覧再取得に失敗しても、削除自体は成功として一覧から消えたままになる', async () => {
+    setupApi({
+      fixedCosts: [
+        {
+          id: 1,
+          name: '水道代',
+          amount: 3000,
+          paymentDay: 15,
+          personal: false,
+          includeInHouseholdTotal: false,
+          editable: true,
+        },
+      ],
+    })
+    let getCount = 0
+    server.use(
+      http.get('/api/fixed-costs', () => {
+        getCount += 1
+        return getCount === 1
+          ? HttpResponse.json([
+              {
+                id: 1,
+                name: '水道代',
+                amount: 3000,
+                paymentDay: 15,
+                personal: false,
+                includeInHouseholdTotal: false,
+                editable: true,
+              },
+            ])
+          : HttpResponse.json({ message: '固定費一覧の取得に失敗しました' }, { status: 500 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderFixedCostsPage()
+    await waitFor(() => expect(screen.getByText('水道代')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '削除' }))
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+
+    await waitFor(() => expect(screen.getByText('固定費はありません')).toBeInTheDocument())
+    expect(screen.getByText('固定費一覧の取得に失敗しました')).toBeInTheDocument()
+  })
+
   it('キャンセルボタンで固定費登録モーダルを閉じる', async () => {
     setupApi()
     const user = userEvent.setup()

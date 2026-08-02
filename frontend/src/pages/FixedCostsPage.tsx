@@ -53,16 +53,24 @@ export function FixedCostsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return
+    const deletedId = deleteTarget.id
     setDeleting(true)
     try {
-      await apiClient.delete(`/fixed-costs/${deleteTarget.id}`)
-      await fetchFixedCosts()
-      showToast('固定費を削除しました')
+      await apiClient.delete(`/fixed-costs/${deletedId}`)
     } catch (err) {
       showToast(getApiErrorMessage(err, '固定費の削除に失敗しました'))
-    } finally {
       setDeleting(false)
       setDeleteTarget(null)
+      return
+    }
+    setFixedCosts((prev) => prev.filter((fixedCost) => fixedCost.id !== deletedId))
+    setDeleting(false)
+    setDeleteTarget(null)
+    showToast('固定費を削除しました')
+    try {
+      await fetchFixedCosts()
+    } catch (err) {
+      showToast(getApiErrorMessage(err, '固定費一覧の取得に失敗しました'))
     }
   }
 
