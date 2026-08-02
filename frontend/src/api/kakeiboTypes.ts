@@ -46,3 +46,15 @@ export interface Account {
   balance: number
   cards: Card[]
 }
+
+export interface FixedCost {
+  id: number
+  name: string
+  amount: number
+  paymentDay: number
+  personal: boolean
+  includeInHouseholdTotal: boolean
+  editable: boolean
+  accountId: number | null
+  cardId: number | null
+}
