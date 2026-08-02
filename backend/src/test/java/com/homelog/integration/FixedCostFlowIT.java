@@ -88,4 +88,49 @@ class FixedCostFlowIT extends IntegrationTestBase {
         List<Map<String, Object>> listAfterDelete = getJsonList("/api/fixed-costs", token).getBody();
         assertThat(listAfterDelete).isEmpty();
     }
+
+    @Test
+    @DisplayName("引き落とし元に口座を指定して登録・編集でき、他人の口座を指定すると400")
+    void registersFixedCostWithAccountAndRejectsOthersAccount() {
+        String tokenA = registerAndLogin(uniqueEmail("fixedcost-account-a"));
+        String inviteCode = createHousehold(tokenA, "引き落とし元テスト家");
+        String tokenB = registerAndLogin(uniqueEmail("fixedcost-account-b"));
+        postJson("/api/households/join", Map.of("inviteCode", inviteCode), tokenB);
+        ResponseEntity<Map<String, Object>> accountResponseA = postJson("/api/accounts",
+                Map.of("name", "Aの口座", "type", "bank", "balance", 10000), tokenA);
+        long accountIdA = ((Number) accountResponseA.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> created = postJson("/api/fixed-costs",
+                Map.of("name", "家賃", "amount", 80000, "paymentDay", 27, "personal", false,
+                        "includeInHouseholdTotal", true, "accountId", accountIdA),
+                tokenA);
+        assertThat(created.getStatusCode().value()).isEqualTo(201);
+        assertThat(((Number) created.getBody().get("accountId")).longValue()).isEqualTo(accountIdA);
+
+        ResponseEntity<Map<String, Object>> createdByOthersAccount = postJson("/api/fixed-costs",
+                Map.of("name", "不正な固定費", "amount", 1000, "paymentDay", 1, "personal", false,
+                        "includeInHouseholdTotal", false, "accountId", accountIdA),
+                tokenB);
+        assertThat(createdByOthersAccount.getStatusCode().value()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("引き落とし元に口座とカードを同時に指定すると400")
+    void rejectsFixedCostWithBothAccountAndCard() {
+        String token = registerAndLogin(uniqueEmail("fixedcost-both"));
+        createHousehold(token, "口座カード同時指定テスト家");
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "口座", "type", "bank", "balance", 10000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "カード", "cardType", "credit"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        ResponseEntity<Map<String, Object>> created = postJson("/api/fixed-costs",
+                Map.of("name", "家賃", "amount", 80000, "paymentDay", 27, "personal", false,
+                        "includeInHouseholdTotal", true, "accountId", accountId, "cardId", cardId),
+                token);
+
+        assertThat(created.getStatusCode().value()).isEqualTo(400);
+    }
 }

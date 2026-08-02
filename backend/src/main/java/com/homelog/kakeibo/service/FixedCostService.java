@@ -1,5 +1,6 @@
 package com.homelog.kakeibo.service;
 
+import com.homelog.common.exception.BadRequestException;
 import com.homelog.common.exception.ResourceNotFoundException;
 import com.homelog.household.mapper.HouseholdMemberMapper;
 import com.homelog.kakeibo.dto.request.CreateFixedCostRequest;
@@ -16,13 +17,17 @@ import org.springframework.stereotype.Service;
 public class FixedCostService {
 
     private static final String NOT_FOUND_MESSAGE = "固定費が見つかりません";
+    private static final String ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE = "口座とカードは同時に指定できません";
 
     private final FixedCostMapper fixedCostMapper;
     private final HouseholdMemberMapper householdMemberMapper;
+    private final AccountService accountService;
 
-    public FixedCostService(FixedCostMapper fixedCostMapper, HouseholdMemberMapper householdMemberMapper) {
+    public FixedCostService(FixedCostMapper fixedCostMapper, HouseholdMemberMapper householdMemberMapper,
+            AccountService accountService) {
         this.fixedCostMapper = fixedCostMapper;
         this.householdMemberMapper = householdMemberMapper;
+        this.accountService = accountService;
     }
 
     public List<FixedCostResponse> listFixedCosts(Long userId) {
@@ -34,10 +39,13 @@ public class FixedCostService {
 
     public FixedCostResponse createFixedCost(Long userId, CreateFixedCostRequest request) {
         Long householdId = resolveHouseholdId(userId);
+        validateAndResolveAccountOrCard(userId, householdId, request.accountId(), request.cardId());
         FixedCostEntity fixedCost = new FixedCostEntity();
         fixedCost.setHouseholdId(householdId);
         fixedCost.setOwnerUserId(Boolean.TRUE.equals(request.personal()) ? userId : null);
         fixedCost.setCreatedByUserId(userId);
+        fixedCost.setAccountId(request.accountId());
+        fixedCost.setCardId(request.cardId());
         fixedCost.setName(request.name());
         fixedCost.setAmount(BigDecimal.valueOf(request.amount()));
         fixedCost.setPaymentDay(request.paymentDay());
@@ -50,16 +58,19 @@ public class FixedCostService {
     public FixedCostResponse updateFixedCost(Long userId, Long fixedCostId, UpdateFixedCostRequest request) {
         Long householdId = resolveHouseholdId(userId);
         FixedCostEntity fixedCost = findEditable(userId, householdId, fixedCostId);
+        validateAndResolveAccountOrCard(userId, householdId, request.accountId(), request.cardId());
         Long ownerUserId = Boolean.TRUE.equals(request.personal()) ? userId : null;
         BigDecimal amount = BigDecimal.valueOf(request.amount());
         boolean includeInHouseholdTotal = Boolean.TRUE.equals(request.includeInHouseholdTotal());
         fixedCostMapper.update(fixedCostId, request.name(), amount, request.paymentDay(), ownerUserId,
-                includeInHouseholdTotal);
+                includeInHouseholdTotal, request.accountId(), request.cardId());
         fixedCost.setName(request.name());
         fixedCost.setAmount(amount);
         fixedCost.setPaymentDay(request.paymentDay());
         fixedCost.setOwnerUserId(ownerUserId);
         fixedCost.setIncludeInHouseholdTotal(includeInHouseholdTotal);
+        fixedCost.setAccountId(request.accountId());
+        fixedCost.setCardId(request.cardId());
         return toResponse(fixedCost, userId);
     }
 
@@ -67,6 +78,17 @@ public class FixedCostService {
         Long householdId = resolveHouseholdId(userId);
         findEditable(userId, householdId, fixedCostId);
         fixedCostMapper.delete(fixedCostId);
+    }
+
+    private void validateAndResolveAccountOrCard(Long userId, Long householdId, Long accountId, Long cardId) {
+        if (accountId != null && cardId != null) {
+            throw new BadRequestException(ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE);
+        }
+        if (cardId != null) {
+            accountService.findOwnedCardForExpense(userId, householdId, cardId);
+        } else if (accountId != null) {
+            accountService.validateOwnedAccountForExpense(userId, householdId, accountId);
+        }
     }
 
     private FixedCostEntity findEditable(Long userId, Long householdId, Long fixedCostId) {
@@ -90,6 +112,7 @@ public class FixedCostService {
         boolean personal = fixedCost.getOwnerUserId() != null;
         boolean editable = fixedCost.getCreatedByUserId().equals(userId);
         return new FixedCostResponse(fixedCost.getId(), fixedCost.getName(), fixedCost.getAmount(),
-                fixedCost.getPaymentDay(), personal, fixedCost.isIncludeInHouseholdTotal(), editable);
+                fixedCost.getPaymentDay(), personal, fixedCost.isIncludeInHouseholdTotal(), editable,
+                fixedCost.getAccountId(), fixedCost.getCardId());
     }
 }

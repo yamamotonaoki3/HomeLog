@@ -6,10 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.homelog.common.exception.BadRequestException;
 import com.homelog.common.exception.ResourceNotFoundException;
 import com.homelog.household.entity.HouseholdMemberEntity;
 import com.homelog.household.mapper.HouseholdMemberMapper;
@@ -22,6 +24,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,9 +35,11 @@ class FixedCostServiceTest {
     private FixedCostMapper fixedCostMapper;
     @Mock
     private HouseholdMemberMapper householdMemberMapper;
+    @Mock
+    private AccountService accountService;
 
     private FixedCostService service() {
-        return new FixedCostService(fixedCostMapper, householdMemberMapper);
+        return new FixedCostService(fixedCostMapper, householdMemberMapper, accountService);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -77,11 +82,11 @@ class FixedCostServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
 
         FixedCostResponse response = service()
-                .createFixedCost(1L, new CreateFixedCostRequest("Aの個人サブスク", 1000L, 10, true, null));
+                .createFixedCost(1L, new CreateFixedCostRequest("Aの個人サブスク", 1000L, 10, true, null, null, null));
 
         assertThat(response.personal()).isTrue();
         assertThat(response.editable()).isTrue();
-        org.mockito.ArgumentCaptor<FixedCostEntity> captor = org.mockito.ArgumentCaptor.forClass(FixedCostEntity.class);
+        ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
         verify(fixedCostMapper).insert(captor.capture());
         assertThat(captor.getValue().getOwnerUserId()).isEqualTo(1L);
         assertThat(captor.getValue().getCreatedByUserId()).isEqualTo(1L);
@@ -93,14 +98,68 @@ class FixedCostServiceTest {
         when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
 
         FixedCostResponse response = service()
-                .createFixedCost(1L, new CreateFixedCostRequest("家賃", 80000L, 27, false, true));
+                .createFixedCost(1L, new CreateFixedCostRequest("家賃", 80000L, 27, false, true, null, null));
 
         assertThat(response.personal()).isFalse();
-        org.mockito.ArgumentCaptor<FixedCostEntity> captor = org.mockito.ArgumentCaptor.forClass(FixedCostEntity.class);
+        ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
         verify(fixedCostMapper).insert(captor.capture());
         assertThat(captor.getValue().getOwnerUserId()).isNull();
         assertThat(captor.getValue().getCreatedByUserId()).isEqualTo(1L);
         assertThat(captor.getValue().isIncludeInHouseholdTotal()).isTrue();
+    }
+
+    @Test
+    void createFixedCost_口座を指定すると所有権検証したうえでaccountIdを保存する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+
+        FixedCostResponse response = service()
+                .createFixedCost(1L, new CreateFixedCostRequest("家賃", 80000L, 27, false, null, 5L, null));
+
+        assertThat(response.accountId()).isEqualTo(5L);
+        assertThat(response.cardId()).isNull();
+        verify(accountService).validateOwnedAccountForExpense(1L, 10L, 5L);
+        ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
+        verify(fixedCostMapper).insert(captor.capture());
+        assertThat(captor.getValue().getAccountId()).isEqualTo(5L);
+        assertThat(captor.getValue().getCardId()).isNull();
+    }
+
+    @Test
+    void createFixedCost_カードを指定すると所有権検証したうえでcardIdを保存する() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+
+        FixedCostResponse response = service()
+                .createFixedCost(1L, new CreateFixedCostRequest("サブスク", 1000L, 1, false, null, null, 50L));
+
+        assertThat(response.cardId()).isEqualTo(50L);
+        assertThat(response.accountId()).isNull();
+        verify(accountService).findOwnedCardForExpense(1L, 10L, 50L);
+        ArgumentCaptor<FixedCostEntity> captor = ArgumentCaptor.forClass(FixedCostEntity.class);
+        verify(fixedCostMapper).insert(captor.capture());
+        assertThat(captor.getValue().getCardId()).isEqualTo(50L);
+        assertThat(captor.getValue().getAccountId()).isNull();
+    }
+
+    @Test
+    void createFixedCost_口座とカードを同時に指定すると400() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+
+        assertThatThrownBy(() -> service()
+                .createFixedCost(1L, new CreateFixedCostRequest("家賃", 80000L, 27, false, null, 5L, 50L)))
+                .isInstanceOf(BadRequestException.class);
+        verify(fixedCostMapper, never()).insert(any());
+    }
+
+    @Test
+    void createFixedCost_他人の口座を指定すると400() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        doThrow(new BadRequestException("指定された口座が見つかりません"))
+                .when(accountService).validateOwnedAccountForExpense(1L, 10L, 5L);
+
+        assertThatThrownBy(() -> service()
+                .createFixedCost(1L, new CreateFixedCostRequest("家賃", 80000L, 27, false, null, 5L, null)))
+                .isInstanceOf(BadRequestException.class);
+        verify(fixedCostMapper, never()).insert(any());
     }
 
     @Test
@@ -109,11 +168,24 @@ class FixedCostServiceTest {
         when(fixedCostMapper.findById(50L)).thenReturn(fixedCostOf(50L, 10L, null, 1L));
 
         FixedCostResponse response = service()
-                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, true, null));
+                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, true, null, null, null));
 
         assertThat(response.name()).isEqualTo("新名称");
         assertThat(response.personal()).isTrue();
-        verify(fixedCostMapper).update(50L, "新名称", new BigDecimal("90000"), 28, 1L, false);
+        verify(fixedCostMapper).update(50L, "新名称", new BigDecimal("90000"), 28, 1L, false, null, null);
+    }
+
+    @Test
+    void updateFixedCost_引き落とし元の口座を更新できる() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(fixedCostMapper.findById(50L)).thenReturn(fixedCostOf(50L, 10L, null, 1L));
+
+        FixedCostResponse response = service()
+                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("家賃", 80000L, 27, false, null, 5L, null));
+
+        assertThat(response.accountId()).isEqualTo(5L);
+        verify(accountService).validateOwnedAccountForExpense(1L, 10L, 5L);
+        verify(fixedCostMapper).update(50L, "家賃", new BigDecimal("80000"), 27, null, false, 5L, null);
     }
 
     @Test
@@ -122,9 +194,9 @@ class FixedCostServiceTest {
         when(fixedCostMapper.findById(50L)).thenReturn(fixedCostOf(50L, 10L, null, 1L));
 
         assertThatThrownBy(() -> service()
-                .updateFixedCost(2L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null)))
+                .updateFixedCost(2L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
-        verify(fixedCostMapper, never()).update(anyLong(), any(), any(), anyInt(), any(), anyBoolean());
+        verify(fixedCostMapper, never()).update(anyLong(), any(), any(), anyInt(), any(), anyBoolean(), any(), any());
     }
 
     @Test
@@ -133,7 +205,7 @@ class FixedCostServiceTest {
         when(fixedCostMapper.findById(50L)).thenReturn(fixedCostOf(50L, 10L, null, 1L));
 
         assertThatThrownBy(() -> service()
-                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null)))
+                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -143,7 +215,7 @@ class FixedCostServiceTest {
         when(fixedCostMapper.findById(50L)).thenReturn(null);
 
         assertThatThrownBy(() -> service()
-                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null)))
+                .updateFixedCost(1L, 50L, new UpdateFixedCostRequest("新名称", 90000L, 28, false, null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

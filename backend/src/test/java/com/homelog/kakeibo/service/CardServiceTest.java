@@ -25,6 +25,7 @@ import com.homelog.kakeibo.mapper.AccountMapper;
 import com.homelog.kakeibo.mapper.CardChargeMapper;
 import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
+import com.homelog.kakeibo.mapper.FixedCostMapper;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,10 +45,13 @@ class CardServiceTest {
     @Mock
     private ExpenseMapper expenseMapper;
     @Mock
+    private FixedCostMapper fixedCostMapper;
+    @Mock
     private HouseholdMemberMapper householdMemberMapper;
 
     private CardService service() {
-        return new CardService(cardMapper, accountMapper, cardChargeMapper, expenseMapper, householdMemberMapper);
+        return new CardService(cardMapper, accountMapper, cardChargeMapper, expenseMapper, fixedCostMapper,
+                householdMemberMapper);
     }
 
     private HouseholdMemberEntity memberOf(long householdId) {
@@ -175,14 +179,29 @@ class CardServiceTest {
         when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
         when(expenseMapper.countByCardId(50L)).thenReturn(0);
         when(cardChargeMapper.countByCardId(50L)).thenReturn(0);
+        when(fixedCostMapper.countByCardId(50L)).thenReturn(0);
 
         service().deleteCard(1L, 50L);
 
-        InOrder inOrder = inOrder(cardMapper, expenseMapper, cardChargeMapper);
+        InOrder inOrder = inOrder(cardMapper, expenseMapper, cardChargeMapper, fixedCostMapper);
         inOrder.verify(cardMapper).lockById(50L);
         inOrder.verify(expenseMapper).countByCardId(50L);
         inOrder.verify(cardChargeMapper).countByCardId(50L);
+        inOrder.verify(fixedCostMapper).countByCardId(50L);
         inOrder.verify(cardMapper).delete(50L);
+    }
+
+    @Test
+    void deleteCard_固定費で使用中は削除不可() {
+        when(householdMemberMapper.findByUserId(1L)).thenReturn(memberOf(10L));
+        when(cardMapper.findById(50L)).thenReturn(cardOf(50L, 5L));
+        when(accountMapper.findById(5L)).thenReturn(accountOf(5L, 10L, 1L));
+        when(expenseMapper.countByCardId(50L)).thenReturn(0);
+        when(cardChargeMapper.countByCardId(50L)).thenReturn(0);
+        when(fixedCostMapper.countByCardId(50L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service().deleteCard(1L, 50L)).isInstanceOf(BadRequestException.class);
+        verify(cardMapper, never()).delete(anyLong());
     }
 
     @Test

@@ -9,5 +9,7 @@ public record FixedCostResponse(
         int paymentDay,
         boolean personal,
         boolean includeInHouseholdTotal,
-        boolean editable) {
+        boolean editable,
+        Long accountId,
+        Long cardId) {
 }

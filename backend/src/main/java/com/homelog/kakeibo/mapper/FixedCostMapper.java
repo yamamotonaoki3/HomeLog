@@ -18,9 +18,14 @@ public interface FixedCostMapper {
 
     void update(@Param("id") long id, @Param("name") String name, @Param("amount") BigDecimal amount,
             @Param("paymentDay") int paymentDay, @Param("ownerUserId") Long ownerUserId,
-            @Param("includeInHouseholdTotal") boolean includeInHouseholdTotal);
+            @Param("includeInHouseholdTotal") boolean includeInHouseholdTotal,
+            @Param("accountId") Long accountId, @Param("cardId") Long cardId);
 
     void delete(long id);
 
     List<FixedCostEntity> findDueForPosting(@Param("day") int day, @Param("lastDayOfMonth") int lastDayOfMonth);
+
+    int countByAccountId(long accountId);
+
+    int countByCardId(long cardId);
 }

@@ -1,7 +1,10 @@
 package com.homelog.kakeibo.service;
 
+import com.homelog.kakeibo.entity.AccountEntity;
+import com.homelog.kakeibo.entity.CardEntity;
 import com.homelog.kakeibo.entity.ExpenseEntity;
 import com.homelog.kakeibo.entity.FixedCostEntity;
+import com.homelog.kakeibo.mapper.CardMapper;
 import com.homelog.kakeibo.mapper.ExpenseMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -16,10 +19,17 @@ public class FixedCostPostingExecutor {
 
     private final ExpenseMapper expenseMapper;
     private final KakeiboCategoryService kakeiboCategoryService;
+    private final CardMapper cardMapper;
+    private final AccountService accountService;
+    private final CardService cardService;
 
-    public FixedCostPostingExecutor(ExpenseMapper expenseMapper, KakeiboCategoryService kakeiboCategoryService) {
+    public FixedCostPostingExecutor(ExpenseMapper expenseMapper, KakeiboCategoryService kakeiboCategoryService,
+            CardMapper cardMapper, AccountService accountService, CardService cardService) {
         this.expenseMapper = expenseMapper;
         this.kakeiboCategoryService = kakeiboCategoryService;
+        this.cardMapper = cardMapper;
+        this.accountService = accountService;
+        this.cardService = cardService;
     }
 
     @Transactional
@@ -43,9 +53,42 @@ public class FixedCostPostingExecutor {
         expense.setIncludeInHouseholdTotal(fixedCost.isIncludeInHouseholdTotal());
         expense.setCreatedAt(LocalDateTime.now());
         try {
-            expenseMapper.insert(expense);
+            if (fixedCost.getCardId() != null) {
+                postWithCard(fixedCost, expense);
+            } else if (fixedCost.getAccountId() != null) {
+                postWithAccount(fixedCost, expense);
+            } else {
+                expenseMapper.insert(expense);
+            }
         } catch (DuplicateKeyException exception) {
             // 他のアプリケーションインスタンスが同じ固定費の当月分を先に計上済み。
         }
+    }
+
+    private void postWithCard(FixedCostEntity fixedCost, ExpenseEntity expense) {
+        CardEntity card = cardMapper.findById(fixedCost.getCardId());
+        if (card == null) {
+            throw new IllegalStateException("引き落とし元のカードが見つかりません。cardId=" + fixedCost.getCardId());
+        }
+        if ("charge".equals(card.getCardType())) {
+            CardEntity lockedCard = cardService.lockCardForUpdate(fixedCost.getCardId());
+            expense.setCardId(fixedCost.getCardId());
+            expenseMapper.insert(expense);
+            cardService.updateBalance(fixedCost.getCardId(), lockedCard.getBalance().subtract(fixedCost.getAmount()));
+        } else {
+            AccountEntity lockedAccount = accountService.lockAccountForUpdate(card.getAccountId());
+            expense.setAccountId(card.getAccountId());
+            expenseMapper.insert(expense);
+            accountService.updateBalance(card.getAccountId(),
+                    lockedAccount.getBalance().subtract(fixedCost.getAmount()));
+        }
+    }
+
+    private void postWithAccount(FixedCostEntity fixedCost, ExpenseEntity expense) {
+        AccountEntity lockedAccount = accountService.lockAccountForUpdate(fixedCost.getAccountId());
+        expense.setAccountId(fixedCost.getAccountId());
+        expenseMapper.insert(expense);
+        accountService.updateBalance(fixedCost.getAccountId(),
+                lockedAccount.getBalance().subtract(fixedCost.getAmount()));
     }
 }

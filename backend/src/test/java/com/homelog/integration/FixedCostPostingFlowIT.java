@@ -9,6 +9,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 
 /**
  * 固定費の自動計上バッチ（{@link FixedCostPostingService}）の結合テスト。
@@ -122,5 +123,91 @@ class FixedCostPostingFlowIT extends IntegrationTestBase {
 
         List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
         assertThat(expenses).isEmpty();
+    }
+
+    @Test
+    @DisplayName("口座を指定した固定費は自動計上時に口座残高から減算される")
+    void postsFixedCostWithAccountDecrementsAccountBalance() {
+        String token = registerAndLogin(uniqueEmail("posting-account"));
+        createHousehold(token, "口座指定固定費テスト家");
+        getJsonList("/api/kakeibo-categories", token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "生活費口座", "type", "bank", "balance", 100000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        postJson("/api/fixed-costs",
+                Map.of("name", "家賃", "amount", 80000, "paymentDay", today.getDayOfMonth(), "personal", false,
+                        "includeInHouseholdTotal", true, "accountId", accountId),
+                token);
+
+        fixedCostPostingService.postForDate(today);
+
+        List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
+        assertThat(expenses).hasSize(1);
+        assertThat(((Number) expenses.get(0).get("accountId")).longValue()).isEqualTo(accountId);
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(20000);
+    }
+
+    @Test
+    @DisplayName("チャージ型カードを指定した固定費は自動計上時にカード残高から減算される")
+    void postsFixedCostWithChargeCardDecrementsCardBalance() {
+        String token = registerAndLogin(uniqueEmail("posting-charge-card"));
+        createHousehold(token, "チャージカード指定固定費テスト家");
+        getJsonList("/api/kakeibo-categories", token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "生活費口座", "type", "bank", "balance", 100000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "Suica", "cardType", "charge"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+        postJson("/api/cards/" + cardId + "/charges", Map.of("fromAccountId", accountId, "amount", 5000), token);
+
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        postJson("/api/fixed-costs",
+                Map.of("name", "定期券代", "amount", 3000, "paymentDay", today.getDayOfMonth(), "personal", false,
+                        "includeInHouseholdTotal", false, "cardId", cardId),
+                token);
+
+        fixedCostPostingService.postForDate(today);
+
+        List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
+        assertThat(expenses).hasSize(1);
+        assertThat(((Number) expenses.get(0).get("cardId")).longValue()).isEqualTo(cardId);
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cards = (List<Map<String, Object>>) accounts.get(0).get("cards");
+        assertThat(((Number) cards.get(0).get("balance")).intValue()).isEqualTo(2000);
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(95000);
+    }
+
+    @Test
+    @DisplayName("クレジット型カードを指定した固定費は自動計上時に紐づく口座残高から減算される")
+    void postsFixedCostWithCreditCardDecrementsLinkedAccountBalance() {
+        String token = registerAndLogin(uniqueEmail("posting-credit-card"));
+        createHousehold(token, "クレジットカード指定固定費テスト家");
+        getJsonList("/api/kakeibo-categories", token);
+        ResponseEntity<Map<String, Object>> accountResponse = postJson("/api/accounts",
+                Map.of("name", "生活費口座", "type", "bank", "balance", 100000), token);
+        long accountId = ((Number) accountResponse.getBody().get("id")).longValue();
+        ResponseEntity<Map<String, Object>> cardResponse = postJson("/api/cards",
+                Map.of("accountId", accountId, "name", "クレジットカード", "cardType", "credit"), token);
+        long cardId = ((Number) cardResponse.getBody().get("id")).longValue();
+
+        LocalDate today = LocalDate.of(2026, 3, 27);
+        postJson("/api/fixed-costs",
+                Map.of("name", "携帯電話代", "amount", 5000, "paymentDay", today.getDayOfMonth(), "personal", false,
+                        "includeInHouseholdTotal", false, "cardId", cardId),
+                token);
+
+        fixedCostPostingService.postForDate(today);
+
+        List<Map<String, Object>> expenses = getJsonList("/api/expenses", token).getBody();
+        assertThat(expenses).hasSize(1);
+        assertThat(((Number) expenses.get(0).get("accountId")).longValue()).isEqualTo(accountId);
+        assertThat(expenses.get(0).get("cardId")).isNull();
+        List<Map<String, Object>> accounts = getJsonList("/api/accounts", token).getBody();
+        assertThat(((Number) accounts.get(0).get("balance")).intValue()).isEqualTo(95000);
     }
 }

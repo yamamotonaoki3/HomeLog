@@ -9,6 +9,8 @@ public class FixedCostEntity {
     private Long householdId;
     private Long ownerUserId;
     private Long createdByUserId;
+    private Long accountId;
+    private Long cardId;
     private String name;
     private BigDecimal amount;
     private int paymentDay;
@@ -45,6 +47,22 @@ public class FixedCostEntity {
 
     public void setCreatedByUserId(Long createdByUserId) {
         this.createdByUserId = createdByUserId;
+    }
+
+    public Long getAccountId() {
+        return accountId;
+    }
+
+    public void setAccountId(Long accountId) {
+        this.accountId = accountId;
+    }
+
+    public Long getCardId() {
+        return cardId;
+    }
+
+    public void setCardId(Long cardId) {
+        this.cardId = cardId;
     }
 
     public String getName() {
