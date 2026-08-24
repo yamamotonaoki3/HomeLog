@@ -119,6 +119,9 @@ export function TransactionListPanel({
         <Link to="/fixed-costs" className="btn btn-secondary">
           固定費
         </Link>
+        <Link to="/categories" className="btn btn-secondary">
+          カテゴリー管理
+        </Link>
       </div>
       <table className="table">
         <thead>
