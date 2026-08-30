@@ -207,6 +207,16 @@ authRoute.post('/password-reset/request', async (c) => {
       tokenHash: await sha256Hex(token),
       expiresAt: addSecondsIso(PASSWORD_RESET_EXPIRATION_SECONDS),
     })
+
+    // メール送信基盤(今後の検討事項)が実装されるまでの暫定措置。
+    // 生トークンのログ出力はAPP_PASSWORD_RESET_LOG_TOKEN_ENABLED=trueの環境
+    // (ローカル開発専用)でのみ行い、共有環境・本番環境では出力しない。
+    const logTokenEnabled: string = c.env.APP_PASSWORD_RESET_LOG_TOKEN_ENABLED
+    if (logTokenEnabled === 'true') {
+      console.warn(`[開発用] パスワードリセットトークンを発行しました。userId=${user.id}, token=${token}`)
+    } else {
+      console.info(`パスワードリセットトークンを発行しました。userId=${user.id}`)
+    }
   }
 
   return c.json({ message: PASSWORD_RESET_REQUESTED_MESSAGE })
