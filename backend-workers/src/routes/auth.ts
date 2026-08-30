@@ -1,6 +1,6 @@
 import { and, eq, isNull, gt } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { passwordResetTokens, refreshTokens, users } from '../db/schema'
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '../lib/crypto'
@@ -9,6 +9,7 @@ import type { Bindings } from '../index'
 
 const PASSWORD_RESET_EXPIRATION_SECONDS = 60 * 60 // 1時間
 const PASSWORD_RESET_REQUESTED_MESSAGE = 'パスワード再設定用のメールを送信しました(該当するアカウントが存在する場合)'
+const DUPLICATE_EMAIL_MESSAGE = 'このメールアドレスは既に登録されています'
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -50,10 +51,27 @@ function addSecondsIso(seconds: number): string {
   return new Date(Date.now() + seconds * 1000).toISOString()
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('UNIQUE constraint failed')
+}
+
+/**
+ * リクエストボディをJSONとしてパースする。不正なJSONの場合はnullを返す
+ * (c.req.json()は不正なJSONに対して例外を投げるため、それをハンドラ内で捕捉する代わりに利用する)。
+ */
+async function parseJsonBody(c: Context): Promise<unknown | null> {
+  try {
+    return await c.req.json()
+  } catch {
+    return null
+  }
+}
+
 export const authRoute = new Hono<{ Bindings: Bindings }>()
 
 authRoute.post('/register', async (c) => {
-  const parsed = registerSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = registerSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -62,17 +80,25 @@ authRoute.post('/register', async (c) => {
   const db = drizzle(c.env.DB)
   const existing = await db.select().from(users).where(eq(users.email, email)).get()
   if (existing) {
-    return c.json(errorResponse('DUPLICATE_EMAIL', 'このメールアドレスは既に登録されています'), 409)
+    return c.json(errorResponse('DUPLICATE_EMAIL', DUPLICATE_EMAIL_MESSAGE), 409)
   }
 
   const passwordHash = await hashPassword(password)
-  await db.insert(users).values({ email, passwordHash, displayName })
-
-  return c.json({}, 201)
+  try {
+    const inserted = await db.insert(users).values({ email, passwordHash, displayName }).returning().get()
+    return c.json({ id: inserted.id, email: inserted.email, displayName: inserted.displayName }, 201)
+  } catch (error) {
+    // 事前チェックとinsertの間で同一メールが同時登録された場合の競合を防ぐ(DBのUNIQUE制約を最終防衛線とする)。
+    if (isUniqueConstraintError(error)) {
+      return c.json(errorResponse('DUPLICATE_EMAIL', DUPLICATE_EMAIL_MESSAGE), 409)
+    }
+    throw error
+  }
 })
 
 authRoute.post('/login', async (c) => {
-  const parsed = loginSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = loginSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -99,7 +125,8 @@ authRoute.post('/login', async (c) => {
 })
 
 authRoute.post('/refresh', async (c) => {
-  const parsed = refreshSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = refreshSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -130,7 +157,8 @@ authRoute.post('/refresh', async (c) => {
 })
 
 authRoute.post('/logout', async (c) => {
-  const parsed = logoutSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = logoutSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -143,11 +171,12 @@ authRoute.post('/logout', async (c) => {
     .set({ revokedAt: nowIso() })
     .where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt)))
 
-  return c.json({})
+  return c.body(null, 204)
 })
 
 authRoute.post('/password-reset/request', async (c) => {
-  const parsed = passwordResetRequestSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = passwordResetRequestSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -176,7 +205,8 @@ authRoute.post('/password-reset/request', async (c) => {
 })
 
 authRoute.post('/password-reset/confirm', async (c) => {
-  const parsed = passwordResetConfirmSchema.safeParse(await c.req.json())
+  const body = await parseJsonBody(c)
+  const parsed = passwordResetConfirmSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -217,5 +247,5 @@ authRoute.post('/password-reset/confirm', async (c) => {
     .set({ revokedAt: nowIso() })
     .where(and(eq(refreshTokens.userId, row.userId), isNull(refreshTokens.revokedAt)))
 
-  return c.json({})
+  return c.body(null, 200)
 })

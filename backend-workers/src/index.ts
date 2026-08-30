@@ -8,6 +8,6 @@ export type Bindings = Env
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
-app.route('/auth', authRoute)
+app.route('/api/auth', authRoute)
 
 export default app

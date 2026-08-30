@@ -1,6 +1,22 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { generateOpaqueToken, sha256Hex } from '../../lib/crypto'
 import app from '../../index'
+
+// password-reset/requestはメール送信基盤が無いため生トークンをレスポンスに含めない(Java実装と同じ設計)。
+// confirmエンドポイント単体をテストするため、DBに直接有効なトークンを発行するテスト用ヘルパーを用意する。
+async function issuePasswordResetTokenForTest(email: string): Promise<string> {
+  const user = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: number }>()
+  if (!user) {
+    throw new Error(`test setup error: user not found for ${email}`)
+  }
+  const token = generateOpaqueToken()
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  await env.DB.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)')
+    .bind(user.id, await sha256Hex(token), expiresAt)
+    .run()
+  return token
+}
 
 async function resetDb() {
   await env.DB.batch([
@@ -12,7 +28,7 @@ async function resetDb() {
 
 async function registerUser(email = 'taro@example.com', password = 'TestPass123!') {
   return app.request(
-    '/auth/register',
+    '/api/auth/register',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,9 +43,14 @@ beforeEach(async () => {
 })
 
 describe('POST /auth/register', () => {
-  it('201で登録できる', async () => {
+  it('201で登録でき、レスポンスにid/email/displayNameを含む', async () => {
     const res = await registerUser()
     expect(res.status).toBe(201)
+
+    const body = await res.json<{ id: number; email: string; displayName: string }>()
+    expect(body.id).toBeGreaterThan(0)
+    expect(body.email).toBe('taro@example.com')
+    expect(body.displayName).toBe('E2EUser Taro')
   })
 
   it('メールアドレス重複時は409を返す', async () => {
@@ -43,11 +64,25 @@ describe('POST /auth/register', () => {
 
   it('バリデーションエラー時は400を返す', async () => {
     const res = await app.request(
-      '/auth/register',
+      '/api/auth/register',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'invalid-email', password: 'short', displayName: '' }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('不正なJSONボディでは400を返す(500にならない)', async () => {
+    const res = await app.request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid-json',
       },
       env,
     )
@@ -61,7 +96,7 @@ describe('POST /auth/login', () => {
     await registerUser()
 
     const res = await app.request(
-      '/auth/login',
+      '/api/auth/login',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +116,7 @@ describe('POST /auth/login', () => {
     await registerUser()
 
     const res = await app.request(
-      '/auth/login',
+      '/api/auth/login',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,7 +130,7 @@ describe('POST /auth/login', () => {
 
   it('存在しないメールアドレスでは401を返す', async () => {
     const res = await app.request(
-      '/auth/login',
+      '/api/auth/login',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +146,7 @@ describe('POST /auth/login', () => {
 async function loginAndGetTokens() {
   await registerUser()
   const res = await app.request(
-    '/auth/login',
+    '/api/auth/login',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -127,7 +162,7 @@ describe('POST /auth/refresh', () => {
     const { refreshToken } = await loginAndGetTokens()
 
     const res = await app.request(
-      '/auth/refresh',
+      '/api/auth/refresh',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,7 +178,7 @@ describe('POST /auth/refresh', () => {
 
   it('不正なリフレッシュトークンでは401を返す', async () => {
     const res = await app.request(
-      '/auth/refresh',
+      '/api/auth/refresh',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,11 +192,11 @@ describe('POST /auth/refresh', () => {
 })
 
 describe('POST /auth/logout', () => {
-  it('ログアウト後、そのリフレッシュトークンではrefreshできない', async () => {
+  it('204を返し、そのリフレッシュトークンではrefreshできなくなる', async () => {
     const { refreshToken } = await loginAndGetTokens()
 
     const logoutRes = await app.request(
-      '/auth/logout',
+      '/api/auth/logout',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -169,10 +204,10 @@ describe('POST /auth/logout', () => {
       },
       env,
     )
-    expect(logoutRes.status).toBe(200)
+    expect(logoutRes.status).toBe(204)
 
     const refreshRes = await app.request(
-      '/auth/refresh',
+      '/api/auth/refresh',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,7 +224,7 @@ describe('POST /auth/password-reset/request', () => {
     await registerUser()
 
     const existingRes = await app.request(
-      '/auth/password-reset/request',
+      '/api/auth/password-reset/request',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,7 +233,7 @@ describe('POST /auth/password-reset/request', () => {
       env,
     )
     const notExistingRes = await app.request(
-      '/auth/password-reset/request',
+      '/api/auth/password-reset/request',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -217,7 +252,7 @@ describe('POST /auth/password-reset/request', () => {
 describe('POST /auth/password-reset/confirm', () => {
   it('不正なトークンでは400を返す', async () => {
     const res = await app.request(
-      '/auth/password-reset/confirm',
+      '/api/auth/password-reset/confirm',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -227,5 +262,32 @@ describe('POST /auth/password-reset/confirm', () => {
     )
 
     expect(res.status).toBe(400)
+  })
+
+  it('有効なトークンで新しいパスワードに変更でき、以後は新パスワードでログインできる', async () => {
+    await registerUser()
+    const resetToken = await issuePasswordResetTokenForTest('taro@example.com')
+
+    const confirmRes = await app.request(
+      '/api/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword: 'NewPass456!' }),
+      },
+      env,
+    )
+    expect(confirmRes.status).toBe(200)
+
+    const loginRes = await app.request(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'taro@example.com', password: 'NewPass456!' }),
+      },
+      env,
+    )
+    expect(loginRes.status).toBe(200)
   })
 })
