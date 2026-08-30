@@ -1,0 +1,12 @@
+name = "homelog-backend-workers"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ローカル開発用のD1データベース定義。
+# 本番用のdatabase_idはCloudflareダッシュボードでD1を作成後に設定する（Phase 6で対応）。
+[[d1_databases]]
+binding = "DB"
+database_name = "homelog-db"
+database_id = "local-placeholder"
+migrations_dir = "drizzle"

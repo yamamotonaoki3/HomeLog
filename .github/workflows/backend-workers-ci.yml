@@ -1,0 +1,43 @@
+name: Backend Workers CI
+
+on:
+  pull_request:
+    paths:
+      - "backend-workers/**"
+      - ".github/workflows/backend-workers-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend-workers/**"
+      - ".github/workflows/backend-workers-ci.yml"
+
+defaults:
+  run:
+    working-directory: backend-workers
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: backend-workers/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Deploy dry-run (wrangler config validation)
+        run: npm run deploy:dry-run
