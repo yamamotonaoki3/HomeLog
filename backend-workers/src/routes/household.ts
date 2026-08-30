@@ -197,16 +197,21 @@ householdRoute.post('/leave', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  await db.delete(householdMembers).where(eq(householdMembers.userId, userId))
-
-  const remaining = await db
-    .select()
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, membership.householdId))
-    .all()
-  if (remaining.length === 0) {
-    await db.delete(households).where(eq(households.id, membership.householdId))
-  }
+  // メンバー削除と「残りメンバーが0人ならhousehold削除」を1つのD1バッチ(トランザクション)にまとめる。
+  // 別々のクエリのままだと、削除→残数確認→household削除の間に別ユーザーの参加(join)が割り込み、
+  // 参加が成功した直後にそのメンバーごとhouseholdが削除されてしまう競合状態が起こりうる。
+  // 2文目のNOT EXISTSサブクエリは同一トランザクション内で1文目のDELETE適用後の状態を見るため、
+  // このバッチの実行中に他リクエストのjoinが割り込む余地がない。
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM household_members WHERE user_id = ?').bind(userId),
+    c.env.DB
+      .prepare(
+        `DELETE FROM households WHERE id = ? AND NOT EXISTS (
+           SELECT 1 FROM household_members WHERE household_id = ?
+         )`,
+      )
+      .bind(membership.householdId, membership.householdId),
+  ])
 
   return c.body(null, 204)
 })
