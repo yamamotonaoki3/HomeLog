@@ -46,6 +46,10 @@ function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed')
 }
 
+function isUniqueConstraintErrorOn(error: unknown, qualifiedColumn: string): boolean {
+  return error instanceof Error && error.message.includes(`UNIQUE constraint failed: ${qualifiedColumn}`)
+}
+
 export const householdRoute = new Hono<AppEnv>()
 
 householdRoute.use('*', requireAuth)
@@ -68,20 +72,23 @@ householdRoute.post('/', async (c) => {
   for (let attempt = 1; attempt <= INVITE_CODE_MAX_RETRIES; attempt += 1) {
     const inviteCode = generateInviteCode()
     try {
-      const household = await db.insert(households).values({ name, inviteCode }).returning().get()
-      try {
-        await db.insert(householdMembers).values({ householdId: household.id, userId })
-      } catch (error) {
-        // 事前チェックとinsertの間で同時に別の世帯へ参加/作成した場合の競合を防ぐ
-        // (DBのUNIQUE制約: household_members.user_idを最終防衛線とする)
-        if (isUniqueConstraintError(error)) {
-          return c.json(errorResponse('VALIDATION_ERROR', ALREADY_HAS_HOUSEHOLD_MESSAGE), 400)
-        }
-        throw error
-      }
-      return c.json({ id: household.id, name: household.name, inviteCode: household.inviteCode }, 201)
+      // households/household_membersへの2つのINSERTを1つのD1バッチ(トランザクション)にまとめる。
+      // 事前チェックとinsertの間で同時に別の世帯へ参加/作成された場合、2件目のINSERTが
+      // household_members.user_idのUNIQUE制約に違反してバッチ全体がロールバックされるため、
+      // 所有者不在のhousehold行が孤立して残ることはない(last_insert_rowid()で直前のINSERTの
+      // idを参照することで、事前にhousehold.idを取得しなくても1バッチで完結できる)。
+      const [householdInsertResult] = await c.env.DB.batch([
+        c.env.DB.prepare('INSERT INTO households (name, invite_code) VALUES (?, ?)').bind(name, inviteCode),
+        c.env.DB
+          .prepare('INSERT INTO household_members (household_id, user_id) VALUES (last_insert_rowid(), ?)')
+          .bind(userId),
+      ])
+      return c.json({ id: householdInsertResult.meta.last_row_id, name, inviteCode }, 201)
     } catch (error) {
-      if (isUniqueConstraintError(error) && attempt < INVITE_CODE_MAX_RETRIES) {
+      if (isUniqueConstraintErrorOn(error, 'household_members.user_id')) {
+        return c.json(errorResponse('VALIDATION_ERROR', ALREADY_HAS_HOUSEHOLD_MESSAGE), 400)
+      }
+      if (isUniqueConstraintErrorOn(error, 'households.invite_code') && attempt < INVITE_CODE_MAX_RETRIES) {
         continue
       }
       if (isUniqueConstraintError(error)) {
@@ -171,6 +178,9 @@ householdRoute.post('/invite-code/regenerate', async (c) => {
     } catch (error) {
       if (isUniqueConstraintError(error) && attempt < INVITE_CODE_MAX_RETRIES) {
         continue
+      }
+      if (isUniqueConstraintError(error)) {
+        return c.json(errorResponse('DUPLICATE_RESOURCE', INVITE_CODE_GENERATION_FAILED_MESSAGE), 409)
       }
       throw error
     }

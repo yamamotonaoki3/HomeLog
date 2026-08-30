@@ -81,6 +81,26 @@ describe('POST /api/households', () => {
     expect(res.status).toBe(401)
   })
 
+  it('同一ユーザーによる同時作成リクエストでは、片方だけ成功し孤立したhousehold行が残らない(競合状態対策)', async () => {
+    const userId = await createTestUser('taro@example.com', '太郎')
+    const headers = { 'Content-Type': 'application/json', ...(await authHeaderFor(userId)) }
+
+    const [res1, res2] = await Promise.all([
+      app.request('/api/households', { method: 'POST', headers, body: JSON.stringify({ name: '山田家' }) }, env),
+      app.request('/api/households', { method: 'POST', headers, body: JSON.stringify({ name: '鈴木家' }) }, env),
+    ])
+
+    const statuses = [res1.status, res2.status].sort()
+    expect(statuses).toEqual([201, 400])
+
+    const householdCount = await env.DB.prepare('SELECT COUNT(*) AS count FROM households').first<{ count: number }>()
+    const memberCount = await env.DB.prepare('SELECT COUNT(*) AS count FROM household_members').first<{
+      count: number
+    }>()
+    expect(householdCount?.count).toBe(1)
+    expect(memberCount?.count).toBe(1)
+  })
+
   it('世帯グループ名が空の場合は400を返す', async () => {
     const userId = await createTestUser('taro@example.com', '太郎')
 

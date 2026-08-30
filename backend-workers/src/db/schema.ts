@@ -50,7 +50,10 @@ export const householdMembers = sqliteTable('household_members', {
     .references(() => households.id, { onDelete: 'cascade' }),
   // MVPでは1ユーザー1世帯のみ所属可能なため、user_idはUNIQUE制約で二重所属を防ぐ
   // (アプリケーション層の事前チェックに加えた最終防衛線。docs/details/features/F02_household.md参照)。
-  userId: integer('user_id').notNull().unique(),
+  userId: integer('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
   joinedAt: text('joined_at')
     .notNull()
     .default(sql`(current_timestamp)`),
