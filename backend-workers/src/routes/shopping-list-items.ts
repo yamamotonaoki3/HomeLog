@@ -244,33 +244,39 @@ shoppingListItemsRoute.post('/update', async (c) => {
          WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
       ).bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths),
     )
-    // 手動追加分は無条件削除。自動追加分は、直前のUPDATE後の実際の閾値判定結果を
-    // ライブサブクエリで参照して削除するかを決める(手動・自動どちらも、直前のUPDATEが
-    // 範囲外で不発だった場合はinventory_itemsの値が変わっていないため、この文の判定も
-    // その時点の実際の値を正しく反映する)。
+    // 手動追加分は削除、自動追加分は直前のUPDATE後の実際の閾値判定結果をライブサブクエリで
+    // 参照して削除するかを決める。どちらの場合も、まず「直前のUPDATEが実際に適用されたか」
+    // (quantity_tenthsが期待した新しい値になっているか)をEXISTS句で確認し、他リクエストとの
+    // 競合でUPDATEが不発(0件)だった場合は、手動・自動を問わずここで買い物リストを一切
+    // 変更しない(在庫が変わっていないのに購入済み扱いで削除してしまう事故を防ぐ)。
+    const expectedNewQuantityTenths = item.quantityTenths + deltaTenths
     statements.push(
       c.env.DB
         .prepare(
           `DELETE FROM shopping_list_items
-           WHERE id = ? AND (
-             ? = 1
-             OR NOT EXISTS (
-               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
-             )
-           )`,
+           WHERE id = ?
+             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
+             AND (
+               ? = 1
+               OR NOT EXISTS (
+                 SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+               )
+             )`,
         )
-        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
     )
     statements.push(
       c.env.DB
         .prepare(
           `UPDATE shopping_list_items
            SET purchased = 0, purchased_quantity_tenths = 0
-           WHERE id = ? AND ? = 0 AND EXISTS (
-             SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
-           )`,
+           WHERE id = ?
+             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
+             AND ? = 0 AND EXISTS (
+               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+             )`,
         )
-        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
     )
   }
 
