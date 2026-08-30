@@ -76,6 +76,48 @@ describe('POST /auth/register', () => {
     expect(res.status).toBe(400)
   })
 
+  it('パスワードが数字のみ(英字を含まない)の場合は400を返す', async () => {
+    const res = await app.request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'taro@example.com', password: '12345678', displayName: 'E2EUser Taro' }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('表示名が空白のみの場合は400を返す', async () => {
+    const res = await app.request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'taro@example.com', password: 'TestPass123!', displayName: '   ' }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('表示名が51文字以上の場合は400を返す', async () => {
+    const res = await app.request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'taro@example.com', password: 'TestPass123!', displayName: 'a'.repeat(51) }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
   it('不正なJSONボディでは400を返す(500にならない)', async () => {
     const res = await app.request(
       '/api/auth/register',

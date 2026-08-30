@@ -11,10 +11,18 @@ const PASSWORD_RESET_EXPIRATION_SECONDS = 60 * 60 // 1時間
 const PASSWORD_RESET_REQUESTED_MESSAGE = 'パスワード再設定用のメールを送信しました(該当するアカウントが存在する場合)'
 const DUPLICATE_EMAIL_MESSAGE = 'このメールアドレスは既に登録されています'
 
+// 既存Java実装(RegisterRequest)のバリデーション規則をそのまま踏襲する。
+const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
+const passwordSchema = z.string().regex(PASSWORD_PATTERN, 'パスワードは8文字以上で英字と数字を両方含めてください')
+const displayNameSchema = z
+  .string()
+  .max(50)
+  .refine((value) => value.trim().length > 0, { message: '表示名を入力してください' })
+
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
-  displayName: z.string().min(1),
+  password: passwordSchema,
+  displayName: displayNameSchema,
 })
 
 const loginSchema = z.object({
@@ -36,7 +44,7 @@ const passwordResetRequestSchema = z.object({
 
 const passwordResetConfirmSchema = z.object({
   token: z.string().min(1),
-  newPassword: z.string().min(8),
+  newPassword: passwordSchema,
 })
 
 function errorResponse(code: string, message: string) {
