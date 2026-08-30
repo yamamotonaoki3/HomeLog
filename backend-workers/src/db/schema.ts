@@ -97,8 +97,12 @@ export const shoppingListItems = sqliteTable('shopping_list_items', {
   householdId: integer('household_id')
     .notNull()
     .references(() => households.id, { onDelete: 'cascade' }),
+  // 1在庫アイテムにつき買い物リスト項目は1件のみ(手動追加チェック・閾値による自動同期の
+  // どちらも「存在確認してから挿入」という手順のため、同時リクエストによる重複挿入を
+  // 防ぐ最終防衛線としてUNIQUE制約を付与する)。
   inventoryItemId: integer('inventory_item_id')
     .notNull()
+    .unique()
     .references(() => inventoryItems.id, { onDelete: 'cascade' }),
   isManual: integer('is_manual', { mode: 'boolean' }).notNull(),
   purchased: integer('purchased', { mode: 'boolean' }).notNull().default(false),

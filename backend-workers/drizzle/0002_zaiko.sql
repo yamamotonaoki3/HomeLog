@@ -31,10 +31,13 @@ CREATE TABLE inventory_items (
 );
 CREATE INDEX idx_inventory_items_household_id ON inventory_items(household_id);
 
+-- inventory_item_idにUNIQUE制約を付与し、1在庫アイテムにつき買い物リスト項目は1件のみとする。
+-- 手動追加・自動同期のどちらも「存在確認してから挿入」という手順のため、同時リクエストによる
+-- 重複挿入を防ぐ最終防衛線とする(既存Java実装には無い改善だが、破壊的変更ではない)。
 CREATE TABLE shopping_list_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
-  inventory_item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+  inventory_item_id INTEGER NOT NULL UNIQUE REFERENCES inventory_items(id) ON DELETE CASCADE,
   is_manual INTEGER NOT NULL,
   purchased INTEGER NOT NULL DEFAULT 0,
   purchased_quantity_tenths INTEGER NOT NULL DEFAULT 0,

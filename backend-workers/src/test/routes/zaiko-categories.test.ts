@@ -58,6 +58,22 @@ describe('GET /api/zaiko-categories', () => {
     const body = await res.json<unknown[]>()
     expect(body).toHaveLength(10)
   })
+
+  it('GETより先にPOSTでカスタムカテゴリーを作っても、後のGETでデフォルト10件がシードされる', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    await app.request(
+      '/api/zaiko-categories',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: 'お菓子' }) },
+      env,
+    )
+
+    const res = await app.request('/api/zaiko-categories', { headers }, env)
+    const body = await res.json<{ name: string; isDefault: boolean }[]>()
+    expect(body).toHaveLength(11)
+    expect(body.filter((c) => c.isDefault)).toHaveLength(10)
+    expect(body.some((c) => c.name === 'お菓子' && !c.isDefault)).toBe(true)
+  })
 })
 
 describe('POST /api/zaiko-categories', () => {

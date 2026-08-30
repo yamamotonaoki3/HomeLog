@@ -38,13 +38,20 @@ zaikoCategoriesRoute.get('/', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  let categories = await db.select().from(zaikoCategories).where(eq(zaikoCategories.householdId, householdId)).all()
-  if (categories.length === 0) {
+  // 「カテゴリーが1件も無いか」ではなく「デフォルトカテゴリーが1件も無いか」で判定する。
+  // GETより先にPOSTでカスタムカテゴリーが作られていた場合でも、デフォルト10件を
+  // 取りこぼさずシードするため。
+  const defaultExists = await db
+    .select()
+    .from(zaikoCategories)
+    .where(and(eq(zaikoCategories.householdId, householdId), eq(zaikoCategories.isDefault, true)))
+    .get()
+  if (!defaultExists) {
     await db
       .insert(zaikoCategories)
       .values(DEFAULT_CATEGORY_NAMES.map((name) => ({ householdId, name, isDefault: true })))
-    categories = await db.select().from(zaikoCategories).where(eq(zaikoCategories.householdId, householdId)).all()
   }
+  const categories = await db.select().from(zaikoCategories).where(eq(zaikoCategories.householdId, householdId)).all()
 
   return c.json(categories.map((category) => ({ id: category.id, name: category.name, isDefault: category.isDefault })))
 })

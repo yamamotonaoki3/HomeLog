@@ -81,13 +81,13 @@ async function validateStore(db: DrizzleD1Database, householdId: number, storeId
  */
 async function syncShoppingList(db: DrizzleD1Database, item: typeof inventoryItems.$inferSelect): Promise<void> {
   const belowThreshold = item.quantityTenths < item.thresholdTenths
-  const autoEntry = await db
-    .select()
-    .from(shoppingListItems)
-    .where(and(eq(shoppingListItems.inventoryItemId, item.id), eq(shoppingListItems.isManual, false)))
-    .get()
+  // 挿入要否の判定は(手動追加分も含めて)「いずれかの買い物リスト項目が既に存在するか」で行う
+  // (既存Java実装のexistsByInventoryItemIdと同じ)。手動追加済みの項目に対して重複して
+  // 自動追加してしまうことを防ぐ。一方、削除対象は自動追加分(is_manual=false)のみに限定する
+  // (手動追加分はここでは削除しない)。
+  const anyEntry = await db.select().from(shoppingListItems).where(eq(shoppingListItems.inventoryItemId, item.id)).get()
 
-  if (belowThreshold && !autoEntry) {
+  if (belowThreshold && !anyEntry) {
     await db.insert(shoppingListItems).values({
       householdId: item.householdId,
       inventoryItemId: item.id,
@@ -95,8 +95,8 @@ async function syncShoppingList(db: DrizzleD1Database, item: typeof inventoryIte
       purchased: false,
       purchasedQuantityTenths: 0,
     })
-  } else if (!belowThreshold && autoEntry) {
-    await db.delete(shoppingListItems).where(eq(shoppingListItems.id, autoEntry.id))
+  } else if (!belowThreshold && anyEntry && !anyEntry.isManual) {
+    await db.delete(shoppingListItems).where(eq(shoppingListItems.id, anyEntry.id))
   }
 }
 

@@ -194,6 +194,40 @@ describe('PATCH /api/inventory-items/:id', () => {
   })
 })
 
+describe('手動追加済みの項目と閾値による自動同期の相互作用', () => {
+  it('手動追加済みの項目が閾値を下回っても、重複して自動追加されない', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    // 閾値以上の数量で作成(自動追加されない状態)
+    const item = await createItem(headers, { name: '牛乳', categoryId, storeId: null, quantity: 5, threshold: 0.5 })
+    await app.request(
+      '/api/shopping-list-items',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ inventoryItemId: item.id }),
+      },
+      env,
+    )
+
+    // 数量を閾値未満まで減らす → syncShoppingListが走るが、既に手動追加済みなので重複追加されないはず
+    const res = await app.request(
+      `/api/inventory-items/${item.id}/quantity`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ delta: -4.6 }),
+      },
+      env,
+    )
+    expect(res.status).toBe(200)
+
+    const listRes = await app.request('/api/shopping-list-items', { headers }, env)
+    const list = await listRes.json<{ inventoryItemId: number }[]>()
+    expect(list.filter((i) => i.inventoryItemId === item.id)).toHaveLength(1)
+  })
+})
+
 describe('PATCH /api/inventory-items/:id/quantity', () => {
   it('数量を増減できる', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')

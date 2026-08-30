@@ -186,7 +186,12 @@ shoppingListItemsRoute.post('/update', async (c) => {
 
   const updatedInventoryItems: { id: number; quantity: number }[] = []
   const removedShoppingListItemIds: number[] = []
+  const statements: D1PreparedStatement[] = []
+  const maxTenths = toTenths(MAX_VALUE)
 
+  // 1周目で全行を検証し、書き込みクエリを組み立てるだけに留める(まだ実行しない)。
+  // 一部の行が見つからない・範囲外だった場合に、既に実行済みの行だけ反映されてしまう
+  // (購入処理が半端に成功する)ことを防ぐため、検証が全て通ってから2周目でまとめて実行する。
   for (const line of parsed.data.items) {
     const entry = await findOwnedEntry(db, householdId, line.id)
     if (!entry) {
@@ -199,24 +204,34 @@ shoppingListItemsRoute.post('/update', async (c) => {
       return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
     }
 
-    const maxTenths = toTenths(MAX_VALUE)
     const newQuantityTenths = item.quantityTenths + deltaTenths
     if (newQuantityTenths < 0 || newQuantityTenths > maxTenths) {
       return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
     }
-    await db.update(inventoryItems).set({ quantityTenths: newQuantityTenths }).where(eq(inventoryItems.id, item.id))
+
+    statements.push(
+      c.env.DB.prepare('UPDATE inventory_items SET quantity_tenths = ? WHERE id = ?').bind(
+        newQuantityTenths,
+        item.id,
+      ),
+    )
     updatedInventoryItems.push({ id: item.id, quantity: fromTenths(newQuantityTenths) })
 
     const stillBelowThreshold = newQuantityTenths < item.thresholdTenths
     if (entry.isManual || !stillBelowThreshold) {
-      await db.delete(shoppingListItems).where(eq(shoppingListItems.id, entry.id))
+      statements.push(c.env.DB.prepare('DELETE FROM shopping_list_items WHERE id = ?').bind(entry.id))
       removedShoppingListItemIds.push(entry.id)
     } else {
-      await db
-        .update(shoppingListItems)
-        .set({ purchased: false, purchasedQuantityTenths: 0 })
-        .where(eq(shoppingListItems.id, entry.id))
+      statements.push(
+        c.env.DB
+          .prepare('UPDATE shopping_list_items SET purchased = 0, purchased_quantity_tenths = 0 WHERE id = ?')
+          .bind(entry.id),
+      )
     }
+  }
+
+  if (statements.length > 0) {
+    await c.env.DB.batch(statements)
   }
 
   return c.json({ updatedInventoryItems, removedShoppingListItemIds })
