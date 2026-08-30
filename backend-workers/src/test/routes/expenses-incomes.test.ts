@@ -270,6 +270,14 @@ describe('GET /api/expenses', () => {
     const filteredRes = await app.request(`/api/expenses?categoryId=${categoryId}`, { headers }, env)
     expect(await filteredRes.json<unknown[]>()).toHaveLength(1)
   })
+
+  it('categoryIdが数値でない場合は400を返す(500にならない)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const res = await app.request('/api/expenses?categoryId=abc', { headers }, env)
+
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('POST /api/incomes', () => {
@@ -331,5 +339,13 @@ describe('GET /api/incomes', () => {
     const body = await res.json<{ content: string }[]>()
     expect(body).toHaveLength(1)
     expect(body[0].content).toBe('A')
+  })
+
+  it('categoryIdが数値でない場合は400を返す(500にならない)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const res = await app.request('/api/incomes?categoryId=abc', { headers }, env)
+
+    expect(res.status).toBe(400)
   })
 })

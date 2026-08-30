@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { accounts, cards, expenses, kakeiboCategories } from '../db/schema'
 import { isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
+import { parseOptionalIntQueryParam } from '../lib/query-params'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
@@ -62,10 +63,13 @@ expensesRoute.get('/', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  const categoryIdParam = c.req.query('categoryId')
+  const categoryId = parseOptionalIntQueryParam(c.req.query('categoryId'))
+  if (categoryId === null) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
   const conditions = [eq(expenses.householdId, householdId), eq(expenses.payerUserId, userId)]
-  if (categoryIdParam !== undefined) {
-    conditions.push(eq(expenses.categoryId, Number(categoryIdParam)))
+  if (categoryId !== undefined) {
+    conditions.push(eq(expenses.categoryId, categoryId))
   }
 
   const rows = await db
