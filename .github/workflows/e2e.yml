@@ -23,6 +23,10 @@ jobs:
         working-directory: backend-workers
         run: npm ci
 
+      - name: Create CI-only .dev.vars for backend-workers
+        working-directory: backend-workers
+        run: echo "JWT_SECRET=ci-test-only-secret-not-for-production-use-32chars" > .dev.vars
+
       - name: Install e2e dependencies
         working-directory: e2e
         run: npm ci

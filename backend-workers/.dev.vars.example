@@ -1,0 +1,7 @@
+# ローカル開発用のシークレット値テンプレート。
+# このファイルを .dev.vars にコピーして値を変更する（.dev.vars は .gitignore 対象で
+# wrangler dev / vitest-pool-workers から自動的に読み込まれる）。
+# 本番(Cloudflareダッシュボード)では wrangler secret put JWT_SECRET で設定し、
+# このファイルや wrangler.toml には実際の値を書かないこと。
+
+JWT_SECRET=changeme-generate-a-random-32-char-or-longer-value

@@ -3,10 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2026-08-22"
 compatibility_flags = ["nodejs_compat"]
 
-# ローカル開発専用のデフォルト値。本番ではwrangler secret putで上書きし、
-# このファイルには実際のシークレット値を書かないこと。
+# JWT_SECRETのような真のシークレットはvarsに書かず、.dev.vars(gitignore対象、
+# .dev.vars.exampleを参照して各自作成)またはwrangler secret putで管理する。
+# varsは非シークレットな設定値のみを置く。
 [vars]
-JWT_SECRET = "homelog-workers-local-dev-secret-key-32chars-min"
 JWT_ACCESS_EXPIRATION_SECONDS = "900"
 JWT_REFRESH_EXPIRATION_SECONDS = "604800"
 # メール送信基盤(今後の検討事項)が実装されるまでのローカル開発専用フラグ。デフォルトはfalse。

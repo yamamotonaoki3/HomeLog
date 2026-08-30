@@ -59,6 +59,15 @@ function addSecondsIso(seconds: number): string {
   return new Date(Date.now() + seconds * 1000).toISOString()
 }
 
+// メールアドレス列挙攻撃対策用のダミーハッシュ。存在しないメールアドレスでログインを
+// 試みられた際にも、実在ユーザーの場合と同程度の計算コスト(PBKDF2の反復)をかけることで、
+// レスポンスタイムの差からメールアドレスの存在有無を推測されないようにする。
+let dummyPasswordHashPromise: Promise<string> | null = null
+function getDummyPasswordHash(): Promise<string> {
+  dummyPasswordHashPromise ??= hashPassword('dummy-password-for-timing-safety-only')
+  return dummyPasswordHashPromise
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed')
 }
@@ -114,7 +123,13 @@ authRoute.post('/login', async (c) => {
 
   const db = drizzle(c.env.DB)
   const user = await db.select().from(users).where(eq(users.email, email)).get()
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  if (!user) {
+    // ユーザーが存在しない場合もダミーハッシュに対して検証を行い、実在ユーザーの場合との
+    // 処理時間差からメールアドレスの存在有無を推測されないようにする。
+    await verifyPassword(password, await getDummyPasswordHash())
+    return c.json(errorResponse('INVALID_CREDENTIALS', 'メールアドレスまたはパスワードが正しくありません'), 401)
+  }
+  if (!(await verifyPassword(password, user.passwordHash))) {
     return c.json(errorResponse('INVALID_CREDENTIALS', 'メールアドレスまたはパスワードが正しくありません'), 401)
   }
 
@@ -190,32 +205,34 @@ authRoute.post('/password-reset/request', async (c) => {
   }
   const { email } = parsed.data
 
-  const db = drizzle(c.env.DB)
-  const user = await db.select().from(users).where(eq(users.email, email)).get()
+  const token = generateOpaqueToken()
+  const tokenHash = await sha256Hex(token)
+  const expiresAt = addSecondsIso(PASSWORD_RESET_EXPIRATION_SECONDS)
+  const now = nowIso()
 
-  if (user) {
-    // メールアドレス列挙攻撃対策のため、成功・失敗に関わらず同じレスポンスを返す。
-    // 既存の有効なトークンは無効化してから新しいトークンを発行する。
-    await db
-      .update(passwordResetTokens)
-      .set({ usedAt: nowIso() })
-      .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)))
+  // メールアドレスの存在有無に関わらず常に同じSQL(サブクエリでユーザーが存在する場合のみ
+  // 実際に行が更新・挿入される)を実行することで、処理時間の差からメールアドレスの
+  // 存在有無を推測されないようにする(タイミング攻撃対策)。
+  const [, insertResult] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE password_reset_tokens SET used_at = ?
+       WHERE user_id = (SELECT id FROM users WHERE email = ?) AND used_at IS NULL`,
+    ).bind(now, email),
+    c.env.DB.prepare(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       SELECT id, ?, ? FROM users WHERE email = ?`,
+    ).bind(tokenHash, expiresAt, email),
+  ])
 
-    const token = generateOpaqueToken()
-    await db.insert(passwordResetTokens).values({
-      userId: user.id,
-      tokenHash: await sha256Hex(token),
-      expiresAt: addSecondsIso(PASSWORD_RESET_EXPIRATION_SECONDS),
-    })
-
+  if (insertResult.meta.changes > 0) {
     // メール送信基盤(今後の検討事項)が実装されるまでの暫定措置。
     // 生トークンのログ出力はAPP_PASSWORD_RESET_LOG_TOKEN_ENABLED=trueの環境
     // (ローカル開発専用)でのみ行い、共有環境・本番環境では出力しない。
     const logTokenEnabled: string = c.env.APP_PASSWORD_RESET_LOG_TOKEN_ENABLED
     if (logTokenEnabled === 'true') {
-      console.warn(`[開発用] パスワードリセットトークンを発行しました。userId=${user.id}, token=${token}`)
+      console.warn(`[開発用] パスワードリセットトークンを発行しました。email=${email}, token=${token}`)
     } else {
-      console.info(`パスワードリセットトークンを発行しました。userId=${user.id}`)
+      console.info(`パスワードリセットトークンを発行しました。email=${email}`)
     }
   }
 

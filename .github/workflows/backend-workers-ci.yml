@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Create CI-only .dev.vars
+        run: echo "JWT_SECRET=ci-test-only-secret-not-for-production-use-32chars" > .dev.vars
+
       - name: Lint
         run: npm run lint
 
