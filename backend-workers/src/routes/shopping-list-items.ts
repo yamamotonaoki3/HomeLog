@@ -199,17 +199,15 @@ shoppingListItemsRoute.post('/update', async (c) => {
 
   const maxTenths = toTenths(MAX_VALUE)
 
-  // D1のbatchは各文を静的なbind値で事前に組み立てる必要があり、ある文のRETURNING結果を
-  // 後続の文のパラメータとして使うことができない(プラットフォーム上の制約)。そのため、
-  // 行ごとに「条件付き相対UPDATE(+RETURNINGで実際に適用された値を取得)」→
-  // 「その実際の値を使って買い物リストの文を組み立てて実行」という2段階を順に行う。
-  // 行内の2文はJS側の逐次awaitになるため、他リクエストの書き込みとまれに競合しうるが、
-  // 常に「実際に適用された値」を根拠に判断するため、レスポンス・買い物リストの状態が
-  // 実際の在庫数量と食い違うことはない(既存Java実装もupdateQuantity実行後に再度
-  // findByIdで実際の値を読み直しており、同じ考え方)。
-  const updatedInventoryItems: { id: number; quantity: number }[] = []
-  const removedShoppingListItemIds: number[] = []
-
+  // Phase 1: 全行の存在確認・範囲チェックを先に済ませる。まだ一切書き込みは行わない。
+  // これにより、複数行のうち後ろの行が存在しない/範囲外だった場合に、既に処理済みの
+  // 前方の行だけ反映されてしまう(購入処理が半端に成功する)ことを防ぐ
+  // (既存Java実装の@Transactional相当の「全体が成功するか、何も変更しないか」を近似する)。
+  const lines: {
+    entry: typeof shoppingListItems.$inferSelect
+    item: typeof inventoryItems.$inferSelect
+    deltaTenths: number
+  }[] = []
   for (const line of parsed.data.items) {
     const entry = await findOwnedEntry(db, householdId, line.id)
     if (!entry) {
@@ -225,7 +223,19 @@ shoppingListItemsRoute.post('/update', async (c) => {
     if (provisionalNewQuantityTenths < 0 || provisionalNewQuantityTenths > maxTenths) {
       return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
     }
+    lines.push({ entry, item, deltaTenths })
+  }
 
+  // Phase 2: 検証済みの行を順に適用する。ここから先は基本的に成功するはずだが、
+  // D1のbatchは文をまたいだ動的な値の受け渡しができない(プラットフォーム上の制約)ため、
+  // 各行を「条件付き相対UPDATE(+RETURNINGで実際に適用された値を取得)」→
+  // 「その実際の値を使って買い物リストの文を実行」という順で行い、常に実際にDBへ
+  // 適用された値を根拠に判断する(既存Java実装もupdateQuantity実行後に再度findByIdで
+  // 実際の値を読み直しており、同じ考え方)。
+  const updatedInventoryItems: { id: number; quantity: number }[] = []
+  const removedShoppingListItemIds: number[] = []
+
+  for (const { entry, item, deltaTenths } of lines) {
     const updateResult = await c.env.DB.prepare(
       `UPDATE inventory_items
        SET quantity_tenths = quantity_tenths + ?
