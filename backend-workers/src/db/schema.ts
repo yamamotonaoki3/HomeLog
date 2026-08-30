@@ -58,3 +58,56 @@ export const householdMembers = sqliteTable('household_members', {
     .notNull()
     .default(sql`(current_timestamp)`),
 })
+
+export const zaikoCategories = sqliteTable('zaiko_categories', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+})
+
+export const stores = sqliteTable('stores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+})
+
+export const inventoryItems = sqliteTable('inventory_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  categoryId: integer('category_id')
+    .notNull()
+    .references(() => zaikoCategories.id),
+  storeId: integer('store_id').references(() => stores.id),
+  // 数量・閾値はSQLiteのfloat演算誤差(0.1の加減算の繰り返し等)を避けるため、
+  // 「小数点第一位までの値を10倍した整数」として保持する。API入出力時にのみ10で除算/乗算する。
+  quantityTenths: integer('quantity_tenths').notNull(),
+  thresholdTenths: integer('threshold_tenths').notNull(),
+})
+
+export const shoppingListItems = sqliteTable('shopping_list_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // 1在庫アイテムにつき買い物リスト項目は1件のみ(手動追加チェック・閾値による自動同期の
+  // どちらも「存在確認してから挿入」という手順のため、同時リクエストによる重複挿入を
+  // 防ぐ最終防衛線としてUNIQUE制約を付与する)。
+  inventoryItemId: integer('inventory_item_id')
+    .notNull()
+    .unique()
+    .references(() => inventoryItems.id, { onDelete: 'cascade' }),
+  isManual: integer('is_manual', { mode: 'boolean' }).notNull(),
+  purchased: integer('purchased', { mode: 'boolean' }).notNull().default(false),
+  purchasedQuantityTenths: integer('purchased_quantity_tenths').notNull().default(0),
+  addedAt: text('added_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
