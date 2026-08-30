@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -226,44 +226,71 @@ shoppingListItemsRoute.post('/update', async (c) => {
     lines.push({ entry, item, deltaTenths })
   }
 
-  // Phase 2: 検証済みの行を順に適用する。ここから先は基本的に成功するはずだが、
-  // D1のbatchは文をまたいだ動的な値の受け渡しができない(プラットフォーム上の制約)ため、
-  // 各行を「条件付き相対UPDATE(+RETURNINGで実際に適用された値を取得)」→
-  // 「その実際の値を使って買い物リストの文を実行」という順で行い、常に実際にDBへ
-  // 適用された値を根拠に判断する(既存Java実装もupdateQuantity実行後に再度findByIdで
-  // 実際の値を読み直しており、同じ考え方)。
+  // Phase 2: 検証済みの全行を1つのD1バッチ(トランザクション)にまとめて実行する。
+  // 個別にawaitして逐次コミットする方式だと、後方の行が(他リクエストとの競合で)
+  // 実行時に失敗した場合、既に個別コミット済みの前方の行を取り消せない
+  // (D1はバッチ以外に複数ラウンドトリップにまたがるトランザクションを提供しないため)。
+  // 1つのバッチにまとめることで、全行が同一トランザクションとして実行される。
+  // バッチはあらかじめ静的なbind値で文を組み立てる必要があり、ある文のRETURNING結果を
+  // 後続の文のパラメータとして渡せないため、各行のDELETE/UPDATE文は「直前のUPDATEで
+  // 実際に適用された値」をSQLのサブクエリ(ライブな現在値)で参照する形にし、
+  // JS側の古いスナップショットに依存しないようにする。
+  const statements: D1PreparedStatement[] = []
+  for (const { entry, item, deltaTenths } of lines) {
+    statements.push(
+      c.env.DB.prepare(
+        `UPDATE inventory_items
+         SET quantity_tenths = quantity_tenths + ?
+         WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+      ).bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths),
+    )
+    // 手動追加分は無条件削除。自動追加分は、直前のUPDATE後の実際の閾値判定結果を
+    // ライブサブクエリで参照して削除するかを決める(手動・自動どちらも、直前のUPDATEが
+    // 範囲外で不発だった場合はinventory_itemsの値が変わっていないため、この文の判定も
+    // その時点の実際の値を正しく反映する)。
+    statements.push(
+      c.env.DB
+        .prepare(
+          `DELETE FROM shopping_list_items
+           WHERE id = ? AND (
+             ? = 1
+             OR NOT EXISTS (
+               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+             )
+           )`,
+        )
+        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+    )
+    statements.push(
+      c.env.DB
+        .prepare(
+          `UPDATE shopping_list_items
+           SET purchased = 0, purchased_quantity_tenths = 0
+           WHERE id = ? AND ? = 0 AND EXISTS (
+             SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+           )`,
+        )
+        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+    )
+  }
+
+  const results = await c.env.DB.batch(statements)
+
+  // レスポンスは(JS側で計算した値ではなく)バッチ後に在庫アイテムを再取得した実際の値から組み立てる。
+  const updatedItemIds = lines.map(({ item }) => item.id)
+  const refreshedItems = await db.select().from(inventoryItems).where(inArray(inventoryItems.id, updatedItemIds)).all()
+  const refreshedItemById = new Map(refreshedItems.map((refreshed) => [refreshed.id, refreshed]))
+
   const updatedInventoryItems: { id: number; quantity: number }[] = []
   const removedShoppingListItemIds: number[] = []
-
-  for (const { entry, item, deltaTenths } of lines) {
-    const updateResult = await c.env.DB.prepare(
-      `UPDATE inventory_items
-       SET quantity_tenths = quantity_tenths + ?
-       WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?
-       RETURNING quantity_tenths, threshold_tenths`,
-    )
-      .bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths)
-      .run()
-    const updatedRow = updateResult.results[0] as { quantity_tenths: number; threshold_tenths: number } | undefined
-    if (!updatedRow) {
-      // 事前チェックの直後だが、他リクエストとの競合で直前に範囲外になっていた場合はここに来る。
-      return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
+  for (const [index, { entry, item }] of lines.entries()) {
+    const refreshed = refreshedItemById.get(item.id)
+    if (refreshed) {
+      updatedInventoryItems.push({ id: item.id, quantity: fromTenths(refreshed.quantityTenths) })
     }
-    updatedInventoryItems.push({ id: item.id, quantity: fromTenths(updatedRow.quantity_tenths) })
-
-    // 手動追加分は無条件削除、自動追加分は実際に適用された値による閾値判定結果に基づいて
-    // 削除するかを決める(JS側の古いスナップショットではなく、直前のUPDATEが返した実際の値を使う)。
-    const stillBelowThreshold = updatedRow.quantity_tenths < updatedRow.threshold_tenths
-    if (entry.isManual || !stillBelowThreshold) {
-      const deleteResult = await db.delete(shoppingListItems).where(eq(shoppingListItems.id, entry.id)).run()
-      if (deleteResult.meta.changes > 0) {
-        removedShoppingListItemIds.push(entry.id)
-      }
-    } else {
-      await db
-        .update(shoppingListItems)
-        .set({ purchased: false, purchasedQuantityTenths: 0 })
-        .where(eq(shoppingListItems.id, entry.id))
+    const deleteResult = results[index * 3 + 1]
+    if (deleteResult.meta.changes > 0) {
+      removedShoppingListItemIds.push(entry.id)
     }
   }
 
