@@ -7,7 +7,7 @@ import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '..
 import { signAccessToken } from '../lib/jwt'
 import type { Bindings } from '../index'
 
-const PASSWORD_RESET_EXPIRATION_SECONDS = 60 * 60 // 1時間
+const PASSWORD_RESET_EXPIRATION_SECONDS = 30 * 60 // 30分(docs/details/features/F01_auth.md参照)
 const PASSWORD_RESET_REQUESTED_MESSAGE = 'パスワード再設定用のメールを送信しました(該当するアカウントが存在する場合)'
 const DUPLICATE_EMAIL_MESSAGE = 'このメールアドレスは既に登録されています'
 
@@ -232,38 +232,45 @@ authRoute.post('/password-reset/confirm', async (c) => {
 
   const db = drizzle(c.env.DB)
   const tokenHash = await sha256Hex(token)
+  const now = nowIso()
   const row = await db
     .select()
     .from(passwordResetTokens)
-    .where(
-      and(
-        eq(passwordResetTokens.tokenHash, tokenHash),
-        isNull(passwordResetTokens.usedAt),
-        gt(passwordResetTokens.expiresAt, nowIso()),
-      ),
-    )
+    .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt), gt(passwordResetTokens.expiresAt, now)))
     .get()
 
   if (!row) {
     return c.json(errorResponse('INVALID_TOKEN', 'パスワード再設定用のリンクが無効または期限切れです'), 400)
   }
 
-  // 同時リクエストによる二重消費を防ぐため、まだ未使用の場合のみusedAtを更新する(条件付きUPDATE)。
-  const updateResult = await db
-    .update(passwordResetTokens)
-    .set({ usedAt: nowIso() })
-    .where(and(eq(passwordResetTokens.id, row.id), isNull(passwordResetTokens.usedAt)))
-  if (updateResult.meta.changes === 0) {
+  const newPasswordHash = await hashPassword(newPassword)
+
+  // トークン消費・パスワード更新・リフレッシュトークン失効を1つのD1バッチ(トランザクション)にまとめ、
+  // 途中で失敗してもパスワードだけ変わってトークンは未消費のまま、といった中途半端な状態を防ぐ。
+  // usersのUPDATEはサブクエリでpassword_reset_tokensがまだ未消費であることを確認してから実行するため、
+  // 同時に同じトークンでconfirmされた場合はどちらか一方のみ成功する(バッチ内での二重消費防止)。
+  const [usersUpdateResult] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE users SET password_hash = ?
+       WHERE id = (
+         SELECT user_id FROM password_reset_tokens
+         WHERE id = ? AND used_at IS NULL AND expires_at > ?
+       )`,
+    ).bind(newPasswordHash, row.id, now),
+    c.env.DB.prepare('UPDATE password_reset_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL').bind(
+      now,
+      row.id,
+    ),
+    // 全端末からログアウトさせるため、そのユーザーの有効なリフレッシュトークンを全て失効させる。
+    c.env.DB.prepare('UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(
+      now,
+      row.userId,
+    ),
+  ])
+
+  if (usersUpdateResult.meta.changes === 0) {
     return c.json(errorResponse('INVALID_TOKEN', 'パスワード再設定用のリンクが無効または期限切れです'), 400)
   }
-
-  const newPasswordHash = await hashPassword(newPassword)
-  await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, row.userId))
-  // 全端末からログアウトさせるため、そのユーザーの有効なリフレッシュトークンを全て失効させる。
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: nowIso() })
-    .where(and(eq(refreshTokens.userId, row.userId), isNull(refreshTokens.revokedAt)))
 
   return c.body(null, 200)
 })

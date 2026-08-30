@@ -358,6 +358,44 @@ describe('POST /auth/password-reset/confirm', () => {
     expect(res.status).toBe(400)
   })
 
+  it('同じトークンで2回confirmすると、2回目は400になり、パスワードは1回目の値のまま維持される(二重消費防止)', async () => {
+    await registerUser()
+    const resetToken = await issuePasswordResetTokenForTest('taro@example.com')
+
+    const firstRes = await app.request(
+      '/api/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword: 'FirstPass123!' }),
+      },
+      env,
+    )
+    expect(firstRes.status).toBe(200)
+
+    const secondRes = await app.request(
+      '/api/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword: 'SecondPass456!' }),
+      },
+      env,
+    )
+    expect(secondRes.status).toBe(400)
+
+    const loginWithFirstRes = await app.request(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'taro@example.com', password: 'FirstPass123!' }),
+      },
+      env,
+    )
+    expect(loginWithFirstRes.status).toBe(200)
+  })
+
   it('有効なトークンで新しいパスワードに変更でき、以後は新パスワードでログインできる', async () => {
     await registerUser()
     const resetToken = await issuePasswordResetTokenForTest('taro@example.com')
