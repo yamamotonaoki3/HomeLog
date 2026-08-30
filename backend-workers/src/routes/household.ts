@@ -121,9 +121,20 @@ householdRoute.post('/join', async (c) => {
   }
 
   try {
-    await db.insert(householdMembers).values({ householdId: household.id, userId })
+    // 検索(SELECT)と登録(INSERT)を1つのクエリにまとめ、招待コードが一致する場合のみ挿入する。
+    // 別々のクエリのままだと、この間に招待コードが再発行された場合、無効化されたはずの
+    // 旧コードでも参加できてしまう競合状態が起こりうる。
+    const insertResult = await c.env.DB.prepare(
+      `INSERT INTO household_members (household_id, user_id)
+       SELECT id, ? FROM households WHERE id = ? AND invite_code = ?`,
+    )
+      .bind(userId, household.id, inviteCode)
+      .run()
+    if (insertResult.meta.changes === 0) {
+      return c.json(errorResponse('RESOURCE_NOT_FOUND', INVALID_INVITE_CODE_MESSAGE), 404)
+    }
   } catch (error) {
-    if (isUniqueConstraintError(error)) {
+    if (isUniqueConstraintErrorOn(error, 'household_members.user_id')) {
       return c.json(errorResponse('VALIDATION_ERROR', ALREADY_HAS_HOUSEHOLD_MESSAGE), 400)
     }
     throw error

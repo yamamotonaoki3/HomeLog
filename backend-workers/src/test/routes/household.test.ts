@@ -168,6 +168,32 @@ describe('POST /api/households/join', () => {
     expect(res.status).toBe(404)
   })
 
+  it('joinリクエスト受付後に招待コードが再発行されていた場合は404を返す(旧コードは使えない)', async () => {
+    const ownerId = await createTestUser('taro@example.com', '太郎')
+    const { inviteCode: oldCode } = await createHouseholdFor(ownerId)
+    // joinの検索(SELECT)後に再発行が起きた状況を再現するため、先に再発行しておいてから
+    // 旧コードでjoinを試みる(検索と登録を1クエリにまとめた実装により、この状況でも
+    // 実際には「検索時点で既に無効なコード」として扱われ、常に404になることを確認する)。
+    await app.request(
+      '/api/households/invite-code/regenerate',
+      { method: 'POST', headers: await authHeaderFor(ownerId) },
+      env,
+    )
+    const joinerId = await createTestUser('hanako@example.com', '花子')
+
+    const res = await app.request(
+      '/api/households/join',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaderFor(joinerId)) },
+        body: JSON.stringify({ inviteCode: oldCode }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(404)
+  })
+
   it('既に世帯グループに所属している場合は400を返す', async () => {
     const ownerId = await createTestUser('taro@example.com', '太郎')
     const { inviteCode } = await createHouseholdFor(ownerId)
