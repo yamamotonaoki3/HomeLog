@@ -33,3 +33,28 @@ export const passwordResetTokens = sqliteTable('password_reset_tokens', {
   expiresAt: text('expires_at').notNull(),
   usedAt: text('used_at'),
 })
+
+export const households = sqliteTable('households', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  inviteCode: text('invite_code').notNull().unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const householdMembers = sqliteTable('household_members', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // MVPでは1ユーザー1世帯のみ所属可能なため、user_idはUNIQUE制約で二重所属を防ぐ
+  // (アプリケーション層の事前チェックに加えた最終防衛線。docs/details/features/F02_household.md参照)。
+  userId: integer('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  joinedAt: text('joined_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})

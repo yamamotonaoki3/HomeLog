@@ -4,6 +4,7 @@ import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { passwordResetTokens, refreshTokens, users } from '../db/schema'
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '../lib/crypto'
+import { errorResponse } from '../lib/errors'
 import { signAccessToken } from '../lib/jwt'
 import type { Bindings } from '../index'
 
@@ -46,10 +47,6 @@ const passwordResetConfirmSchema = z.object({
   token: z.string().min(1),
   newPassword: passwordSchema,
 })
-
-function errorResponse(code: string, message: string) {
-  return { code, message }
-}
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -97,7 +94,7 @@ authRoute.post('/register', async (c) => {
   const db = drizzle(c.env.DB)
   const existing = await db.select().from(users).where(eq(users.email, email)).get()
   if (existing) {
-    return c.json(errorResponse('DUPLICATE_EMAIL', DUPLICATE_EMAIL_MESSAGE), 409)
+    return c.json(errorResponse('DUPLICATE_RESOURCE', DUPLICATE_EMAIL_MESSAGE), 409)
   }
 
   const passwordHash = await hashPassword(password)
@@ -107,7 +104,7 @@ authRoute.post('/register', async (c) => {
   } catch (error) {
     // 事前チェックとinsertの間で同一メールが同時登録された場合の競合を防ぐ(DBのUNIQUE制約を最終防衛線とする)。
     if (isUniqueConstraintError(error)) {
-      return c.json(errorResponse('DUPLICATE_EMAIL', DUPLICATE_EMAIL_MESSAGE), 409)
+      return c.json(errorResponse('DUPLICATE_RESOURCE', DUPLICATE_EMAIL_MESSAGE), 409)
     }
     throw error
   }
@@ -127,10 +124,10 @@ authRoute.post('/login', async (c) => {
     // ユーザーが存在しない場合もダミーハッシュに対して検証を行い、実在ユーザーの場合との
     // 処理時間差からメールアドレスの存在有無を推測されないようにする。
     await verifyPassword(password, await getDummyPasswordHash())
-    return c.json(errorResponse('INVALID_CREDENTIALS', 'メールアドレスまたはパスワードが正しくありません'), 401)
+    return c.json(errorResponse('UNAUTHORIZED', 'メールアドレスまたはパスワードが正しくありません'), 401)
   }
   if (!(await verifyPassword(password, user.passwordHash))) {
-    return c.json(errorResponse('INVALID_CREDENTIALS', 'メールアドレスまたはパスワードが正しくありません'), 401)
+    return c.json(errorResponse('UNAUTHORIZED', 'メールアドレスまたはパスワードが正しくありません'), 401)
   }
 
   const accessExpirationSeconds = Number(c.env.JWT_ACCESS_EXPIRATION_SECONDS)
