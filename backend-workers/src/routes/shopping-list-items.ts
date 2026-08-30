@@ -123,6 +123,8 @@ shoppingListItemsRoute.post('/', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', ALREADY_ADDED_MESSAGE), 400)
   }
 
+  // 事前チェックと挿入の間に同時に別リクエストが同じ在庫アイテムを追加した場合の競合を防ぐ
+  // (shopping_list_items.inventory_item_idのUNIQUE制約を最終防衛線とする)。
   const inserted = await db
     .insert(shoppingListItems)
     .values({
@@ -132,8 +134,12 @@ shoppingListItemsRoute.post('/', async (c) => {
       purchased: false,
       purchasedQuantityTenths: 0,
     })
+    .onConflictDoNothing()
     .returning()
     .get()
+  if (!inserted) {
+    return c.json(errorResponse('VALIDATION_ERROR', ALREADY_ADDED_MESSAGE), 400)
+  }
 
   return c.json(
     {
@@ -229,29 +235,37 @@ shoppingListItemsRoute.post('/update', async (c) => {
     )
     // 手動追加分は無条件削除、自動追加分は上記UPDATE後の実際の閾値判定結果をサブクエリで
     // 参照して削除するかを決める(バッチ内で直前の文の後に実行されるため、最新の値を見られる)。
+    // さらに、直前のUPDATEが範囲外で不発(0件)だった場合にこれらの文まで実行されて
+    // しまわないよう、「quantity_tenthsが期待通りの新しい値になっているか」を
+    // EXISTS句で確認し、実際に適用された場合のみ買い物リストを変更するようにする。
+    const expectedNewQuantityTenths = provisionalNewQuantityTenths
     statements.push(
       c.env.DB
         .prepare(
           `DELETE FROM shopping_list_items
-           WHERE id = ? AND (
-             ? = 1
-             OR NOT EXISTS (
-               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
-             )
-           )`,
+           WHERE id = ?
+             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
+             AND (
+               ? = 1
+               OR NOT EXISTS (
+                 SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+               )
+             )`,
         )
-        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
     )
     statements.push(
       c.env.DB
         .prepare(
           `UPDATE shopping_list_items
            SET purchased = 0, purchased_quantity_tenths = 0
-           WHERE id = ? AND ? = 0 AND EXISTS (
-             SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
-           )`,
+           WHERE id = ?
+             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
+             AND ? = 0 AND EXISTS (
+               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+             )`,
         )
-        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
     )
   }
 

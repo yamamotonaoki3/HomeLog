@@ -88,13 +88,20 @@ async function syncShoppingList(db: DrizzleD1Database, item: typeof inventoryIte
   const anyEntry = await db.select().from(shoppingListItems).where(eq(shoppingListItems.inventoryItemId, item.id)).get()
 
   if (belowThreshold && !anyEntry) {
-    await db.insert(shoppingListItems).values({
-      householdId: item.householdId,
-      inventoryItemId: item.id,
-      isManual: false,
-      purchased: false,
-      purchasedQuantityTenths: 0,
-    })
+    // 同時に複数リクエストが「まだ項目が無い」と判定して同時に挿入しようとした場合、
+    // shopping_list_items.inventory_item_idのUNIQUE制約により片方が例外になる。
+    // 既に同期済みという扱いで問題ないため、競合時は例外にせず何もしない
+    // (onConflictDoNothingでINSERT ... ON CONFLICT DO NOTHINGにする)。
+    await db
+      .insert(shoppingListItems)
+      .values({
+        householdId: item.householdId,
+        inventoryItemId: item.id,
+        isManual: false,
+        purchased: false,
+        purchasedQuantityTenths: 0,
+      })
+      .onConflictDoNothing()
   } else if (!belowThreshold && anyEntry && !anyEntry.isManual) {
     await db.delete(shoppingListItems).where(eq(shoppingListItems.id, anyEntry.id))
   }
