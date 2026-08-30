@@ -47,9 +47,21 @@ zaikoCategoriesRoute.get('/', async (c) => {
     .where(and(eq(zaikoCategories.householdId, householdId), eq(zaikoCategories.isDefault, true)))
     .get()
   if (!defaultExists) {
-    await db
-      .insert(zaikoCategories)
-      .values(DEFAULT_CATEGORY_NAMES.map((name) => ({ householdId, name, isDefault: true })))
+    // 同時に複数リクエストがこの分岐に入っても20件・30件…と重複シードされないよう、
+    // 各行を「その名前のデフォルトカテゴリーがまだ存在しない場合のみ挿入する」
+    // INSERT ... SELECT ... WHERE NOT EXISTS の形にし、1つのバッチ(トランザクション)で実行する。
+    // バッチ内は順に実行されるため、先に挿入された行は後続の文からも見える。
+    await c.env.DB.batch(
+      DEFAULT_CATEGORY_NAMES.map((name) =>
+        c.env.DB.prepare(
+          `INSERT INTO zaiko_categories (household_id, name, is_default)
+           SELECT ?, ?, 1
+           WHERE NOT EXISTS (
+             SELECT 1 FROM zaiko_categories WHERE household_id = ? AND name = ? AND is_default = 1
+           )`,
+        ).bind(householdId, name, householdId, name),
+      ),
+    )
   }
   const categories = await db.select().from(zaikoCategories).where(eq(zaikoCategories.householdId, householdId)).all()
 

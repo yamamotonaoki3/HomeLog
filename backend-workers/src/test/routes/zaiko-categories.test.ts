@@ -59,6 +59,21 @@ describe('GET /api/zaiko-categories', () => {
     expect(body).toHaveLength(10)
   })
 
+  it('同時に複数リクエストが初回GETしても、デフォルトカテゴリーは重複シードされない', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () => app.request('/api/zaiko-categories', { headers }, env)),
+    )
+    for (const res of responses) {
+      expect(res.status).toBe(200)
+    }
+
+    const finalRes = await app.request('/api/zaiko-categories', { headers }, env)
+    const body = await finalRes.json<unknown[]>()
+    expect(body).toHaveLength(10)
+  })
+
   it('GETより先にPOSTでカスタムカテゴリーを作っても、後のGETでデフォルト10件がシードされる', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
 

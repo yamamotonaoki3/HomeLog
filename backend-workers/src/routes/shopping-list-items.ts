@@ -191,59 +191,87 @@ shoppingListItemsRoute.post('/update', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  const updatedInventoryItems: { id: number; quantity: number }[] = []
-  const removedShoppingListItemIds: number[] = []
-  const statements: D1PreparedStatement[] = []
   const maxTenths = toTenths(MAX_VALUE)
+  const lineContexts: { entryId: number; itemId: number; isManual: boolean }[] = []
+  const statements: D1PreparedStatement[] = []
 
-  // 1周目で全行を検証し、書き込みクエリを組み立てるだけに留める(まだ実行しない)。
-  // 一部の行が見つからない・範囲外だった場合に、既に実行済みの行だけ反映されてしまう
-  // (購入処理が半端に成功する)ことを防ぐため、検証が全て通ってから2周目でまとめて実行する。
+  // ここでの範囲チェックは「通常時に明らかに不正な値を早期に400で弾く」ための簡易チェック。
+  // 実際の数量更新・閾値判定は、この時点で読んだ値(他リクエストの更新で古くなりうる)ではなく、
+  // バッチ実行時にDB上の実際の値を見るSQLの条件・サブクエリに委ねることで、他リクエストとの
+  // 競合によるレスポンスの不整合(古い値を元に組み立ててしまう等)を避ける。
   for (const line of parsed.data.items) {
     const entry = await findOwnedEntry(db, householdId, line.id)
     if (!entry) {
       return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
     }
-
-    const deltaTenths = toTenths(line.purchasedQuantity)
     const item = await db.select().from(inventoryItems).where(eq(inventoryItems.id, entry.inventoryItemId)).get()
     if (!item) {
       return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
     }
 
-    const newQuantityTenths = item.quantityTenths + deltaTenths
-    if (newQuantityTenths < 0 || newQuantityTenths > maxTenths) {
+    const deltaTenths = toTenths(line.purchasedQuantity)
+    const provisionalNewQuantityTenths = item.quantityTenths + deltaTenths
+    if (provisionalNewQuantityTenths < 0 || provisionalNewQuantityTenths > maxTenths) {
       return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
     }
+    lineContexts.push({ entryId: entry.id, itemId: item.id, isManual: entry.isManual })
 
-    // 条件付き相対更新(quantity_tenths + delta)にすることで、DELETE/UPDATEと同じ
-    // バッチ(トランザクション)内であっても、他リクエストとの競合で数量が失われないようにする
-    // (既存Java実装のupdateQuantity相当のSQLパターン)。items内のidの重複はスキーマの
-    // refineで禁止しているため、同一在庫アイテムへの二重適用は起こらない。
+    // 条件付き相対更新(quantity_tenths + delta)+ RETURNINGで実際に適用された値を取得する。
+    // items内のidの重複はスキーマのrefineで禁止しているため、同一在庫アイテムへの
+    // 二重適用は起こらない。
     statements.push(
       c.env.DB.prepare(
         `UPDATE inventory_items
          SET quantity_tenths = quantity_tenths + ?
-         WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+         WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?
+         RETURNING quantity_tenths, threshold_tenths`,
       ).bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths),
     )
-    updatedInventoryItems.push({ id: item.id, quantity: fromTenths(newQuantityTenths) })
-
-    const stillBelowThreshold = newQuantityTenths < item.thresholdTenths
-    if (entry.isManual || !stillBelowThreshold) {
-      statements.push(c.env.DB.prepare('DELETE FROM shopping_list_items WHERE id = ?').bind(entry.id))
-      removedShoppingListItemIds.push(entry.id)
-    } else {
-      statements.push(
-        c.env.DB
-          .prepare('UPDATE shopping_list_items SET purchased = 0, purchased_quantity_tenths = 0 WHERE id = ?')
-          .bind(entry.id),
-      )
-    }
+    // 手動追加分は無条件削除、自動追加分は上記UPDATE後の実際の閾値判定結果をサブクエリで
+    // 参照して削除するかを決める(バッチ内で直前の文の後に実行されるため、最新の値を見られる)。
+    statements.push(
+      c.env.DB
+        .prepare(
+          `DELETE FROM shopping_list_items
+           WHERE id = ? AND (
+             ? = 1
+             OR NOT EXISTS (
+               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+             )
+           )`,
+        )
+        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+    )
+    statements.push(
+      c.env.DB
+        .prepare(
+          `UPDATE shopping_list_items
+           SET purchased = 0, purchased_quantity_tenths = 0
+           WHERE id = ? AND ? = 0 AND EXISTS (
+             SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+           )`,
+        )
+        .bind(entry.id, entry.isManual ? 1 : 0, item.id),
+    )
   }
 
-  if (statements.length > 0) {
-    await c.env.DB.batch(statements)
+  const results = await c.env.DB.batch(statements)
+
+  const updatedInventoryItems: { id: number; quantity: number }[] = []
+  const removedShoppingListItemIds: number[] = []
+  for (const [index, ctx] of lineContexts.entries()) {
+    const updateResult = results[index * 3]
+    const deleteResult = results[index * 3 + 1]
+    const updatedRow = updateResult.results[0] as { quantity_tenths: number } | undefined
+    if (!updatedRow) {
+      // 他リクエストとの競合で範囲外になった場合はここに来る。個別行のエラーとして扱い、
+      // レスポンスの一覧には含めない(既に実行された他行への影響はない)。
+      continue
+    }
+    updatedInventoryItems.push({ id: ctx.itemId, quantity: fromTenths(updatedRow.quantity_tenths) })
+    if (deleteResult.meta.changes > 0) {
+      removedShoppingListItemIds.push(ctx.entryId)
+    }
   }
 
   return c.json({ updatedInventoryItems, removedShoppingListItemIds })
