@@ -229,6 +229,30 @@ describe('手動追加済みの項目と閾値による自動同期の相互作�
 })
 
 describe('PATCH /api/inventory-items/:id/quantity', () => {
+  it('同時に複数回増減しても、片方の更新が失われない(条件付き相対UPDATEによる競合対策)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    const item = await createItem(headers, { name: '牛乳', categoryId, storeId: null, quantity: 5, threshold: 0.5 })
+
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        app.request(
+          `/api/inventory-items/${item.id}/quantity`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ delta: 0.1 }),
+          },
+          env,
+        ),
+      ),
+    )
+
+    const listRes = await app.request('/api/inventory-items', { headers }, env)
+    const [updatedItem] = await listRes.json<{ quantity: number }[]>()
+    expect(updatedItem.quantity).toBe(5.5)
+  })
+
   it('数量を増減できる', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await createCategory(headers)

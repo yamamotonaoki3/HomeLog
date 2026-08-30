@@ -227,16 +227,28 @@ inventoryItemsRoute.patch('/:id/quantity', async (c) => {
   }
 
   const maxTenths = toTenths(MAX_VALUE)
-  const newQuantityTenths = item.quantityTenths + deltaTenths
-  if (newQuantityTenths < 0 || newQuantityTenths > maxTenths) {
+  // read-modify-writeではなく、quantity_tenths + deltaを条件付きで直接UPDATEする1文にすることで、
+  // 同時に複数のリクエストが同じアイテムの数量を増減させても、片方の更新が失われないようにする
+  // (既存Java実装のupdateQuantity相当のSQLパターン)。範囲外ならWHERE句が0件マッチとなり
+  // 更新が行われない(meta.changesで判定)。
+  const updateResult = await c.env.DB.prepare(
+    `UPDATE inventory_items
+     SET quantity_tenths = quantity_tenths + ?
+     WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+  )
+    .bind(deltaTenths, itemId, deltaTenths, deltaTenths, maxTenths)
+    .run()
+  if (updateResult.meta.changes === 0) {
     return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
   }
 
-  await db.update(inventoryItems).set({ quantityTenths: newQuantityTenths }).where(eq(inventoryItems.id, itemId))
-  const updatedItem = { ...item, quantityTenths: newQuantityTenths }
+  const updatedItem = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).get()
+  if (!updatedItem) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
   await syncShoppingList(db, updatedItem)
 
-  return c.json({ id: itemId, quantity: fromTenths(newQuantityTenths) })
+  return c.json({ id: itemId, quantity: fromTenths(updatedItem.quantityTenths) })
 })
 
 inventoryItemsRoute.delete('/:id', async (c) => {

@@ -29,7 +29,14 @@ const purchaseLineSchema = z.object({
 })
 
 const processPurchaseSchema = z.object({
-  items: z.array(purchaseLineSchema).min(1),
+  items: z
+    .array(purchaseLineSchema)
+    .min(1)
+    // 同じidが複数回指定されると、検証時に読んだ古い数量を元にした更新同士が競合し、
+    // 一部の購入数量が反映されない結果になるため、重複を禁止する。
+    .refine((items) => new Set(items.map((item) => item.id)).size === items.length, {
+      message: '同じ品目を複数回指定することはできません',
+    }),
 })
 
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -209,11 +216,16 @@ shoppingListItemsRoute.post('/update', async (c) => {
       return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
     }
 
+    // 条件付き相対更新(quantity_tenths + delta)にすることで、DELETE/UPDATEと同じ
+    // バッチ(トランザクション)内であっても、他リクエストとの競合で数量が失われないようにする
+    // (既存Java実装のupdateQuantity相当のSQLパターン)。items内のidの重複はスキーマの
+    // refineで禁止しているため、同一在庫アイテムへの二重適用は起こらない。
     statements.push(
-      c.env.DB.prepare('UPDATE inventory_items SET quantity_tenths = ? WHERE id = ?').bind(
-        newQuantityTenths,
-        item.id,
-      ),
+      c.env.DB.prepare(
+        `UPDATE inventory_items
+         SET quantity_tenths = quantity_tenths + ?
+         WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+      ).bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths),
     )
     updatedInventoryItems.push({ id: item.id, quantity: fromTenths(newQuantityTenths) })
 

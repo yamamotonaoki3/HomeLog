@@ -138,6 +138,35 @@ describe('DELETE /api/shopping-list-items/:id', () => {
 })
 
 describe('POST /api/shopping-list-items/update', () => {
+  it('同じidを複数回指定した場合は400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    const item = await createItem(headers, { name: '牛乳', categoryId, storeId: null, quantity: 5, threshold: 0.5 })
+    const addRes = await app.request(
+      '/api/shopping-list-items',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ inventoryItemId: item.id }) },
+      env,
+    )
+    const added = await addRes.json<{ id: number }>()
+
+    const res = await app.request(
+      '/api/shopping-list-items/update',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          items: [
+            { id: added.id, purchasedQuantity: 1 },
+            { id: added.id, purchasedQuantity: 1 },
+          ],
+        }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
   it('手動追加分は購入処理で無条件に削除される', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await createCategory(headers)
