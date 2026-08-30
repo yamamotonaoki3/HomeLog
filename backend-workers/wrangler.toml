@@ -3,6 +3,16 @@ main = "src/index.ts"
 compatibility_date = "2026-08-22"
 compatibility_flags = ["nodejs_compat"]
 
+# JWT_SECRETのような真のシークレットはvarsに書かず、.dev.vars(gitignore対象、
+# .dev.vars.exampleを参照して各自作成)またはwrangler secret putで管理する。
+# varsは非シークレットな設定値のみを置く。
+[vars]
+JWT_ACCESS_EXPIRATION_SECONDS = "900"
+JWT_REFRESH_EXPIRATION_SECONDS = "604800"
+# メール送信基盤(今後の検討事項)が実装されるまでのローカル開発専用フラグ。デフォルトはfalse。
+# 有効にするとパスワードリセットの生トークンがログに出力されるため、共有・本番環境では絶対にtrueにしないこと。
+APP_PASSWORD_RESET_LOG_TOKEN_ENABLED = "false"
+
 # ローカル開発用のD1データベース定義。
 # 本番用のdatabase_idはCloudflareダッシュボードでD1を作成後に設定する（Phase 6で対応）。
 [[d1_databases]]

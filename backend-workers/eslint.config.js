@@ -4,7 +4,7 @@ import tsParser from '@typescript-eslint/parser'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', '.wrangler/**', 'drizzle/**'],
+    ignores: ['dist/**', 'node_modules/**', '.wrangler/**', 'drizzle/**', 'worker-configuration.d.ts'],
   },
   {
     files: ['**/*.ts'],
