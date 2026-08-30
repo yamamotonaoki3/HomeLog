@@ -176,29 +176,31 @@ cardsRoute.post('/:id/charges', async (c) => {
   const { amount } = parsed.data
   // 「チャージ履歴INSERT」+「口座残高の相対減算」+「カード残高の相対加算」を1つのD1バッチ
   // (トランザクション)にまとめる(既存Javaの口座→カードの順でのFOR UPDATEロックに代わる方式)。
+  // 各文にRETURNINGを付け、バッチの結果から直接値を取得することで、同時に別のチャージが
+  // 実行された場合でも「このリクエスト自身が書き込んだ行」を確実に参照できるようにする
+  // (再クエリでの取得は、同時実行時に他リクエストの行を拾ってしまう可能性があるため避ける)。
   // 残高不足時の制御は設けない(F11_kakeibo_account.md参照、既存Java実装と同じ方針)。
-  await c.env.DB.batch([
+  const results = await c.env.DB.batch([
     c.env.DB
-      .prepare('INSERT INTO card_charges (card_id, from_account_id, amount) VALUES (?, ?, ?)')
+      .prepare('INSERT INTO card_charges (card_id, from_account_id, amount) VALUES (?, ?, ?) RETURNING id, created_at')
       .bind(cardId, parsed.data.fromAccountId, amount),
-    c.env.DB.prepare('UPDATE accounts SET balance = balance - ? WHERE id = ?').bind(amount, parsed.data.fromAccountId),
-    c.env.DB.prepare('UPDATE cards SET balance = balance + ? WHERE id = ?').bind(amount, cardId),
+    c.env.DB
+      .prepare('UPDATE accounts SET balance = balance - ? WHERE id = ? RETURNING balance')
+      .bind(amount, parsed.data.fromAccountId),
+    c.env.DB.prepare('UPDATE cards SET balance = balance + ? WHERE id = ? RETURNING balance').bind(amount, cardId),
   ])
 
-  const [updatedAccount, updatedCard, insertedCharge] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.id, parsed.data.fromAccountId)).get(),
-    db.select().from(cards).where(eq(cards.id, cardId)).get(),
-    db.select().from(cardCharges).where(eq(cardCharges.cardId, cardId)).orderBy(cardCharges.id).all(),
-  ])
-  const latestCharge = insertedCharge.at(-1)
+  const insertedCharge = results[0].results[0] as { id: number; created_at: string }
+  const updatedAccount = results[1].results[0] as { balance: number }
+  const updatedCard = results[2].results[0] as { balance: number }
 
   return c.json({
-    id: latestCharge?.id,
+    id: insertedCharge.id,
     cardId,
     fromAccountId: parsed.data.fromAccountId,
     amount,
-    cardBalanceAfter: updatedCard?.balance,
-    accountBalanceAfter: updatedAccount?.balance,
-    createdAt: latestCharge?.createdAt,
+    cardBalanceAfter: updatedCard.balance,
+    accountBalanceAfter: updatedAccount.balance,
+    createdAt: insertedCharge.created_at,
   })
 })

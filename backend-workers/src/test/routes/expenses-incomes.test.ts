@@ -226,6 +226,23 @@ describe('POST /api/expenses', () => {
 
     expect(res.status).toBe(400)
   })
+
+  it('存在しない日付(2月31日等)の場合は400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await getFirstCategoryId(headers)
+
+    const res = await app.request(
+      '/api/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ expenseDate: '2024-02-31', amount: 500, purpose: 'テスト', categoryId }),
+      },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('GET /api/expenses', () => {

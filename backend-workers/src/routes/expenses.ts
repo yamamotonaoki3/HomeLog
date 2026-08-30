@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { accounts, cards, expenses, kakeiboCategories } from '../db/schema'
+import { isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -17,7 +18,7 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 const AMOUNT_MAX = 9_999_999_999
 
 const createExpenseSchema = z.object({
-  expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  expenseDate: z.string().refine(isValidCalendarDate, { message: '日付の形式が不正です' }),
   amount: z.number().int().positive().max(AMOUNT_MAX),
   purpose: z.string().max(100).refine((value) => value.trim().length > 0, { message: '使用用途を入力してください' }),
   categoryId: z.number().int(),
