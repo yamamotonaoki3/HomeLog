@@ -1,7 +1,13 @@
 import { Hono } from 'hono'
+import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
+import { cardsRoute } from './routes/cards'
+import { expensesRoute } from './routes/expenses'
 import { householdRoute } from './routes/household'
+import { incomeCategoriesRoute } from './routes/income-categories'
+import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
+import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
 import { shoppingListItemsRoute } from './routes/shopping-list-items'
 import { storesRoute } from './routes/stores'
 import { zaikoCategoriesRoute } from './routes/zaiko-categories'
@@ -26,5 +32,11 @@ app.route('/api/zaiko-categories', zaikoCategoriesRoute)
 app.route('/api/stores', storesRoute)
 app.route('/api/inventory-items', inventoryItemsRoute)
 app.route('/api/shopping-list-items', shoppingListItemsRoute)
+app.route('/api/kakeibo-categories', kakeiboCategoriesRoute)
+app.route('/api/income-categories', incomeCategoriesRoute)
+app.route('/api/accounts', accountsRoute)
+app.route('/api/cards', cardsRoute)
+app.route('/api/expenses', expensesRoute)
+app.route('/api/incomes', incomesRoute)
 
 export default app

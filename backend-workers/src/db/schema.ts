@@ -111,3 +111,110 @@ export const shoppingListItems = sqliteTable('shopping_list_items', {
     .notNull()
     .default(sql`(current_timestamp)`),
 })
+
+export const kakeiboCategories = sqliteTable('kakeibo_categories', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+})
+
+export const incomeCategories = sqliteTable('income_categories', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+})
+
+export const accounts = sqliteTable('accounts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  ownerUserId: integer('owner_user_id')
+    .notNull()
+    .references(() => users.id),
+  name: text('name').notNull(),
+  type: text('type').notNull(),
+  // 金額は整数円のためSQLiteでも誤差の心配がなく、INTEGERにそのまま保持する。
+  balance: integer('balance').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const cards = sqliteTable('cards', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  accountId: integer('account_id')
+    .notNull()
+    .references(() => accounts.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // 'credit' | 'charge'。登録後の変更は不可(既存Java実装と同じ、CardServiceにUpdate用の
+  // フィールドが存在しない)。
+  cardType: text('card_type').notNull().default('credit'),
+  balance: integer('balance').notNull().default(0),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const cardCharges = sqliteTable('card_charges', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  cardId: integer('card_id')
+    .notNull()
+    .references(() => cards.id, { onDelete: 'cascade' }),
+  fromAccountId: integer('from_account_id')
+    .notNull()
+    .references(() => accounts.id),
+  amount: integer('amount').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const expenses = sqliteTable('expenses', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  payerUserId: integer('payer_user_id')
+    .notNull()
+    .references(() => users.id),
+  categoryId: integer('category_id')
+    .notNull()
+    .references(() => kakeiboCategories.id),
+  accountId: integer('account_id').references(() => accounts.id),
+  cardId: integer('card_id').references(() => cards.id),
+  amount: integer('amount').notNull(),
+  purpose: text('purpose').notNull(),
+  memo: text('memo'),
+  expenseDate: text('expense_date').notNull(),
+  includeInHouseholdTotal: integer('include_in_household_total', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const incomes = sqliteTable('incomes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  earnerUserId: integer('earner_user_id')
+    .notNull()
+    .references(() => users.id),
+  categoryId: integer('category_id')
+    .notNull()
+    .references(() => incomeCategories.id),
+  amount: integer('amount').notNull(),
+  content: text('content').notNull(),
+  memo: text('memo'),
+  incomeDate: text('income_date').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
