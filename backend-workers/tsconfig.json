@@ -4,7 +4,7 @@
     "lib": ["ES2022"],
     "module": "ES2022",
     "moduleResolution": "Bundler",
-    "types": ["@cloudflare/workers-types", "vitest/globals"],
+    "types": ["vitest/globals", "node"],
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
@@ -13,5 +13,11 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "vitest.config.ts", "drizzle.config.ts"]
+  "include": [
+    "src",
+    "vitest.config.ts",
+    "drizzle.config.ts",
+    "worker-configuration.d.ts",
+    "node_modules/@cloudflare/vitest-pool-workers/types/cloudflare-test.d.ts"
+  ]
 }
