@@ -2,9 +2,11 @@ import { Hono } from 'hono'
 import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
+import { dashboardRoute } from './routes/dashboard'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
+import { getJstToday } from './lib/date'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
@@ -41,6 +43,7 @@ app.route('/api/cards', cardsRoute)
 app.route('/api/expenses', expensesRoute)
 app.route('/api/incomes', incomesRoute)
 app.route('/api/fixed-costs', fixedCostsRoute)
+app.route('/api/dashboard', dashboardRoute)
 
 // デフォルトエクスポートはHonoインスタンス自身のままにする(テストコードが
 // `app.request(...)`を直接呼び出しているため)。Cloudflare WorkersのCron Trigger用の
@@ -49,9 +52,7 @@ app.route('/api/fixed-costs', fixedCostsRoute)
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
   async scheduled(_controller: ScheduledController, env: Bindings): Promise<void> {
-    const nowUtc = new Date()
-    const jstNow = new Date(nowUtc.getTime() + 9 * 60 * 60 * 1000)
-    await postDueFixedCosts(env.DB, jstNow)
+    await postDueFixedCosts(env.DB, getJstToday())
   },
 })
 
