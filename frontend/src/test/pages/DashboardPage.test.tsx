@@ -7,7 +7,7 @@ import { DashboardPage } from '../../pages/DashboardPage'
 import type { InventoryItem } from '../../api/zaikoTypes'
 
 function setupApi(options: {
-  summary?: { shoppingListCount: number; lowStockCount: number }
+  summary?: { shoppingListCount: number; lowStockCount: number; householdExpenseTotal: number }
   inventory?: InventoryItem[]
   accounts?: {
     id: number
@@ -24,7 +24,7 @@ function setupApi(options: {
       if (options.summaryError) {
         return HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'サマリーの取得に失敗しました' }, { status: 500 })
       }
-      return HttpResponse.json(options.summary ?? { shoppingListCount: 0, lowStockCount: 0 })
+      return HttpResponse.json(options.summary ?? { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 })
     }),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
     http.get('/api/accounts', () => {
@@ -53,7 +53,7 @@ const inventory: InventoryItem[] = [
 
 describe('DashboardPage', () => {
   it('買い物リスト件数・在庫不足件数・よく使う品目（先頭3件）が表示される', async () => {
-    setupApi({ summary: { shoppingListCount: 3, lowStockCount: 2 }, inventory })
+    setupApi({ summary: { shoppingListCount: 3, lowStockCount: 2, householdExpenseTotal: 0 }, inventory })
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('買い物・在庫')).toBeInTheDocument())
@@ -63,14 +63,14 @@ describe('DashboardPage', () => {
   })
 
   it('在庫が0件のとき「よく使う品目: なし」を表示する', async () => {
-    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0 }, inventory: [] })
+    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }, inventory: [] })
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText(/よく使う品目: なし/)).toBeInTheDocument())
   })
 
   it('「買い物リストを見る」リンクが/zaikoを指す', async () => {
-    setupApi({ summary: { shoppingListCount: 1, lowStockCount: 1 }, inventory })
+    setupApi({ summary: { shoppingListCount: 1, lowStockCount: 1, householdExpenseTotal: 0 }, inventory })
     renderDashboardPage()
 
     await waitFor(() =>
@@ -98,7 +98,7 @@ describe('DashboardPage', () => {
 
   it('口座情報だけ失敗してもサマリーと在庫情報を表示する', async () => {
     setupApi({
-      summary: { shoppingListCount: 3, lowStockCount: 2 },
+      summary: { shoppingListCount: 3, lowStockCount: 2, householdExpenseTotal: 0 },
       inventory,
       accountsError: true,
     })
@@ -122,6 +122,14 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('個人の財政')).toBeInTheDocument())
     expect(screen.getByText(/口座残高合計: 13000円/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '口座・カード管理を見る' })).toHaveAttribute('href', '/accounts')
+  })
+
+  it('「今月のお金」カードに世帯合計支出額を表示する', async () => {
+    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 45000 } })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText('今月のお金')).toBeInTheDocument())
+    expect(screen.getByText(/世帯合計支出額\(今月\): 45000円/)).toBeInTheDocument()
   })
 
   it('チャージ型カードの残高も口座残高合計に含める', async () => {

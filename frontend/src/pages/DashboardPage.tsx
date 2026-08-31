@@ -113,6 +113,10 @@ export function DashboardPage() {
             口座残高合計: {accountBalanceTotal}円　<Link to="/accounts">口座・カード管理を見る</Link>
           </p>
         </div>
+        <div className="card">
+          <h2>今月のお金</h2>
+          {summary && <p>世帯合計支出額(今月): {summary.householdExpenseTotal}円</p>}
+        </div>
       </div>
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
