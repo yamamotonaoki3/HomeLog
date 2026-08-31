@@ -12,6 +12,7 @@ import { KakeiboCategoriesPage } from './pages/KakeiboCategoriesPage'
 import { KakeiboPage } from './pages/KakeiboPage'
 import { LoginPage } from './pages/LoginPage'
 import { PasswordResetPage } from './pages/PasswordResetPage'
+import { RecipesPage } from './pages/RecipesPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ZaikoPage } from './pages/ZaikoPage'
 
@@ -35,6 +36,7 @@ function App() {
                 <Route path="/fixed-costs" element={<FixedCostsPage />} />
                 <Route path="/categories" element={<KakeiboCategoriesPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
+                <Route path="/recipes" element={<RecipesPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
               </Route>
             </Route>
