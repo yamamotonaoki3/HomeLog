@@ -12,6 +12,7 @@ import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
 import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
+import { menuEntriesRoute } from './routes/menu-entries'
 import { recipesRoute } from './routes/recipes'
 import { shoppingListItemsRoute } from './routes/shopping-list-items'
 import { storesRoute } from './routes/stores'
@@ -50,6 +51,7 @@ app.route('/api/incomes', incomesRoute)
 app.route('/api/fixed-costs', fixedCostsRoute)
 app.route('/api/dashboard', dashboardRoute)
 app.route('/api/recipes', recipesRoute)
+app.route('/api/menu-entries', menuEntriesRoute)
 
 // デフォルトエクスポートはHonoインスタンス自身のままにする(テストコードが
 // `app.request(...)`を直接呼び出しているため)。Cloudflare WorkersのCron Trigger用の
