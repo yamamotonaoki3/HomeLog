@@ -30,6 +30,10 @@ export type AppEnv = { Bindings: Bindings; Variables: Variables }
 
 const app = new Hono<AppEnv>()
 
+// app.route('/api/xxx', xxxRoute)は「/api/xxxへのリクエストは全部xxxRoute(各機能ごとに
+// 分けて定義したルーター)に処理を任せる」という設定。例えば/api/recipesへのリクエストは
+// routes/recipes.tsのrecipesRouteが処理する(Java/Spring MVCで言う@RequestMappingの
+// パスをファイルごとに分けているイメージ)。
 app.get('/health', (c) => c.json({ status: 'ok' }))
 app.route('/api/auth', authRoute)
 app.route('/api/households', householdRoute)
