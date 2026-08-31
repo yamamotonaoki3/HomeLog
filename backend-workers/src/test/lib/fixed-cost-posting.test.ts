@@ -100,6 +100,31 @@ describe('postDueFixedCosts', () => {
     expect(expense?.category_id).toBe(category?.id)
   })
 
+  it('同名のカスタムカテゴリーが存在してもデフォルトカテゴリーを別途シードして使用する', async () => {
+    const { userId, householdId } = await createUserWithHousehold('taro@example.com')
+    // ユーザーが独自に「固定費」という名前のカスタムカテゴリー(is_default=0)を作成済みのケース。
+    const customCategory = await env.DB.prepare(
+      "INSERT INTO kakeibo_categories (household_id, name, is_default) VALUES (?, '固定費', 0) RETURNING id",
+    )
+      .bind(householdId)
+      .first<{ id: number }>()
+    if (!customCategory) throw new Error('test setup error')
+    await createFixedCost({ householdId, userId, name: '家賃', amount: 80000, paymentDay: 27 })
+
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 7, 27)))
+
+    const defaultCategory = await env.DB.prepare(
+      "SELECT id FROM kakeibo_categories WHERE household_id = ? AND name = '固定費' AND is_default = 1",
+    )
+      .bind(householdId)
+      .first<{ id: number }>()
+    expect(defaultCategory).not.toBeNull()
+    expect(defaultCategory?.id).not.toBe(customCategory.id)
+
+    const expense = await env.DB.prepare('SELECT category_id FROM expenses').first<{ category_id: number }>()
+    expect(expense?.category_id).toBe(defaultCategory?.id)
+  })
+
   it('同月に既に計上済みの場合は二重計上しない', async () => {
     const { userId, householdId } = await createUserWithHousehold('taro@example.com')
     await createFixedCost({ householdId, userId, name: '家賃', amount: 80000, paymentDay: 27 })

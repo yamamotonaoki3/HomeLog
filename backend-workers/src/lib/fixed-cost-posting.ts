@@ -33,7 +33,7 @@ async function resolveFixedCostCategoryId(db: D1Database, householdId: number): 
     .bind(householdId, FIXED_COST_CATEGORY_NAME, householdId, FIXED_COST_CATEGORY_NAME)
     .run()
   const category = await db
-    .prepare('SELECT id FROM kakeibo_categories WHERE household_id = ? AND name = ?')
+    .prepare('SELECT id FROM kakeibo_categories WHERE household_id = ? AND name = ? AND is_default = 1')
     .bind(householdId, FIXED_COST_CATEGORY_NAME)
     .first<{ id: number }>()
   if (!category) {
