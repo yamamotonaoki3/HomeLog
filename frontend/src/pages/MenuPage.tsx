@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
@@ -35,8 +35,23 @@ export function MenuPage() {
     setToast((prev) => ({ message, showKey: prev.showKey + 1 }))
   }, [])
 
+  // 直近でリクエストした週を覚えておくためのref。useStateと違い、refへの代入は
+  // 再描画を起こさず、また非同期処理の途中でも常に最新の値を同期的に参照できる。
+  // 週を素早く連続で切り替えた場合、後から投げたリクエストのレスポンスより先に
+  // 前のリクエストのレスポンスが返ってくる(順序が逆転する)ことがあり、対策しないと
+  // 古い週のデータで新しい週の画面を上書きしてしまう(削除ボタンが別の週のデータを
+  // 削除してしまう事故にもつながる)。そこで、レスポンスが返ってきた時点で
+  // 「このリクエストが今も最新の週のものか」をlatestRequestedWeekRefと比較し、
+  // 一致する場合のみ画面に反映する。
+  const latestRequestedWeekRef = useRef(weekStartDate)
+
   const fetchEntries = useCallback(async (targetWeek: string) => {
+    latestRequestedWeekRef.current = targetWeek
     const response = await apiClient.get<MenuEntry[]>('/menu-entries', { params: { weekStartDate: targetWeek } })
+    if (latestRequestedWeekRef.current !== targetWeek) {
+      // このリクエストを投げた後に別の週へ切り替えられていた場合、結果は古いので画面に反映しない。
+      return
+    }
     setEntries(response.data)
   }, [])
 
