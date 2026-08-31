@@ -35,15 +35,15 @@ export function MenuPage() {
     setToast((prev) => ({ message, showKey: prev.showKey + 1 }))
   }, [])
 
-  // 直近でリクエストした週を覚えておくためのref。useStateと違い、refへの代入は
-  // 再描画を起こさず、また非同期処理の途中でも常に最新の値を同期的に参照できる。
-  // 週を素早く連続で切り替えた場合、後から投げたリクエストのレスポンスより先に
-  // 前のリクエストのレスポンスが返ってくる(順序が逆転する)ことがあり、対策しないと
-  // 古い週のデータで新しい週の画面を上書きしてしまう(削除ボタンが別の週のデータを
-  // 削除してしまう事故にもつながる)。そこで、レスポンスが返ってきた時点で
-  // 「このリクエストが今も最新の週のものか」をlatestRequestedWeekRefと比較し、
-  // 一致する場合のみ画面に反映する。
-  const latestRequestedWeekRef = useRef(weekStartDate)
+  // 直近で投げたfetchEntriesリクエストの通し番号(リクエストID)を覚えておくためのref。
+  // useStateと違い、refへの代入は再描画を起こさず、非同期処理の途中でも常に最新の値を
+  // 同期的に参照できる。「週」の文字列だけで新旧を判定すると、同じ週に対して複数の
+  // fetchEntriesが重なった場合(例: 献立を連続で素早く追加し、その都度再取得が走った場合)に
+  // 後から投げたリクエストの結果を、さらに後から返ってきた古いリクエストの結果で
+  // 上書きしてしまう可能性がある。そこで「週が変わったかどうか」ではなく
+  // 「自分より後に投げられたリクエストが存在するかどうか」を判定できるよう、
+  // 呼び出しごとに単調増加する数値IDを発行して比較する。
+  const requestIdRef = useRef(0)
   // 現在選択されている週を常に指すref。レンダーのたびに(useEffectを待たず)同期的に
   // 更新されるため、handleAdd内でawaitを挟んだ後に「送信時点から週が変わっていないか」を
   // 判定するのに使う(通常のuseState変数はhandleAdd呼び出し時点の値で固定されてしまうため)。
@@ -51,10 +51,12 @@ export function MenuPage() {
   currentWeekRef.current = weekStartDate
 
   const fetchEntries = useCallback(async (targetWeek: string) => {
-    latestRequestedWeekRef.current = targetWeek
+    const requestId = ++requestIdRef.current
     const response = await apiClient.get<MenuEntry[]>('/menu-entries', { params: { weekStartDate: targetWeek } })
-    if (latestRequestedWeekRef.current !== targetWeek) {
-      // このリクエストを投げた後に別の週へ切り替えられていた場合、結果は古いので画面に反映しない。
+    if (requestIdRef.current !== requestId) {
+      // このリクエストを投げた後に、さらに新しいfetchEntries呼び出しが発生していた場合、
+      // この結果は古いので画面に反映しない(週の切り替えだけでなく、同じ週への
+      // 連続リクエストが重なったケースもこれで防げる)。
       return
     }
     setEntries(response.data)
