@@ -102,7 +102,9 @@ describe('GET /api/menu-entries', () => {
 
     expect(res.status).toBe(200)
     const body = await res.json<{ recipeId: number | null; freeTextMemo: string | null }[]>()
-    expect(body).toEqual([{ id: expect.any(Number), recipeId: recipe.id, freeTextMemo: null, weekStartDate: MONDAY }])
+    expect(body).toEqual([
+      { id: expect.any(Number), recipeId: recipe.id, recipeTitle: '肉じゃが', freeTextMemo: null, weekStartDate: MONDAY },
+    ])
   })
 
   it('他の週のエントリは含まれない', async () => {
@@ -137,8 +139,9 @@ describe('POST /api/menu-entries', () => {
     )
 
     expect(res.status).toBe(201)
-    const body = await res.json<{ recipeId: number | null; freeTextMemo: string | null; weekStartDate: string }>()
+    const body = await res.json<{ recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null; weekStartDate: string }>()
     expect(body.recipeId).toBe(recipe.id)
+    expect(body.recipeTitle).toBe('肉じゃが')
     expect(body.freeTextMemo).toBeNull()
     expect(body.weekStartDate).toBe(MONDAY)
   })
@@ -283,9 +286,10 @@ describe('レシピ削除時の扱い', () => {
     await app.request(`/api/recipes/${recipe.id}`, { method: 'DELETE', headers }, env)
 
     const res = await app.request(`/api/menu-entries?weekStartDate=${MONDAY}`, { headers }, env)
-    const body = await res.json<{ id: number; recipeId: number | null }[]>()
+    const body = await res.json<{ id: number; recipeId: number | null; recipeTitle: string | null }[]>()
     const remaining = body.find((e) => e.id === entry.id)
     expect(remaining).toBeDefined()
     expect(remaining?.recipeId).toBeNull()
+    expect(remaining?.recipeTitle).toBeNull()
   })
 })

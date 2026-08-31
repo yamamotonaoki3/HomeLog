@@ -41,10 +41,15 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   }
 }
 
-function toResponse(entry: typeof menuEntries.$inferSelect) {
+function toResponse(entry: typeof menuEntries.$inferSelect, recipeTitle: string | null = null) {
   return {
     id: entry.id,
     recipeId: entry.recipeId,
+    // レシピ選択(確定登録)のエントリを一覧表示する際、呼び出し側が別途
+    // GET /api/recipesと突き合わせなくてもレシピ名を表示できるようにする
+    // (F10_kondate_menu.md「週の表示・切り替え」参照。recipeIdはあるがrecipeTitleが
+    // nullの場合は、レシピが削除済みであることを意味する)。
+    recipeTitle,
     freeTextMemo: entry.freeTextMemo,
     weekStartDate: entry.weekStartDate,
   }
@@ -68,14 +73,17 @@ menuEntriesRoute.get('/', async (c) => {
 
   // 献立表は世帯メンバー全員が自由に編集可能(common-notes.md 2章)なため、
   // 所有者チェックは行わず世帯所属のみを確認する(recipes.ts/stores.tsと同じパターン)。
+  // leftJoinでrecipesテーブルのtitleも一緒に取得する(recipeIdがNULLの行、あるいは
+  // 参照先のレシピが既に削除された行はrecipeTitleがNULLになる)。
   const rows = await db
-    .select()
+    .select({ entry: menuEntries, recipeTitle: recipes.title })
     .from(menuEntries)
+    .leftJoin(recipes, eq(menuEntries.recipeId, recipes.id))
     .where(and(eq(menuEntries.householdId, householdId), eq(menuEntries.weekStartDate, weekStartDate)))
     .orderBy(menuEntries.id)
     .all()
 
-  return c.json(rows.map(toResponse))
+  return c.json(rows.map((row) => toResponse(row.entry, row.recipeTitle)))
 })
 
 menuEntriesRoute.post('/', async (c) => {
@@ -92,6 +100,7 @@ menuEntriesRoute.post('/', async (c) => {
 
   const { weekStartDate, recipeId, freeTextMemo } = parsed.data
 
+  let recipeTitle: string | null = null
   if (recipeId != null) {
     // 確定登録(レシピ選択)の場合、そのレシピが同じ世帯のものであることを確認する
     // (他世帯のレシピIDを指定されても紐付けられないようにする)。
@@ -103,6 +112,7 @@ menuEntriesRoute.post('/', async (c) => {
     if (!recipe) {
       return c.json(errorResponse('VALIDATION_ERROR', INVALID_RECIPE_MESSAGE), 400)
     }
+    recipeTitle = recipe.title
   }
 
   const inserted = await db
@@ -116,7 +126,7 @@ menuEntriesRoute.post('/', async (c) => {
     .returning()
     .get()
 
-  return c.json(toResponse(inserted), 201)
+  return c.json(toResponse(inserted, recipeTitle), 201)
 })
 
 menuEntriesRoute.delete('/:id', async (c) => {
