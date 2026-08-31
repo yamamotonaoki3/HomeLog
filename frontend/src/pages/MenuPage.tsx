@@ -44,6 +44,11 @@ export function MenuPage() {
   // 「このリクエストが今も最新の週のものか」をlatestRequestedWeekRefと比較し、
   // 一致する場合のみ画面に反映する。
   const latestRequestedWeekRef = useRef(weekStartDate)
+  // 現在選択されている週を常に指すref。レンダーのたびに(useEffectを待たず)同期的に
+  // 更新されるため、handleAdd内でawaitを挟んだ後に「送信時点から週が変わっていないか」を
+  // 判定するのに使う(通常のuseState変数はhandleAdd呼び出し時点の値で固定されてしまうため)。
+  const currentWeekRef = useRef(weekStartDate)
+  currentWeekRef.current = weekStartDate
 
   const fetchEntries = useCallback(async (targetWeek: string) => {
     latestRequestedWeekRef.current = targetWeek
@@ -60,6 +65,10 @@ export function MenuPage() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    // 週を切り替えた時点で、表示中の一覧を一旦クリアする。クリアしないと、取得に
+    // 失敗した場合や取得が完了する前の一瞬、前の週のデータ(削除ボタン込み)が
+    // 新しい週の画面としてそのまま表示され続けてしまう。
+    setEntries([])
     Promise.allSettled([fetchEntries(weekStartDate), apiClient.get<Recipe[]>('/recipes')])
       .then(([entriesResult, recipesResult]) => {
         if (cancelled) return
@@ -114,6 +123,15 @@ export function MenuPage() {
     setSelectedRecipeId('')
     setMemo('')
     setSubmitting(false)
+
+    // 送信中に週が切り替えられていた場合、この時点のweekStartDate(送信開始時点の週)は
+    // もう画面に表示されていない週なので再取得しない。放置すると、切り替え後の週の
+    // 取得より後にこの再取得が完了した場合、latestRequestedWeekRefが古い週で
+    // 上書きされてしまい、以後その週への切り替え時にレスポンスが正しく反映されなくなる。
+    if (currentWeekRef.current !== weekStartDate) {
+      showToast('献立を追加しました')
+      return
+    }
     try {
       await fetchEntries(weekStartDate)
     } catch (err) {
