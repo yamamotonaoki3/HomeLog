@@ -6,6 +6,7 @@ import app from '../../index'
 async function resetDb() {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM expenses'),
+    env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM card_charges'),
     env.DB.prepare('DELETE FROM cards'),
     env.DB.prepare('DELETE FROM accounts'),
@@ -110,6 +111,48 @@ describe('口座管理', () => {
     const res = await app.request(`/api/accounts/${account.id}`, { method: 'DELETE', headers }, env)
 
     expect(res.status).toBe(204)
+  })
+
+  it('固定費の引き落とし元(口座)に指定されている口座は削除できず400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers)
+    await app.request(
+      '/api/fixed-costs',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ name: '家賃', amount: 80000, paymentDay: 27, personal: false, accountId: account.id }),
+      },
+      env,
+    )
+
+    const res = await app.request(`/api/accounts/${account.id}`, { method: 'DELETE', headers }, env)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('固定費の引き落とし元(カード)の親口座は削除できず400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'クレカ' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    await app.request(
+      '/api/fixed-costs',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ name: '定期購入', amount: 1000, paymentDay: 27, personal: false, cardId: card.id }),
+      },
+      env,
+    )
+
+    const res = await app.request(`/api/accounts/${account.id}`, { method: 'DELETE', headers }, env)
+
+    expect(res.status).toBe(400)
   })
 
   it('他人の口座を指定すると404を返す', async () => {
@@ -241,6 +284,30 @@ describe('カード管理', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({ expenseDate: '2024-01-01', amount: 500, purpose: '昼食', categoryId: category.id, cardId: card.id }),
+      },
+      env,
+    )
+
+    const res = await app.request(`/api/cards/${card.id}`, { method: 'DELETE', headers }, env)
+
+    expect(res.status).toBe(400)
+  })
+
+  it('固定費の引き落とし元に指定されているカードは削除できず400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'Suica', cardType: 'charge' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    await app.request(
+      '/api/fixed-costs',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ name: '定期購入', amount: 500, paymentDay: 27, personal: false, cardId: card.id }),
       },
       env,
     )

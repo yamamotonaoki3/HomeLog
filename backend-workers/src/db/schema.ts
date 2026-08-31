@@ -189,6 +189,12 @@ export const expenses = sqliteTable('expenses', {
     .references(() => kakeiboCategories.id),
   accountId: integer('account_id').references(() => accounts.id),
   cardId: integer('card_id').references(() => cards.id),
+  // 固定費の毎月自動計上により作成された支出のみ設定される。固定費削除時はNULLになる
+  // (既存Java実装のON DELETE SET NULLと同じ)。
+  fixedCostId: integer('fixed_cost_id').references(() => fixedCosts.id, { onDelete: 'set null' }),
+  // 同一固定費の同月分の二重計上を防ぐUNIQUE制約(fixed_cost_id, fixed_cost_year_month)のための列。
+  // 通常の支出(fixed_cost_id=NULL)には影響しない(SQLiteはNULL同士を重複とみなさない)。
+  fixedCostYearMonth: text('fixed_cost_year_month'),
   amount: integer('amount').notNull(),
   purpose: text('purpose').notNull(),
   memo: text('memo'),
@@ -214,6 +220,27 @@ export const incomes = sqliteTable('incomes', {
   content: text('content').notNull(),
   memo: text('memo'),
   incomeDate: text('income_date').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const fixedCosts = sqliteTable('fixed_costs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // NULL = 世帯共有、非NULL = 個人所有(登録者)。個人所有の場合はcreatedByUserIdと同値になる。
+  ownerUserId: integer('owner_user_id').references(() => users.id),
+  createdByUserId: integer('created_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  accountId: integer('account_id').references(() => accounts.id),
+  cardId: integer('card_id').references(() => cards.id),
+  name: text('name').notNull(),
+  amount: integer('amount').notNull(),
+  paymentDay: integer('payment_day').notNull(),
+  includeInHouseholdTotal: integer('include_in_household_total', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),

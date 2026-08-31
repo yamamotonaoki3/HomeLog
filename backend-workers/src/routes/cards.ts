@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { accounts, cardCharges, cards, expenses } from '../db/schema'
+import { accounts, cardCharges, cards, expenses, fixedCosts } from '../db/schema'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -135,10 +135,10 @@ cardsRoute.delete('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  // fixed_costsに関する使用中チェックはPhase 5でfixed_costsテーブルを作成した後に追加する。
   const expenseUsage = await db.select().from(expenses).where(eq(expenses.cardId, cardId)).all()
   const chargeUsage = await db.select().from(cardCharges).where(eq(cardCharges.cardId, cardId)).all()
-  if (expenseUsage.length > 0 || chargeUsage.length > 0) {
+  const fixedCostUsage = await db.select().from(fixedCosts).where(eq(fixedCosts.cardId, cardId)).all()
+  if (expenseUsage.length > 0 || chargeUsage.length > 0 || fixedCostUsage.length > 0) {
     return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
   }
 

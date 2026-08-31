@@ -20,3 +20,9 @@ binding = "DB"
 database_name = "homelog-db"
 database_id = "local-placeholder"
 migrations_dir = "drizzle"
+
+# 固定費の毎月自動計上バッチ。既存JavaのFixedCostPostingService
+# (@Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo"))相当。
+# JSTは夏時間が無いため、UTC 16:00固定 = JST 01:00で問題ない。
+[triggers]
+crons = ["0 16 * * *"]
