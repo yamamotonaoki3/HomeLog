@@ -115,7 +115,9 @@ export function DashboardPage() {
         </div>
         <div className="card">
           <h2>今月のお金</h2>
-          {summary && <p>世帯合計支出額(今月): {summary.householdExpenseTotal}円</p>}
+          {/* 移行完了までの間はJava版バックエンドがhouseholdExpenseTotalを返さないため、
+              未定義時は0円表示にフォールバックする(Phase 6での接続先切り替え後は常に値が入る)。 */}
+          {summary && <p>世帯合計支出額(今月): {summary.householdExpenseTotal ?? 0}円</p>}
         </div>
       </div>
       <Toast message={toast.message} showKey={toast.showKey} />
