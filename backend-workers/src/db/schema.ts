@@ -259,6 +259,22 @@ export const recipes = sqliteTable('recipes', {
     .default(sql`(current_timestamp)`),
 })
 
+export const menuEntries = sqliteTable('menu_entries', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // レシピが削除されても行自体は残し、recipe_idだけNULLになる(onDelete: 'set null')。
+  // recipeIdとfreeTextMemoはどちらか一方のみ設定する(アプリ層で検証、DB制約は課さない)。
+  recipeId: integer('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  freeTextMemo: text('free_text_memo'),
+  // その週の月曜日を表す日付文字列("YYYY-MM-DD")。
+  weekStartDate: text('week_start_date').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
 export const fixedCosts = sqliteTable('fixed_costs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')

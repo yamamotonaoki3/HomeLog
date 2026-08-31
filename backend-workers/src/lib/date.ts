@@ -35,3 +35,18 @@ export function isValidCalendarDate(value: string): boolean {
   const date = new Date(Date.UTC(year, month - 1, day))
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
 }
+
+/**
+ * YYYY-MM-DD形式の文字列が「その週の月曜日」を指しているかどうかを検証する
+ * (F10_kondate_menu.mdの通り、menu_entries.week_start_dateは常にその週の月曜日である必要がある)。
+ * 先に実在するカレンダー日付であることを確認してから、曜日を判定する。
+ * `getUTCDay()`は日曜=0, 月曜=1, ..., 土曜=6を返すため、1と等しいかで判定する。
+ */
+export function isMonday(value: string): boolean {
+  if (!isValidCalendarDate(value)) {
+    return false
+  }
+  const [yearStr, monthStr, dayStr] = value.split('-')
+  const date = new Date(Date.UTC(Number(yearStr), Number(monthStr) - 1, Number(dayStr)))
+  return date.getUTCDay() === 1
+}
