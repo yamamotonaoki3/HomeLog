@@ -3,6 +3,8 @@ import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
 import { expensesRoute } from './routes/expenses'
+import { fixedCostsRoute } from './routes/fixed-costs'
+import { postDueFixedCosts } from './lib/fixed-cost-posting'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
@@ -38,5 +40,19 @@ app.route('/api/accounts', accountsRoute)
 app.route('/api/cards', cardsRoute)
 app.route('/api/expenses', expensesRoute)
 app.route('/api/incomes', incomesRoute)
+app.route('/api/fixed-costs', fixedCostsRoute)
 
-export default app
+// デフォルトエクスポートはHonoインスタンス自身のままにする(テストコードが
+// `app.request(...)`を直接呼び出しているため)。Cloudflare WorkersのCron Trigger用の
+// scheduledハンドラは、ExportedHandlerの規約に沿ってapp自体にプロパティとして追加する。
+// (既存JavaのFixedCostPostingService.runMonthlyPostingに相当。JSTには夏時間が無いため、
+// wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
+const appWithScheduled = Object.assign(app, {
+  async scheduled(_controller: ScheduledController, env: Bindings): Promise<void> {
+    const nowUtc = new Date()
+    const jstNow = new Date(nowUtc.getTime() + 9 * 60 * 60 * 1000)
+    await postDueFixedCosts(env.DB, jstNow)
+  },
+})
+
+export default appWithScheduled
