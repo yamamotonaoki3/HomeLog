@@ -34,6 +34,9 @@ export function AppLayout() {
           <NavLink to="/recipes" className={navLinkClass}>
             レシピ
           </NavLink>
+          <NavLink to="/menu" className={navLinkClass}>
+            献立表
+          </NavLink>
           <NavLink to="/household/settings" className={navLinkClass}>
             世帯設定
           </NavLink>

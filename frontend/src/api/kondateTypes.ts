@@ -13,3 +13,16 @@ export interface Recipe {
   sourceType: string
   isFavorite: boolean
 }
+
+// GET /api/menu-entries?weekStartDate=... から返ってくる献立リストの1件分の形。
+export interface MenuEntry {
+  id: number
+  // 確定登録(レシピ選択)の場合のみ設定される。ラフ登録の場合はnull。
+  recipeId: number | null
+  // recipeIdが設定されているエントリのレシピ名。ただしレシピが削除済みの場合はnullになる
+  // (recipeIdはあるがrecipeTitleがnullの状態=「削除されたレシピ」を意味する)。
+  recipeTitle: string | null
+  // ラフ登録(自由メモ)の場合のみ設定される。確定登録の場合はnull。
+  freeTextMemo: string | null
+  weekStartDate: string
+}
