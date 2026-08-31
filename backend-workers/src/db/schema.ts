@@ -225,6 +225,29 @@ export const incomes = sqliteTable('incomes', {
     .default(sql`(current_timestamp)`),
 })
 
+export const recipes = sqliteTable('recipes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  createdByUserId: integer('created_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  title: text('title').notNull(),
+  ingredients: text('ingredients'),
+  steps: text('steps'),
+  // 'manual'/'ocr'/'web'。今回は'manual'のみ使用する。
+  sourceType: text('source_type').notNull().default('manual'),
+  // 将来のWEBレシピ登録拡張用の列。現時点のAPIでは常にNULL。
+  url: text('url'),
+  thumbnailUrl: text('thumbnail_url'),
+  memo: text('memo'),
+  isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
 export const fixedCosts = sqliteTable('fixed_costs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')
