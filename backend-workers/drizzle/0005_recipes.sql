@@ -16,4 +16,5 @@ CREATE TABLE recipes (
   is_favorite INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (current_timestamp)
 );
+-- household_idで検索する(GET /api/recipes)頻度が高いため、検索を高速化するインデックスを作成する。
 CREATE INDEX idx_recipes_household_id ON recipes(household_id);

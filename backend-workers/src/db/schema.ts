@@ -225,8 +225,16 @@ export const incomes = sqliteTable('incomes', {
     .default(sql`(current_timestamp)`),
 })
 
+// sqliteTable('recipes', {...})は「recipesという名前のテーブルには、こういう列がある」という
+// TypeScript側の定義。実際にテーブルを作るSQL文はdrizzle/0005_recipes.sqlに書かれており、
+// この定義はそのSQLの内容とズレないよう手で対応させている(drizzle-ormはこの定義を見て
+// SELECT/INSERT等のクエリの型チェックを行う)。
 export const recipes = sqliteTable('recipes', {
+  // primaryKey({ autoIncrement: true })は「主キーで、INSERT時に自動採番される」列という意味。
   id: integer('id').primaryKey({ autoIncrement: true }),
+  // .notNull()は「NULLを許可しない(必須)」列という意味。
+  // .references(() => households.id, {...})は「households.idを参照する外部キー」で、
+  // onDelete: 'cascade'は「参照先の世帯が削除されたら、このレシピも一緒に削除する」設定。
   householdId: integer('household_id')
     .notNull()
     .references(() => households.id, { onDelete: 'cascade' }),
@@ -234,6 +242,7 @@ export const recipes = sqliteTable('recipes', {
     .notNull()
     .references(() => users.id),
   title: text('title').notNull(),
+  // .notNull()が付いていないため、この2列はNULLを許容する(材料・手順は任意入力のため)。
   ingredients: text('ingredients'),
   steps: text('steps'),
   // 'manual'/'ocr'/'web'。今回は'manual'のみ使用する。
@@ -242,6 +251,8 @@ export const recipes = sqliteTable('recipes', {
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
   memo: text('memo'),
+  // { mode: 'boolean' }を付けると、DB上は0/1(SQLiteには真偽値型が無いため)で保存されつつ、
+  // TypeScript側ではtrue/falseとして扱えるようになる(drizzle-ormが自動で変換してくれる)。
   isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at')
     .notNull()
