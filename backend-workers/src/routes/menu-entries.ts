@@ -19,7 +19,13 @@ const createMenuEntrySchema = z
   .object({
     weekStartDate: z.string().refine(isMonday, { message: WEEK_START_DATE_NOT_MONDAY_MESSAGE }),
     recipeId: z.number().int().nullish(),
-    freeTextMemo: z.string().max(100).nullish(),
+    // 空白だけの自由メモは「内容の無いラフ登録」になってしまうため、
+    // recipes.tsのtitleバリデーションと同様にトリム後の非空をrefineで確認する。
+    freeTextMemo: z
+      .string()
+      .max(100)
+      .refine((value) => value.trim().length > 0, { message: 'メモを入力してください' })
+      .nullish(),
   })
   // recipeIdとfreeTextMemoは、確定登録(レシピ選択)とラフ登録(自由メモ)のどちらか一方のみを
   // 許可するための排他チェック(F10_kondate_menu.md 4章)。

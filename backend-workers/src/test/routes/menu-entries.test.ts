@@ -171,6 +171,18 @@ describe('POST /api/menu-entries', () => {
     expect(res.status).toBe(400)
   })
 
+  it('空白のみのfreeTextMemoは400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const res = await app.request(
+      '/api/menu-entries',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ weekStartDate: MONDAY, freeTextMemo: '   ' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
   it('recipeIdとfreeTextMemoを両方省略すると400を返す', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
 
