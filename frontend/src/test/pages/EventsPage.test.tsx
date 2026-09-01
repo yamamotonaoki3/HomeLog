@@ -124,7 +124,7 @@ describe('EventsPage', () => {
     expect(screen.getByText('表示する')).toBeInTheDocument()
   })
 
-  it('集計取得が404以外のエラーの場合はトーストで通知し「集計対象外」とは表示しない', async () => {
+  it('集計取得が404以外のエラーの場合はトーストで通知し「取得失敗」と表示する(集計対象外とは区別する)', async () => {
     setupApi({ events: [travelEvent] })
     server.use(
       http.get('/api/events/:id/summary', () =>
@@ -134,7 +134,10 @@ describe('EventsPage', () => {
     renderEventsPage()
 
     await waitFor(() => expect(screen.getByText('一部のイベントの集計取得に失敗しました。時間をおいて再度お試しください')).toBeInTheDocument())
+    expect(screen.getByText('取得失敗')).toBeInTheDocument()
+    expect(screen.queryByText('集計対象外')).not.toBeInTheDocument()
   })
+
 
   it('イベントを登録すると一覧に反映されモーダルが閉じる', async () => {
     const { calls } = setupApi()

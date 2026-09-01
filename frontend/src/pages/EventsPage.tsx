@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -14,6 +14,10 @@ const RECURRENCE_LABELS: Record<Event['recurrenceType'], string> = {
   yearly: '毎年',
 }
 
+// イベント1件分の集計状態。show_on_dashboard=falseによる404(意図した集計対象外)と、
+// 通信断・認証切れ・サーバーエラー等の予期しない失敗を区別して表示を出し分ける。
+type SummaryState = { status: 'ok'; total: number } | { status: 'excluded' } | { status: 'error' }
+
 export function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,9 +25,7 @@ export function EventsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Event | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [period, setPeriod] = useState<SummaryPeriod>('year')
-  // イベントIDごとの集計結果。show_on_dashboard=falseのイベントはAPIが404を返すため、
-  // undefinedのままにして「集計対象外」を表す。
-  const [summaries, setSummaries] = useState<Record<number, number | undefined>>({})
+  const [summaries, setSummaries] = useState<Record<number, SummaryState>>({})
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -36,8 +38,16 @@ export function EventsPage() {
     return response.data
   }, [])
 
+  // 直近でリクエストした集計取得の通し番号(リクエストID)を覚えておくためのref。
+  // 対象期間(今年/今月)を素早く切り替えた場合、後から投げたリクエストのレスポンスより
+  // 先に前のリクエストのレスポンスが返ってくる(順序が逆転する)ことがあり、対策しないと
+  // 古い期間の集計結果で新しい期間の画面を上書きしてしまう(MenuPage.tsxで確立した
+  // パターンと同じ)。
+  const summaryRequestIdRef = useRef(0)
+
   const fetchSummaries = useCallback(
     async (targetEvents: Event[], targetPeriod: SummaryPeriod) => {
+      const requestId = ++summaryRequestIdRef.current
       let hadUnexpectedError = false
       const entries = await Promise.all(
         targetEvents.map(async (event) => {
@@ -45,19 +55,24 @@ export function EventsPage() {
             const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
               params: { period: targetPeriod },
             })
-            return [event.id, response.data.total] as const
+            return [event.id, { status: 'ok', total: response.data.total } as SummaryState] as const
           } catch (err) {
             // show_on_dashboard=falseのイベントは404になる(集計対象外の意図した結果)。
-            // それ以外のエラー(通信断・認証切れ・サーバーエラー等)は集計対象外と区別できないと
-            // 誤解を招くため、トーストで通知しつつ「集計対象外」扱いにはしない。
+            // それ以外のエラー(通信断・認証切れ・サーバーエラー等)は集計対象外と区別し、
+            // 「取得に失敗しました」の表示にする(誤って「集計対象外」と見せない)。
             if (isAxiosError(err) && err.response?.status === 404) {
-              return [event.id, undefined] as const
+              return [event.id, { status: 'excluded' } as SummaryState] as const
             }
             hadUnexpectedError = true
-            return [event.id, undefined] as const
+            return [event.id, { status: 'error' } as SummaryState] as const
           }
         }),
       )
+      if (summaryRequestIdRef.current !== requestId) {
+        // このリクエストを投げた後に、さらに新しい対象期間への切り替えが発生していた場合、
+        // この結果は古いので画面に反映しない。
+        return
+      }
       setSummaries(Object.fromEntries(entries))
       if (hadUnexpectedError) {
         showToast('一部のイベントの集計取得に失敗しました。時間をおいて再度お試しください')
@@ -109,13 +124,14 @@ export function EventsPage() {
     }
     setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, showOnDashboard: nextShowOnDashboard } : e)))
     if (!nextShowOnDashboard) {
-      setSummaries((prev) => ({ ...prev, [event.id]: undefined }))
+      setSummaries((prev) => ({ ...prev, [event.id]: { status: 'excluded' } }))
     } else {
       try {
         const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, { params: { period } })
-        setSummaries((prev) => ({ ...prev, [event.id]: response.data.total }))
+        setSummaries((prev) => ({ ...prev, [event.id]: { status: 'ok', total: response.data.total } }))
       } catch (err) {
         // 表示設定自体の切り替えは成功しているため、集計取得の失敗はトーストで知らせるに留める。
+        setSummaries((prev) => ({ ...prev, [event.id]: { status: 'error' } }))
         showToast(getApiErrorMessage(err, '集計の取得に失敗しました'))
       }
     }
@@ -200,7 +216,9 @@ export function EventsPage() {
                         <span>{event.showOnDashboard ? '表示する' : '表示しない'}</span>
                       )}
                     </td>
-                    <td>{summary !== undefined ? `${summary}円` : '集計対象外'}</td>
+                    <td>
+                      {summary?.status === 'ok' ? `${summary.total}円` : summary?.status === 'error' ? '取得失敗' : '集計対象外'}
+                    </td>
                     <td>
                       {event.editable && (
                         <>
