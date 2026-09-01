@@ -1,8 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { accounts, cards, expenses, kakeiboCategories } from '../db/schema'
+import { accounts, cards, events, expenses, kakeiboCategories } from '../db/schema'
 import { isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { parseOptionalIntQueryParam } from '../lib/query-params'
@@ -14,6 +14,7 @@ const CATEGORY_NOT_FOUND_MESSAGE = '指定されたカテゴリーが見つか�
 const ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE = '口座とカードは同時に指定できません'
 const INVALID_ACCOUNT_MESSAGE = '指定された口座が見つかりません'
 const INVALID_CARD_MESSAGE = '指定されたカードが見つかりません'
+const INVALID_EVENT_MESSAGE = '指定されたイベントが見つかりません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
 const AMOUNT_MAX = 9_999_999_999
@@ -27,6 +28,7 @@ const createExpenseSchema = z.object({
   includeInHouseholdTotal: z.boolean().nullish(),
   accountId: z.number().int().nullish(),
   cardId: z.number().int().nullish(),
+  eventId: z.number().int().nullish(),
 })
 
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -48,6 +50,7 @@ function toResponse(expense: typeof expenses.$inferSelect) {
     includeInHouseholdTotal: expense.includeInHouseholdTotal,
     accountId: expense.accountId,
     cardId: expense.cardId,
+    eventId: expense.eventId,
   }
 }
 
@@ -87,7 +90,7 @@ expensesRoute.post('/', async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
-  const { expenseDate, amount, purpose, categoryId, memo, includeInHouseholdTotal, accountId, cardId } = parsed.data
+  const { expenseDate, amount, purpose, categoryId, memo, includeInHouseholdTotal, accountId, cardId, eventId } = parsed.data
 
   if (accountId != null && cardId != null) {
     return c.json(errorResponse('VALIDATION_ERROR', ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE), 400)
@@ -107,6 +110,27 @@ expensesRoute.post('/', async (c) => {
     .get()
   if (!category) {
     return c.json(errorResponse('VALIDATION_ERROR', CATEGORY_NOT_FOUND_MESSAGE), 400)
+  }
+
+  if (eventId != null) {
+    // 個人公開イベント(owner_user_id設定済み)は本人のみ閲覧可能(F06ドキュメント7-2章
+    // 「本人のみ閲覧・編集可能で、他の世帯メンバーのカレンダー・一覧・集計には表示されない」)。
+    // 紐付け対象も同じ可視性で絞り込み、他人の個人イベントIDを推測しても紐付けられないようにする
+    // (events.tsのGET一覧と同じ可視性条件)。
+    const event = await db
+      .select()
+      .from(events)
+      .where(
+        and(
+          eq(events.id, eventId),
+          eq(events.householdId, householdId),
+          or(isNull(events.ownerUserId), eq(events.ownerUserId, userId)),
+        ),
+      )
+      .get()
+    if (!event) {
+      return c.json(errorResponse('VALIDATION_ERROR', INVALID_EVENT_MESSAGE), 400)
+    }
   }
 
   // 実際に支出行へ設定するaccount_id/card_id。creditカードが指定された場合は
@@ -154,8 +178,8 @@ expensesRoute.post('/', async (c) => {
   const statements = [
     c.env.DB.prepare(
       `INSERT INTO expenses
-         (household_id, payer_user_id, category_id, account_id, card_id, amount, purpose, memo, expense_date, include_in_household_total)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (household_id, payer_user_id, category_id, account_id, card_id, event_id, amount, purpose, memo, expense_date, include_in_household_total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     ).bind(
       householdId,
@@ -163,6 +187,7 @@ expensesRoute.post('/', async (c) => {
       categoryId,
       resolvedAccountId,
       resolvedCardId,
+      eventId ?? null,
       amount,
       purpose,
       memo ?? null,
@@ -189,6 +214,7 @@ expensesRoute.post('/', async (c) => {
     include_in_household_total: number
     account_id: number | null
     card_id: number | null
+    event_id: number | null
   }
 
   return c.json(
@@ -202,6 +228,7 @@ expensesRoute.post('/', async (c) => {
       includeInHouseholdTotal: Boolean(insertedRow.include_in_household_total),
       accountId: insertedRow.account_id,
       cardId: insertedRow.card_id,
+      eventId: insertedRow.event_id,
     },
     201,
   )

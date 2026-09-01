@@ -195,6 +195,9 @@ export const expenses = sqliteTable('expenses', {
   // 同一固定費の同月分の二重計上を防ぐUNIQUE制約(fixed_cost_id, fixed_cost_year_month)のための列。
   // 通常の支出(fixed_cost_id=NULL)には影響しない(SQLiteはNULL同士を重複とみなさない)。
   fixedCostYearMonth: text('fixed_cost_year_month'),
+  // イベントに紐付けられた支出のみ設定される。イベント削除時はNULLになる
+  // (fixedCostIdと同じON DELETE SET NULLパターン)。
+  eventId: integer('event_id').references(() => events.id, { onDelete: 'set null' }),
   amount: integer('amount').notNull(),
   purpose: text('purpose').notNull(),
   memo: text('memo'),
@@ -270,6 +273,34 @@ export const menuEntries = sqliteTable('menu_entries', {
   freeTextMemo: text('free_text_memo'),
   // その週の月曜日を表す日付文字列("YYYY-MM-DD")。
   weekStartDate: text('week_start_date').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+export const events = sqliteTable('events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // NULL = 世帯共有、非NULL = 個人所有(登録者)。個人所有の場合はcreatedByUserIdと同値になる。
+  // data-model.mdのevents定義にはこの列のみが記載されているが、common-notes.md 2章の
+  // 「世帯共有でも編集・削除は登録者のみ」ルールを実現するため、createdByUserIdを別途追加する
+  // (fixedCostsで確立済みのパターン。Phase 7-4で意図的に追加した設計判断)。
+  ownerUserId: integer('owner_user_id').references(() => users.id),
+  createdByUserId: integer('created_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  name: text('name').notNull(),
+  eventDate: text('event_date').notNull(),
+  isAllDay: integer('is_all_day', { mode: 'boolean' }).notNull().default(true),
+  startTime: text('start_time'),
+  endTime: text('end_time'),
+  // 'none'/'daily'/'weekly'/'monthly'/'yearly'。
+  recurrenceType: text('recurrence_type').notNull().default('none'),
+  notifyEnabled: integer('notify_enabled', { mode: 'boolean' }).notNull().default(false),
+  defaultAmount: integer('default_amount'),
+  showOnDashboard: integer('show_on_dashboard', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),
