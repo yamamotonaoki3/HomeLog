@@ -27,6 +27,7 @@ export function EventModal({ event, onClose, onSaved }: Props) {
   const [recurrenceType, setRecurrenceType] = useState<Event['recurrenceType']>(event?.recurrenceType ?? 'none')
   const [notifyEnabled, setNotifyEnabled] = useState(event?.notifyEnabled ?? false)
   const [defaultAmount, setDefaultAmount] = useState(event?.defaultAmount != null ? String(event.defaultAmount) : '')
+  const [showOnDashboard, setShowOnDashboard] = useState(event?.showOnDashboard ?? true)
   const [personal, setPersonal] = useState(event?.personal ?? false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -67,7 +68,7 @@ export function EventModal({ event, onClose, onSaved }: Props) {
       recurrenceType,
       notifyEnabled,
       defaultAmount: defaultAmountValue,
-      showOnDashboard: event?.showOnDashboard ?? true,
+      showOnDashboard,
       personal,
     }
     try {
@@ -146,6 +147,15 @@ export function EventModal({ event, onClose, onSaved }: Props) {
             value={defaultAmount}
             onChange={(e) => setDefaultAmount(e.target.value)}
           />
+          <label htmlFor="event-show-on-dashboard">
+            <input
+              id="event-show-on-dashboard"
+              type="checkbox"
+              checked={showOnDashboard}
+              onChange={(e) => setShowOnDashboard(e.target.checked)}
+            />
+            トップ画面のイベント別支出サマリーに表示する
+          </label>
           <fieldset>
             <legend>公開範囲</legend>
             <label>

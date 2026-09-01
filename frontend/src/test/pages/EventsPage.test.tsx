@@ -156,6 +156,39 @@ describe('EventsPage', () => {
     expect(postCall?.body).toMatchObject({ name: '旅行', eventDate: '2026-09-20', personal: false })
   })
 
+  it('登録モーダルでダッシュボード表示のON/OFFを指定できる', async () => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    renderEventsPage()
+    await waitFor(() => expect(screen.getByText('イベントはありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'イベントを登録' }))
+    await user.type(screen.getByLabelText('イベント名'), '旅行')
+    await user.type(screen.getByLabelText('日付'), '2026-09-20')
+    await user.click(screen.getByLabelText('トップ画面のイベント別支出サマリーに表示する'))
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    await waitFor(() => expect(screen.getByText('旅行')).toBeInTheDocument())
+    const postCall = calls.find((c) => c.method === 'POST')
+    expect(postCall?.body).toMatchObject({ showOnDashboard: false })
+  })
+
+  it('終日イベントは一覧に「終日」、時刻指定イベントは開始〜終了時刻を表示する', async () => {
+    setupApi({
+      events: [
+        travelEvent,
+        { ...travelEvent, id: 2, name: '学習', isAllDay: false, startTime: '20:00', endTime: '21:00' },
+        { ...travelEvent, id: 3, name: '会議', isAllDay: false, startTime: '09:00', endTime: null },
+      ],
+    })
+    renderEventsPage()
+
+    await waitFor(() => expect(screen.getByText('旅行')).toBeInTheDocument())
+    expect(screen.getByText('2026-09-20（終日）')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-20（20:00〜21:00）')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-20（09:00〜）')).toBeInTheDocument()
+  })
+
   it('ダッシュボード表示トグルでshowOnDashboardを切り替えられる', async () => {
     const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 5000 } })
     const user = userEvent.setup()

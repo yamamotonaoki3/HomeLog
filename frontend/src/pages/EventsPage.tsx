@@ -14,6 +14,15 @@ const RECURRENCE_LABELS: Record<Event['recurrenceType'], string> = {
   yearly: '毎年',
 }
 
+// 終日は「終日」、時刻指定は「9:00〜12:00」(終了時刻あり)/「9:00〜」(終了時刻未定)と表示する
+// (F06_kakeibo_event.md 5-2章、S-09イベント一覧の表示仕様)。
+function timeRangeLabel(event: Event): string {
+  if (event.isAllDay) {
+    return '終日'
+  }
+  return event.endTime ? `${event.startTime}〜${event.endTime}` : `${event.startTime}〜`
+}
+
 // イベント1件分の集計状態。show_on_dashboard=falseによる404(意図した集計対象外)と、
 // 通信断・認証切れ・サーバーエラー等の予期しない失敗を区別して表示を出し分ける。
 type SummaryState = { status: 'ok'; total: number } | { status: 'excluded' } | { status: 'error' }
@@ -222,7 +231,9 @@ export function EventsPage() {
                 return (
                   <tr key={event.id}>
                     <td>{event.name}</td>
-                    <td>{event.eventDate}</td>
+                    <td>
+                      {event.eventDate}（{timeRangeLabel(event)}）
+                    </td>
                     <td>{RECURRENCE_LABELS[event.recurrenceType]}</td>
                     <td>{event.personal ? '個人' : '世帯共有'}</td>
                     <td>
