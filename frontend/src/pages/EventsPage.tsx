@@ -107,6 +107,10 @@ export function EventsPage() {
 
   const handleSaved = async () => {
     const wasEdit = modalTarget != null
+    // 送信時点の対象期間を覚えておく。await中に対象期間が切り替えられていた場合、
+    // 切り替え側のuseEffectが既に新しい対象期間の集計取得を行っているはずなので、
+    // ここで古い対象期間の結果を重ねて取得・反映する必要はない。
+    const requestedPeriod = period
     let fetchedEvents: Event[]
     try {
       fetchedEvents = await fetchEvents()
@@ -114,7 +118,9 @@ export function EventsPage() {
       showToast(getApiErrorMessage(err, 'イベント一覧の取得に失敗しました'))
       throw err
     }
-    await fetchSummaries(fetchedEvents, period)
+    if (currentPeriodRef.current === requestedPeriod) {
+      await fetchSummaries(fetchedEvents, requestedPeriod)
+    }
     setModalTarget(undefined)
     showToast(wasEdit ? 'イベントを更新しました' : 'イベントを登録しました')
   }
