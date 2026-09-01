@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { getJstToday } from '../../lib/date'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
 
@@ -220,6 +221,49 @@ describe('PATCH/DELETE /api/events/:id', () => {
   })
 })
 
+describe('PATCH /api/events/:id/show-on-dashboard', () => {
+  it('他の項目を変更せずshowOnDashboardのみ切り替えられる', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const createRes = await app.request(
+      '/api/events',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '旅行', eventDate: '2026-09-20', personal: false }) },
+      env,
+    )
+    const event = await createRes.json<{ id: number }>()
+
+    const res = await app.request(
+      `/api/events/${event.id}/show-on-dashboard`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ showOnDashboard: false }) },
+      env,
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{ name: string; showOnDashboard: boolean }>()
+    expect(body.name).toBe('旅行')
+    expect(body.showOnDashboard).toBe(false)
+  })
+
+  it('登録者本人以外は切り替えられず404を返す', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const hanako = await createUserWithoutHousehold('hanako@example.com')
+    const memberHeaders = await joinHousehold(hanako.userId, hanako.headers, owner.headers)
+    const createRes = await app.request(
+      '/api/events',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...owner.headers }, body: JSON.stringify({ name: '旅行', eventDate: '2026-09-20', personal: false }) },
+      env,
+    )
+    const event = await createRes.json<{ id: number }>()
+
+    const res = await app.request(
+      `/api/events/${event.id}/show-on-dashboard`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...memberHeaders }, body: JSON.stringify({ showOnDashboard: false }) },
+      env,
+    )
+
+    expect(res.status).toBe(404)
+  })
+})
+
 describe('GET /api/events/:id/summary', () => {
   async function createCategory(headers: Record<string, string>): Promise<number> {
     const res = await app.request('/api/kakeibo-categories', { headers }, env)
@@ -228,27 +272,36 @@ describe('GET /api/events/:id/summary', () => {
   }
 
   it('本人が支払った紐付け済み支出のみを対象期間で合計する', async () => {
+    // ハードコードした日付だと実行時期によってテストが壊れるため、実行時の「今日」を
+    // 基準に「今月」「今年の別の月(1月固定。ただし今月が1月の場合は12月にずらす)」
+    // 「翌日」を動的に算出する。
+    const today = getJstToday()
+    const thisMonthDate = `${today.getUTCFullYear()}-${(today.getUTCMonth() + 1).toString().padStart(2, '0')}-01`
+    const otherMonthInSameYear = today.getUTCMonth() === 0 ? 12 : 1
+    const otherMonthDate = `${today.getUTCFullYear()}-${otherMonthInSameYear.toString().padStart(2, '0')}-01`
+    const unrelatedDate = `${today.getUTCFullYear()}-${(today.getUTCMonth() + 1).toString().padStart(2, '0')}-02`
+
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await createCategory(headers)
     const createRes = await app.request(
       '/api/events',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '旅行', eventDate: '2026-09-20', personal: false }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '旅行', eventDate: thisMonthDate, personal: false }) },
       env,
     )
     const event = await createRes.json<{ id: number }>()
     await app.request(
       '/api/expenses',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: '2026-09-20', amount: 5000, purpose: '旅行代', categoryId, eventId: event.id }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: thisMonthDate, amount: 5000, purpose: '旅行代', categoryId, eventId: event.id }) },
       env,
     )
     await app.request(
       '/api/expenses',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: '2026-01-01', amount: 3000, purpose: '正月の旅行代', categoryId, eventId: event.id }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: otherMonthDate, amount: 3000, purpose: '別月の旅行代', categoryId, eventId: event.id }) },
       env,
     )
     await app.request(
       '/api/expenses',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: '2026-09-21', amount: 1000, purpose: '無関係の支出', categoryId }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: unrelatedDate, amount: 1000, purpose: '無関係の支出', categoryId }) },
       env,
     )
 

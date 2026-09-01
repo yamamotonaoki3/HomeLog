@@ -24,6 +24,10 @@ const AMOUNT_MAX = 9_999_999_999
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 const timeSchema = z.string().regex(TIME_PATTERN, { message: INVALID_TIME_FORMAT_MESSAGE })
 
+const showOnDashboardSchema = z.object({
+  showOnDashboard: z.boolean(),
+})
+
 const eventSchema = z
   .object({
     name: z.string().max(50).refine((value) => value.trim().length > 0, { message: 'イベント名を入力してください' }),
@@ -196,6 +200,39 @@ eventsRoute.patch('/:id', async (c) => {
     .where(eq(events.id, eventId))
 
   return c.json(toResponse(updated, userId))
+})
+
+// トップ画面カレンダー(S-04、Phase 7-4では未実装)・S-09イベント一覧のトグルから、
+// show_on_dashboardだけを素早く切り替えるための専用エンドポイント(recipes.tsの
+// お気に入りトグルと同じパターン)。他の項目を巻き込まずに1項目だけ更新したいケースのため、
+// PATCH /:idの全項目必須スキーマとは別に軽量なスキーマを使う。
+eventsRoute.patch('/:id/show-on-dashboard', async (c) => {
+  const parsed = showOnDashboardSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const eventId = Number(c.req.param('id'))
+
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const event = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, eventId), eq(events.householdId, householdId), eq(events.createdByUserId, userId)))
+    .get()
+  if (!event) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
+
+  const { showOnDashboard } = parsed.data
+  await db.update(events).set({ showOnDashboard }).where(eq(events.id, eventId))
+
+  return c.json(toResponse({ ...event, showOnDashboard }, userId))
 })
 
 eventsRoute.delete('/:id', async (c) => {
