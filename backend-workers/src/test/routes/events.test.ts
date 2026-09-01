@@ -273,6 +273,20 @@ describe('GET /api/events/:id/summary', () => {
 
     expect(res.status).toBe(404)
   })
+
+  it('showOnDashboard=falseのイベントを指定すると404を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const createRes = await app.request(
+      '/api/events',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '旅行', eventDate: '2026-09-20', personal: false, showOnDashboard: false }) },
+      env,
+    )
+    const event = await createRes.json<{ id: number }>()
+
+    const res = await app.request(`/api/events/${event.id}/summary?period=year`, { headers }, env)
+
+    expect(res.status).toBe(404)
+  })
 })
 
 describe('POST /api/expenses eventId連携', () => {

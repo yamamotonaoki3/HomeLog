@@ -237,6 +237,9 @@ eventsRoute.get('/:id/summary', async (c) => {
   }
 
   // 世帯共有/個人を問わず、閲覧できるイベント(自分に見えるイベント)であることを確認する。
+  // F06ドキュメント3章「イベント別集計」のIPOは「show_on_dashboard = trueのイベントを対象に
+  // 集計する」と明記しているため、この集計エンドポイント自体もその条件で絞り込む
+  // (表示対象から外したイベントの集計は行わない)。
   const event = await db
     .select()
     .from(events)
@@ -244,6 +247,7 @@ eventsRoute.get('/:id/summary', async (c) => {
       and(
         eq(events.id, eventId),
         eq(events.householdId, householdId),
+        eq(events.showOnDashboard, true),
         or(isNull(events.ownerUserId), eq(events.ownerUserId, userId)),
       ),
     )
