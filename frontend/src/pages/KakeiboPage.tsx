@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../api/client'
+import type { Event } from '../api/eventTypes'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, Expense, FixedCost, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
@@ -23,6 +24,7 @@ export function KakeiboPage() {
 
   const [accounts, setAccounts] = useState<Account[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
+  const [events, setEvents] = useState<Event[]>([])
 
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -161,6 +163,17 @@ export function KakeiboPage() {
         }
       })
 
+    apiClient
+      .get<Event[]>('/events')
+      .then((response) => {
+        if (!cancelled) setEvents(response.data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          showToast(getApiErrorMessage(err, 'イベントの取得に失敗しました。時間をおいて再度お試しください'))
+        }
+      })
+
     return () => {
       cancelled = true
     }
@@ -265,6 +278,7 @@ export function KakeiboPage() {
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
+          events={events}
           initialKind={initialKind}
           onClose={() => setModalOpen(false)}
           onSaved={handleSaved}

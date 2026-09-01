@@ -1,6 +1,7 @@
 import { Fragment, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
+import type { Event } from '../../api/eventTypes'
 import type { Account, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type Kind = 'expense' | 'income'
@@ -9,6 +10,8 @@ interface Props {
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
   accounts: Account[]
+  // イベント紐付けは支出のみが対象(F06ドキュメント「支出とイベントの紐付け」)。
+  events: Event[]
   initialKind: Kind
   onClose: () => void
   onSaved: (kind: Kind) => Promise<void>
@@ -30,6 +33,7 @@ export function TransactionModal({
   expenseCategories,
   incomeCategories,
   accounts,
+  events,
   initialKind,
   onClose,
   onSaved,
@@ -44,6 +48,7 @@ export function TransactionModal({
   )
   const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(false)
   const [accountSelection, setAccountSelection] = useState('')
+  const [eventSelection, setEventSelection] = useState('')
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -54,7 +59,19 @@ export function TransactionModal({
     setKind(nextKind)
     setCategoryId(firstCategoryId(nextKind === 'expense' ? expenseCategories : incomeCategories))
     setAccountSelection('')
+    setEventSelection('')
     setError('')
+  }
+
+  // イベントを選択すると、そのイベントのdefaultAmountが設定されていれば金額欄へ自動入力する
+  // (ユーザーは登録前に上書き可能。F06ドキュメント「支出とイベントの紐付け」参照)。
+  const handleEventSelectionChange = (value: string) => {
+    setEventSelection(value)
+    if (value === '') return
+    const selectedEvent = events.find((event) => event.id === Number(value))
+    if (selectedEvent?.defaultAmount != null) {
+      setAmount(String(selectedEvent.defaultAmount))
+    }
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -89,6 +106,7 @@ export function TransactionModal({
           includeInHouseholdTotal,
           accountId: selectionType === 'account' ? Number(selectionId) : null,
           cardId: selectionType === 'card' ? Number(selectionId) : null,
+          eventId: eventSelection === '' ? null : Number(eventSelection),
         })
       } else {
         await apiClient.post('/incomes', {
@@ -210,6 +228,15 @@ export function TransactionModal({
                 />{' '}
                 世帯合計に含める
               </label>
+              <label htmlFor="tx-event">イベント（任意）</label>
+              <select id="tx-event" value={eventSelection} onChange={(e) => handleEventSelectionChange(e.target.value)}>
+                <option value="">選択しない</option>
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name}
+                  </option>
+                ))}
+              </select>
             </>
           )}
           <label htmlFor="tx-memo">メモ</label>

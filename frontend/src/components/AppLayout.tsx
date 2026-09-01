@@ -31,6 +31,9 @@ export function AppLayout() {
           <NavLink to="/accounts" className={navLinkClass}>
             口座・カード管理
           </NavLink>
+          <NavLink to="/events" className={navLinkClass}>
+            イベント
+          </NavLink>
           <NavLink to="/recipes" className={navLinkClass}>
             レシピ
           </NavLink>
