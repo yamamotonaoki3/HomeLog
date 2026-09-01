@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Event, SummaryPeriod } from '../api/eventTypes'
@@ -35,22 +36,35 @@ export function EventsPage() {
     return response.data
   }, [])
 
-  const fetchSummaries = useCallback(async (targetEvents: Event[], targetPeriod: SummaryPeriod) => {
-    const entries = await Promise.all(
-      targetEvents.map(async (event) => {
-        try {
-          const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
-            params: { period: targetPeriod },
-          })
-          return [event.id, response.data.total] as const
-        } catch {
-          // show_on_dashboard=falseのイベントは404になる(集計対象外)。
-          return [event.id, undefined] as const
-        }
-      }),
-    )
-    setSummaries(Object.fromEntries(entries))
-  }, [])
+  const fetchSummaries = useCallback(
+    async (targetEvents: Event[], targetPeriod: SummaryPeriod) => {
+      let hadUnexpectedError = false
+      const entries = await Promise.all(
+        targetEvents.map(async (event) => {
+          try {
+            const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
+              params: { period: targetPeriod },
+            })
+            return [event.id, response.data.total] as const
+          } catch (err) {
+            // show_on_dashboard=falseのイベントは404になる(集計対象外の意図した結果)。
+            // それ以外のエラー(通信断・認証切れ・サーバーエラー等)は集計対象外と区別できないと
+            // 誤解を招くため、トーストで通知しつつ「集計対象外」扱いにはしない。
+            if (isAxiosError(err) && err.response?.status === 404) {
+              return [event.id, undefined] as const
+            }
+            hadUnexpectedError = true
+            return [event.id, undefined] as const
+          }
+        }),
+      )
+      setSummaries(Object.fromEntries(entries))
+      if (hadUnexpectedError) {
+        showToast('一部のイベントの集計取得に失敗しました。時間をおいて再度お試しください')
+      }
+    },
+    [showToast],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -100,8 +114,9 @@ export function EventsPage() {
       try {
         const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, { params: { period } })
         setSummaries((prev) => ({ ...prev, [event.id]: response.data.total }))
-      } catch {
-        // 取得に失敗しても表示設定自体の切り替えは成功しているため、ここでは何もしない。
+      } catch (err) {
+        // 表示設定自体の切り替えは成功しているため、集計取得の失敗はトーストで知らせるに留める。
+        showToast(getApiErrorMessage(err, '集計の取得に失敗しました'))
       }
     }
   }
@@ -169,14 +184,21 @@ export function EventsPage() {
                     <td>{RECURRENCE_LABELS[event.recurrenceType]}</td>
                     <td>{event.personal ? '個人' : '世帯共有'}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn btn-tiny"
-                        onClick={() => handleToggleShowOnDashboard(event)}
-                        aria-pressed={event.showOnDashboard}
-                      >
-                        {event.showOnDashboard ? '表示する' : '表示しない'}
-                      </button>
+                      {event.editable ? (
+                        <button
+                          type="button"
+                          className="btn btn-tiny"
+                          onClick={() => handleToggleShowOnDashboard(event)}
+                          aria-pressed={event.showOnDashboard}
+                        >
+                          {event.showOnDashboard ? '表示する' : '表示しない'}
+                        </button>
+                      ) : (
+                        // 登録者以外はshow_on_dashboardをバックエンドで変更できないため
+                        // (PATCH /api/events/:id/show-on-dashboardはcreated_by_user_id本人のみ許可)、
+                        // 現在の状態を読み取り専用で表示する。
+                        <span>{event.showOnDashboard ? '表示する' : '表示しない'}</span>
+                      )}
                     </td>
                     <td>{summary !== undefined ? `${summary}円` : '集計対象外'}</td>
                     <td>

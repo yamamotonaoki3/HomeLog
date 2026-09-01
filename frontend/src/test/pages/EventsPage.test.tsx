@@ -115,6 +115,27 @@ describe('EventsPage', () => {
     expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
   })
 
+  it('editableがfalseのイベントはダッシュボード表示トグルも操作不可の読み取り専用表示になる', async () => {
+    setupApi({ events: [{ ...travelEvent, editable: false }] })
+    renderEventsPage()
+
+    await waitFor(() => expect(screen.getByText('旅行')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '表示する' })).not.toBeInTheDocument()
+    expect(screen.getByText('表示する')).toBeInTheDocument()
+  })
+
+  it('集計取得が404以外のエラーの場合はトーストで通知し「集計対象外」とは表示しない', async () => {
+    setupApi({ events: [travelEvent] })
+    server.use(
+      http.get('/api/events/:id/summary', () =>
+        HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'サーバーエラー' }, { status: 500 }),
+      ),
+    )
+    renderEventsPage()
+
+    await waitFor(() => expect(screen.getByText('一部のイベントの集計取得に失敗しました。時間をおいて再度お試しください')).toBeInTheDocument())
+  })
+
   it('イベントを登録すると一覧に反映されモーダルが閉じる', async () => {
     const { calls } = setupApi()
     const user = userEvent.setup()
