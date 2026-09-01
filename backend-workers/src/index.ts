@@ -3,6 +3,7 @@ import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
 import { dashboardRoute } from './routes/dashboard'
+import { eventsRoute } from './routes/events'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
@@ -52,6 +53,7 @@ app.route('/api/fixed-costs', fixedCostsRoute)
 app.route('/api/dashboard', dashboardRoute)
 app.route('/api/recipes', recipesRoute)
 app.route('/api/menu-entries', menuEntriesRoute)
+app.route('/api/events', eventsRoute)
 
 // デフォルトエクスポートはHonoインスタンス自身のままにする(テストコードが
 // `app.request(...)`を直接呼び出しているため)。Cloudflare WorkersのCron Trigger用の
