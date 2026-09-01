@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -113,10 +113,21 @@ expensesRoute.post('/', async (c) => {
   }
 
   if (eventId != null) {
-    // イベントとの紐付けは、口座・カードと違い所有者チェックを行わない。個人公開イベントであっても
-    // 世帯メンバーなら誰でも紐付けられる(イベント別集計は「本人が支払った支出」のみを対象とする
-    // ため、共有可否とは別軸。F06ドキュメント7-2章参照)。同一世帯のイベントかどうかのみ確認する。
-    const event = await db.select().from(events).where(and(eq(events.id, eventId), eq(events.householdId, householdId))).get()
+    // 個人公開イベント(owner_user_id設定済み)は本人のみ閲覧可能(F06ドキュメント7-2章
+    // 「本人のみ閲覧・編集可能で、他の世帯メンバーのカレンダー・一覧・集計には表示されない」)。
+    // 紐付け対象も同じ可視性で絞り込み、他人の個人イベントIDを推測しても紐付けられないようにする
+    // (events.tsのGET一覧と同じ可視性条件)。
+    const event = await db
+      .select()
+      .from(events)
+      .where(
+        and(
+          eq(events.id, eventId),
+          eq(events.householdId, householdId),
+          or(isNull(events.ownerUserId), eq(events.ownerUserId, userId)),
+        ),
+      )
+      .get()
     if (!event) {
       return c.json(errorResponse('VALIDATION_ERROR', INVALID_EVENT_MESSAGE), 400)
     }

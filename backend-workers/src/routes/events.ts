@@ -2,7 +2,7 @@ import { and, eq, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { currentMonthRange, getJstToday } from '../lib/date'
+import { currentMonthRange, getJstToday, isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { events } from '../db/schema'
 import { resolveHouseholdId } from '../lib/household-context'
@@ -11,19 +11,26 @@ import type { AppEnv } from '../index'
 
 const NOT_FOUND_MESSAGE = 'イベントが見つかりません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
+const INVALID_EVENT_DATE_MESSAGE = '日付の形式が不正です'
 const START_TIME_REQUIRED_MESSAGE = '終日でない場合は開始時刻を入力してください'
+const INVALID_TIME_FORMAT_MESSAGE = '時刻はHH:mm形式で入力してください'
 const END_TIME_BEFORE_START_TIME_MESSAGE = '終了時刻は開始時刻より後にしてください'
 const INVALID_PERIOD_MESSAGE = '対象期間はyearまたはmonthを指定してください'
 
 const AMOUNT_MAX = 9_999_999_999
 
+// "HH:mm"(0埋め2桁の時・分)のみを許可する。零埋めしない"9:00"のような入力や、
+// 任意の文字列を弾く。零埋め済みの文字列同士であれば文字列比較がそのまま時刻の前後比較になる。
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+const timeSchema = z.string().regex(TIME_PATTERN, { message: INVALID_TIME_FORMAT_MESSAGE })
+
 const eventSchema = z
   .object({
     name: z.string().max(50).refine((value) => value.trim().length > 0, { message: 'イベント名を入力してください' }),
-    eventDate: z.string(),
+    eventDate: z.string().refine(isValidCalendarDate, { message: INVALID_EVENT_DATE_MESSAGE }),
     isAllDay: z.boolean().nullish(),
-    startTime: z.string().nullish(),
-    endTime: z.string().nullish(),
+    startTime: timeSchema.nullish(),
+    endTime: timeSchema.nullish(),
     recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly']).nullish(),
     notifyEnabled: z.boolean().nullish(),
     defaultAmount: z.number().int().positive().max(AMOUNT_MAX).nullish(),

@@ -319,7 +319,7 @@ describe('POST /api/expenses eventId連携', () => {
     expect(res.status).toBe(400)
   })
 
-  it('他メンバーの個人イベントにも紐付けできる(個人所有の支出データとは別軸のため)', async () => {
+  it('他メンバーの個人イベントには紐付けできず400を返す(本人のみ閲覧可能なため)', async () => {
     const owner = await createUserWithHousehold('taro@example.com')
     const hanako = await createUserWithoutHousehold('hanako@example.com')
     const memberHeaders = await joinHousehold(hanako.userId, hanako.headers, owner.headers)
@@ -335,6 +335,26 @@ describe('POST /api/expenses eventId連携', () => {
     const res = await app.request(
       '/api/expenses',
       { method: 'POST', headers: { 'Content-Type': 'application/json', ...memberHeaders }, body: JSON.stringify({ expenseDate: '2026-09-20', amount: 3000, purpose: 'グッズ', categoryId, eventId: event.id }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('自分の個人イベントには紐付けできる', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const eventRes = await app.request(
+      '/api/events',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '推し活', eventDate: '2026-09-20', personal: true }) },
+      env,
+    )
+    const event = await eventRes.json<{ id: number }>()
+    const categoryRes = await app.request('/api/kakeibo-categories', { headers }, env)
+    const categoryId = (await categoryRes.json<{ id: number }[]>())[0].id
+
+    const res = await app.request(
+      '/api/expenses',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ expenseDate: '2026-09-20', amount: 3000, purpose: 'グッズ', categoryId, eventId: event.id }) },
       env,
     )
 
