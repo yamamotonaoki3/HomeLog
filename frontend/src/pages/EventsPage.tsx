@@ -135,6 +135,10 @@ export function EventsPage() {
     }
     setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, showOnDashboard: nextShowOnDashboard } : e)))
     if (!nextShowOnDashboard) {
+      // 対象期間の一括取得(fetchSummaries)が裏で実行中だった場合、そのリクエストが
+      // 今まさにexcludedにしたこのイベントの結果を後から`ok`で上書きしてしまう可能性がある。
+      // リクエストIDを進めて、既に走っている一括取得の結果を無効化する。
+      summaryRequestIdRef.current += 1
       setSummaries((prev) => ({ ...prev, [event.id]: { status: 'excluded' } }))
     } else {
       const requestedPeriod = period
