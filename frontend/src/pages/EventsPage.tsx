@@ -44,6 +44,11 @@ export function EventsPage() {
   // 古い期間の集計結果で新しい期間の画面を上書きしてしまう(MenuPage.tsxで確立した
   // パターンと同じ)。
   const summaryRequestIdRef = useRef(0)
+  // 現在選択されている対象期間を常に指すref。レンダーのたびに同期的に更新されるため、
+  // handleToggleShowOnDashboard内でawaitを挟んだ後に「取得開始時点から対象期間が
+  // 変わっていないか」を判定するのに使う。
+  const currentPeriodRef = useRef(period)
+  currentPeriodRef.current = period
 
   const fetchSummaries = useCallback(
     async (targetEvents: Event[], targetPeriod: SummaryPeriod) => {
@@ -126,10 +131,21 @@ export function EventsPage() {
     if (!nextShowOnDashboard) {
       setSummaries((prev) => ({ ...prev, [event.id]: { status: 'excluded' } }))
     } else {
+      const requestedPeriod = period
       try {
-        const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, { params: { period } })
+        const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
+          params: { period: requestedPeriod },
+        })
+        if (currentPeriodRef.current !== requestedPeriod) {
+          // 取得中に対象期間が切り替えられていた場合、この結果は古いので画面に反映しない
+          // (fetchSummariesの側で既に新しい期間の集計が反映されているはずのため)。
+          return
+        }
         setSummaries((prev) => ({ ...prev, [event.id]: { status: 'ok', total: response.data.total } }))
       } catch (err) {
+        if (currentPeriodRef.current !== requestedPeriod) {
+          return
+        }
         // 表示設定自体の切り替えは成功しているため、集計取得の失敗はトーストで知らせるに留める。
         setSummaries((prev) => ({ ...prev, [event.id]: { status: 'error' } }))
         showToast(getApiErrorMessage(err, '集計の取得に失敗しました'))
