@@ -142,34 +142,15 @@ export function EventsPage() {
       showToast(getApiErrorMessage(err, '表示設定の更新に失敗しました'))
       return
     }
-    setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, showOnDashboard: nextShowOnDashboard } : e)))
-    if (!nextShowOnDashboard) {
-      // 対象期間の一括取得(fetchSummaries)が裏で実行中だった場合、そのリクエストが
-      // 今まさにexcludedにしたこのイベントの結果を後から`ok`で上書きしてしまう可能性がある。
-      // リクエストIDを進めて、既に走っている一括取得の結果を無効化する。
-      summaryRequestIdRef.current += 1
-      setSummaries((prev) => ({ ...prev, [event.id]: { status: 'excluded' } }))
-    } else {
-      const requestedPeriod = period
-      try {
-        const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
-          params: { period: requestedPeriod },
-        })
-        if (currentPeriodRef.current !== requestedPeriod) {
-          // 取得中に対象期間が切り替えられていた場合、この結果は古いので画面に反映しない
-          // (fetchSummariesの側で既に新しい期間の集計が反映されているはずのため)。
-          return
-        }
-        setSummaries((prev) => ({ ...prev, [event.id]: { status: 'ok', total: response.data.total } }))
-      } catch (err) {
-        if (currentPeriodRef.current !== requestedPeriod) {
-          return
-        }
-        // 表示設定自体の切り替えは成功しているため、集計取得の失敗はトーストで知らせるに留める。
-        setSummaries((prev) => ({ ...prev, [event.id]: { status: 'error' } }))
-        showToast(getApiErrorMessage(err, '集計の取得に失敗しました'))
-      }
-    }
+    const updatedEvents = events.map((e) => (e.id === event.id ? { ...e, showOnDashboard: nextShowOnDashboard } : e))
+    setEvents(updatedEvents)
+    // 個別のイベントだけを更新するのではなく、fetchSummariesで一覧全体を再取得する。
+    // 個別更新にすると「対象期間の一括取得が裏で実行中の間にトグル操作をする」ケースで
+    // 一括取得の結果と個別更新の結果のどちらが最終的に勝つかという競合が生じ、対応する
+    // ほど別の競合を生みやすい(実装時に複数回このパターンで手戻りが発生した)。
+    // fetchSummaries自身が持つリクエストIDでの陳腐化判定に任せることで、一貫して
+    // 「最後に呼ばれたfetchSummariesの結果だけが画面に反映される」状態を保証する。
+    await fetchSummaries(updatedEvents, period)
   }
 
   const handleDelete = async () => {
