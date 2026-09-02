@@ -219,6 +219,8 @@ export const incomes = sqliteTable('incomes', {
   categoryId: integer('category_id')
     .notNull()
     .references(() => incomeCategories.id),
+  // 割り勘精算による収入のみ設定される入金先口座(任意)。通常の収入登録では常にNULL。
+  accountId: integer('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   amount: integer('amount').notNull(),
   content: text('content').notNull(),
   memo: text('memo'),
@@ -328,13 +330,16 @@ export const expenseSplits = sqliteTable('expense_splits', {
   // debtorUserId と debtorExternalId はどちらか一方のみ設定する(アプリ層で検証)。
   debtorUserId: integer('debtor_user_id').references(() => users.id),
   debtorExternalId: integer('debtor_external_id').references(() => externalPersons.id),
+  // 負担者が「支払った」時点で選んだ支払い元口座(任意)。精算確定まで保持する。
+  debtorAccountId: integer('debtor_account_id').references(() => accounts.id, { onDelete: 'set null' }),
   // 'ratio'(％入力) / 'amount'(金額入力)。
   splitInputType: text('split_input_type').notNull().default('ratio'),
   // 負担割合(%)。小数第2位まで持つ参考値(例: 33.33)。
   splitRatio: real('split_ratio').notNull(),
   // 負担額(整数円)。
   amountDue: integer('amount_due').notNull(),
-  // unpaid | requested | approval_requested | pending | settled
+  // unpaid(未請求) | requested(請求中) | payment_reported(負担者が支払報告済み・立替者の受領確定待ち)
+  //   | pending(保留中) | settled(精算済み)
   status: text('status').notNull().default('unpaid'),
   requestedAt: text('requested_at'),
   settledAt: text('settled_at'),

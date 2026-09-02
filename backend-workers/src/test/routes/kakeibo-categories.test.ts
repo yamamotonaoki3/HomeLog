@@ -36,16 +36,17 @@ beforeEach(async () => {
 })
 
 describe('GET /api/kakeibo-categories', () => {
-  it('初回アクセス時にデフォルト10カテゴリーを遅延シードして返す', async () => {
+  it('初回アクセス時にデフォルト11カテゴリーを遅延シードして返す', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
 
     const res = await app.request('/api/kakeibo-categories', { headers }, env)
 
     expect(res.status).toBe(200)
     const body = await res.json<{ name: string; isDefault: boolean }[]>()
-    expect(body).toHaveLength(10)
+    expect(body).toHaveLength(11)
     expect(body.every((c) => c.isDefault)).toBe(true)
     expect(body.map((c) => c.name)).toContain('食費')
+    expect(body.map((c) => c.name)).toContain('割り勘精算')
   })
 
   it('同時に複数リクエストが初回GETしても重複シードされない', async () => {
@@ -54,7 +55,7 @@ describe('GET /api/kakeibo-categories', () => {
     await Promise.all(Array.from({ length: 5 }, () => app.request('/api/kakeibo-categories', { headers }, env)))
 
     const res = await app.request('/api/kakeibo-categories', { headers }, env)
-    expect(await res.json<unknown[]>()).toHaveLength(10)
+    expect(await res.json<unknown[]>()).toHaveLength(11)
   })
 })
 

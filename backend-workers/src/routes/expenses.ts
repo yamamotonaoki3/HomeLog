@@ -37,7 +37,8 @@ const splitRowSchema = z.object({
 const createExpenseSchema = z.object({
   expenseDate: z.string().refine(isValidCalendarDate, { message: '日付の形式が不正です' }),
   amount: z.number().int().positive().max(AMOUNT_MAX),
-  purpose: z.string().max(100).refine((value) => value.trim().length > 0, { message: '使用用途を入力してください' }),
+  // 使用用途は任意(空欄可)。F03_kakeibo_expense.md 5章の通り 0〜100文字。
+  purpose: z.string().max(100).nullish(),
   categoryId: z.number().int(),
   memo: z.string().max(255).nullish(),
   includeInHouseholdTotal: z.boolean().nullish(),
@@ -356,7 +357,7 @@ expensesRoute.post('/', async (c) => {
       resolvedCardId,
       eventId ?? null,
       amount,
-      purpose,
+      purpose?.trim() ? purpose.trim() : '',
       memo ?? null,
       expenseDate,
       includeInHouseholdTotal ? 1 : 0,
