@@ -5,6 +5,7 @@ import { RequireAuth } from './routes/RequireAuth'
 import { RequireHousehold } from './routes/RequireHousehold'
 import { AccountsPage } from './pages/AccountsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { EventsPage } from './pages/EventsPage'
 import { FixedCostsPage } from './pages/FixedCostsPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage'
@@ -39,6 +40,7 @@ function App() {
                 <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/recipes" element={<RecipesPage />} />
                 <Route path="/menu" element={<MenuPage />} />
+                <Route path="/events" element={<EventsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
               </Route>
             </Route>

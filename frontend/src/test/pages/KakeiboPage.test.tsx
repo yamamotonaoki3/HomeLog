@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { KakeiboPage } from '../../pages/KakeiboPage'
+import type { Event } from '../../api/eventTypes'
 import type { Account, Expense, FixedCost, Income } from '../../api/kakeiboTypes'
 
 const defaultCategories = [
@@ -22,6 +23,7 @@ interface MockState {
   incomes: Income[]
   accounts: Account[]
   fixedCosts: FixedCost[]
+  events: Event[]
 }
 
 /** 家計簿API一式を状態ベースでモックし、リクエスト記録と状態を返す */
@@ -31,6 +33,7 @@ function setupApi(initial: Partial<MockState> = {}) {
     incomes: initial.incomes ?? [],
     accounts: initial.accounts ?? [],
     fixedCosts: initial.fixedCosts ?? [],
+    events: initial.events ?? [],
   }
   const calls: { method: string; url: string; body?: unknown }[] = []
 
@@ -57,6 +60,7 @@ function setupApi(initial: Partial<MockState> = {}) {
         includeInHouseholdTotal: Boolean(body.includeInHouseholdTotal),
         accountId: (body.accountId as number | null) ?? (body.cardId ? 5 : null),
         cardId: (body.cardId as number | null) ?? null,
+        eventId: (body.eventId as number | null) ?? null,
       }
       state.expenses.push(expense)
       return HttpResponse.json(expense, { status: 201 })
@@ -86,6 +90,7 @@ function setupApi(initial: Partial<MockState> = {}) {
     }),
     http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
+    http.get('/api/events', () => HttpResponse.json(state.events)),
   )
 
   return { state, calls }
@@ -109,6 +114,7 @@ const lunchExpense: Expense = {
   includeInHouseholdTotal: false,
   accountId: null,
   cardId: null,
+  eventId: null,
 }
 const suppliesExpense: Expense = {
   id: 2,
@@ -120,6 +126,7 @@ const suppliesExpense: Expense = {
   includeInHouseholdTotal: true,
   accountId: null,
   cardId: null,
+  eventId: null,
 }
 
 const salaryIncome: Income = {
@@ -522,5 +529,43 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
     const table = screen.getByRole('table')
     expect(within(table).getByText('Suica')).toBeInTheDocument()
+  })
+
+  it('イベントを選択して支出登録するとeventIdが送信される', async () => {
+    const { calls } = setupApi({
+      events: [
+        { id: 1, name: '旅行', eventDate: '2026-09-20', isAllDay: true, startTime: null, endTime: null, recurrenceType: 'none', notifyEnabled: false, defaultAmount: null, showOnDashboard: true, personal: false, editable: true },
+      ],
+    })
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+
+    await user.type(within(modal).getByLabelText('使用用途'), '旅行代')
+    await user.clear(within(modal).getByLabelText('金額'))
+    await user.type(within(modal).getByLabelText('金額'), '5000')
+    await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+
+    await waitFor(() => expect(screen.getByText('旅行代')).toBeInTheDocument())
+    const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/expenses')
+    expect(postCall?.body).toMatchObject({ eventId: 1 })
+  })
+
+  it('デフォルト金額が設定されたイベントを選択すると金額欄に自動入力される', async () => {
+    setupApi({
+      events: [
+        { id: 1, name: '旅行', eventDate: '2026-09-20', isAllDay: true, startTime: null, endTime: null, recurrenceType: 'none', notifyEnabled: false, defaultAmount: 3000, showOnDashboard: true, personal: false, editable: true },
+      ],
+    })
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+
+    await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
+
+    expect(within(modal).getByLabelText('金額')).toHaveValue(3000)
   })
 })

@@ -14,6 +14,7 @@ export interface Expense {
   includeInHouseholdTotal: boolean
   accountId: number | null
   cardId: number | null
+  eventId: number | null
 }
 
 export interface IncomeCategory {
