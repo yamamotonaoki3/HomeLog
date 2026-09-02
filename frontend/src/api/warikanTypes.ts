@@ -1,0 +1,34 @@
+// F-04 割り勘・精算管理。
+
+// 割り勘内訳の状態(F04_kakeibo_warikan.md 3章)。
+// unpaid: 未請求 / requested: 請求中 / approval_requested: 受領承認待ち / pending: 保留中 / settled: 精算済み
+export type SplitStatus = 'unpaid' | 'requested' | 'approval_requested' | 'pending' | 'settled'
+
+// GET /api/expense-splits から返ってくる割り勘内訳1件分。
+export interface ExpenseSplit {
+  id: number
+  expenseId: number
+  expensePurpose: string
+  expenseAmount: number
+  expenseDate: string
+  // 自分がこの内訳の「支払者(立て替えた側)」か「負担者(支払う側)」か。
+  role: 'payer' | 'debtor'
+  // 相手が世帯外の非アプリ利用者か(true なら承認フロー無しで支払者の自己申告のみ)。
+  isExternal: boolean
+  payerLabel: string
+  debtorLabel: string
+  splitInputType: 'ratio' | 'amount'
+  splitRatio: number
+  amountDue: number
+  status: SplitStatus
+  requestedAt: string | null
+  settledAt: string | null
+}
+
+// POST /api/expenses に添えて送る割り勘の相手(支払者=自分は含めない)1人分。
+export interface SplitInput {
+  debtorUserId?: number
+  debtorExternalName?: string
+  ratio?: number
+  amountDue?: number
+}

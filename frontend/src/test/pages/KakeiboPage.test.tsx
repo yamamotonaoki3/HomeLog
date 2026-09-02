@@ -24,6 +24,8 @@ interface MockState {
   accounts: Account[]
   fixedCosts: FixedCost[]
   events: Event[]
+  members?: { userId: number; displayName: string }[]
+  splits?: import('../../api/warikanTypes').ExpenseSplit[]
 }
 
 /** 家計簿API一式を状態ベースでモックし、リクエスト記録と状態を返す */
@@ -91,6 +93,8 @@ function setupApi(initial: Partial<MockState> = {}) {
     http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
     http.get('/api/events', () => HttpResponse.json(state.events)),
+    http.get('/api/households/me', () => HttpResponse.json({ members: initial.members ?? [] })),
+    http.get('/api/expense-splits', () => HttpResponse.json(initial.splits ?? [])),
   )
 
   return { state, calls }
@@ -151,6 +155,30 @@ async function openModal() {
   await user.click(screen.getByRole('button', { name: '登録' }))
   return user
 }
+
+describe('KakeiboPage 未精算サマリー', () => {
+  it('未精算の割り勘の件数・金額を支払う/受け取るで表示する', async () => {
+    setupApi({
+      splits: [
+        {
+          id: 1, expenseId: 1, expensePurpose: 'A', expenseAmount: 2000, expenseDate: '2026-01-01',
+          role: 'debtor', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
+          splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'requested', requestedAt: null, settledAt: null,
+        },
+        {
+          id: 2, expenseId: 2, expensePurpose: 'B', expenseAmount: 600, expenseDate: '2026-01-02',
+          role: 'payer', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
+          splitInputType: 'ratio', splitRatio: 50, amountDue: 300, status: 'unpaid', requestedAt: null, settledAt: null,
+        },
+      ],
+    })
+    renderKakeiboPage()
+
+    const summary = await screen.findByTestId('warikan-summary')
+    expect(summary).toHaveTextContent('支払う 1件 1000円')
+    expect(summary).toHaveTextContent('受け取る 1件 300円')
+  })
+})
 
 describe('KakeiboPage', () => {
   it('支出・収入が一つの一覧に混在し日時降順で表示される', async () => {

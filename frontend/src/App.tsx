@@ -16,6 +16,7 @@ import { MenuPage } from './pages/MenuPage'
 import { PasswordResetPage } from './pages/PasswordResetPage'
 import { RecipesPage } from './pages/RecipesPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { WarikanPage } from './pages/WarikanPage'
 import { ZaikoPage } from './pages/ZaikoPage'
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/zaiko" element={<ZaikoPage />} />
                 <Route path="/kakeibo" element={<KakeiboPage />} />
+                <Route path="/warikan" element={<WarikanPage />} />
                 <Route path="/fixed-costs" element={<FixedCostsPage />} />
                 <Route path="/categories" element={<KakeiboCategoriesPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
