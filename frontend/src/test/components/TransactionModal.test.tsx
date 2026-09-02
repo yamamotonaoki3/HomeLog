@@ -74,4 +74,20 @@ describe('TransactionModal 割り勘', () => {
     expect(calls).toHaveLength(0)
     expect(screen.getAllByText(/100%を超えています/).length).toBeGreaterThan(0)
   })
+
+  it('金額入力で小数を入れると送信をブロックする', async () => {
+    const { calls } = setup()
+    const user = userEvent.setup()
+    await fillBasics(user)
+
+    await user.click(screen.getByLabelText('割り勘する'))
+    await user.click(screen.getByRole('tab', { name: '金額入力' }))
+    await user.selectOptions(screen.getByLabelText('世帯メンバー'), '20')
+    await user.type(screen.getByLabelText('負担額（円）'), '10.5')
+
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    expect(calls).toHaveLength(0)
+    expect(screen.getAllByText(/整数\(円\)で入力してください/).length).toBeGreaterThan(0)
+  })
 })

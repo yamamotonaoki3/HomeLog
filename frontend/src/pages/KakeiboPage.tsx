@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
+import { getCurrentUserId } from '../api/tokenStorage'
 import type { Event } from '../api/eventTypes'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, Expense, FixedCost, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
@@ -191,7 +192,9 @@ export function KakeiboPage() {
     apiClient
       .get<HouseholdMe>('/households/me')
       .then((response) => {
-        if (!cancelled) setMembers(response.data.members)
+        // 割り勘の相手候補は「自分以外」の世帯メンバー(自分を相手に指定するとAPIが400を返すため)。
+        const myId = getCurrentUserId()
+        if (!cancelled) setMembers(response.data.members.filter((member) => member.userId !== myId))
       })
       .catch(() => {
         // 割り勘の相手候補が取れないだけなので、致命的ではない(トーストは出さない)。

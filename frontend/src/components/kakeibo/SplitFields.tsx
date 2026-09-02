@@ -98,6 +98,8 @@ export function SplitFields({ amount, members, onChange }: Props) {
       const numeric = Number(row.value)
       if (row.value.trim() === '' || !Number.isFinite(numeric) || numeric < 0) {
         invalid = '割り勘の負担分を正しく入力してください'
+      } else if (inputType === 'amount' && !Number.isInteger(numeric)) {
+        invalid = '負担額は整数(円)で入力してください'
       }
       if (row.kind === 'member') {
         if (row.memberId === '') {
