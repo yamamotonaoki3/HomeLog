@@ -328,8 +328,31 @@ expensesRoute.post('/', async (c) => {
     balanceUpdateStatement = { table: 'accounts', id: accountId }
   }
 
-  // 「支出INSERT」+「(口座/カードが指定されていれば)残高の相対減算UPDATE」を1つのD1バッチ
-  // (トランザクション)にまとめる(既存Javaの行ロックに代わる方式)。
+  // 新規の世帯外の相手を先に作成しIDへ解決する。ここで失敗しても残るのは名前マスタの行のみで
+  // 参照整合性・残高・支出には一切影響しないため、支出本体のバッチとは分けてよい(P1対応)。
+  const externalIdByName = new Map<string, number>()
+  const newExternalNames = [...new Set(preparedSplits.rows.map((row) => row.newExternalName).filter((n): n is string => !!n))]
+  if (newExternalNames.length > 0) {
+    const created = await c.env.DB.batch(
+      newExternalNames.map((name) =>
+        c.env.DB.prepare('INSERT INTO external_persons (household_id, name) VALUES (?, ?) RETURNING id').bind(householdId, name),
+      ),
+    )
+    created.forEach((result, index) => {
+      const inserted = result.results[0] as { id: number }
+      externalIdByName.set(newExternalNames[index], inserted.id)
+    })
+  }
+
+  const resolvedSplitRows = preparedSplits.rows.map((row) => ({
+    ...row,
+    debtorExternalId: row.newExternalName ? externalIdByName.get(row.newExternalName)! : row.debtorExternalId,
+  }))
+
+  // 「支出INSERT」+「割り勘内訳INSERT」+「(口座/カード指定時)残高の相対減算UPDATE」を1つのD1バッチ
+  // (トランザクション)にまとめて原子的に確定する。バッチは順次実行され後続文は先行文の書き込みを
+  // 見られるため、内訳INSERTの expense_id は同一トランザクション内の (SELECT MAX(id) FROM expenses) で解決する
+  // (バッチはSQLiteトランザクションで隔離されるため、途中で他の支出INSERTが割り込むことはない)。
   const statements = [
     c.env.DB.prepare(
       `INSERT INTO expenses
@@ -350,6 +373,15 @@ expensesRoute.post('/', async (c) => {
       includeInHouseholdTotal ? 1 : 0,
     ),
   ]
+  for (const row of resolvedSplitRows) {
+    statements.push(
+      c.env.DB.prepare(
+        `INSERT INTO expense_splits
+           (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
+         VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, ?, 'unpaid')`,
+      ).bind(row.debtorUserId, row.debtorExternalId, row.splitInputType, row.splitRatio, row.amountDue),
+    )
+  }
   if (balanceUpdateStatement) {
     statements.push(
       c.env.DB
@@ -372,48 +404,14 @@ expensesRoute.post('/', async (c) => {
     event_id: number | null
   }
 
-  // 割り勘内訳の永続化。新規の世帯外の相手を先に作成してIDへ解決したうえで、
-  // expense_splits を1つのバッチでINSERTする。支出本体とのバッチは分かれるため完全な原子性は無いが、
-  // 失敗時も「支出はあるが割り勘内訳が無い」状態になるだけでデータ破壊はなく、発生確率も極めて低い
-  // (プロジェクトの既存スタンス: Phase 3/7-4 の狭い競合の受容と同様)。
-  const insertedSplits: {
-    debtorUserId: number | null
-    debtorExternalId: number | null
-    splitInputType: string
-    splitRatio: number
-    amountDue: number
-    status: string
-  }[] = []
-  if (preparedSplits.rows.length > 0) {
-    const splitStatements = []
-    for (const row of preparedSplits.rows) {
-      let debtorExternalId = row.debtorExternalId
-      if (row.newExternalName) {
-        const created = await c.env.DB.prepare(
-          'INSERT INTO external_persons (household_id, name) VALUES (?, ?) RETURNING id',
-        )
-          .bind(householdId, row.newExternalName)
-          .first<{ id: number }>()
-        debtorExternalId = created?.id ?? null
-      }
-      splitStatements.push(
-        c.env.DB.prepare(
-          `INSERT INTO expense_splits
-             (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'unpaid')`,
-        ).bind(insertedRow.id, row.debtorUserId, debtorExternalId, row.splitInputType, row.splitRatio, row.amountDue),
-      )
-      insertedSplits.push({
-        debtorUserId: row.debtorUserId,
-        debtorExternalId,
-        splitInputType: row.splitInputType,
-        splitRatio: row.splitRatio,
-        amountDue: row.amountDue,
-        status: 'unpaid',
-      })
-    }
-    await c.env.DB.batch(splitStatements)
-  }
+  const insertedSplits = resolvedSplitRows.map((row) => ({
+    debtorUserId: row.debtorUserId,
+    debtorExternalId: row.debtorExternalId,
+    splitInputType: row.splitInputType,
+    splitRatio: row.splitRatio,
+    amountDue: row.amountDue,
+    status: 'unpaid' as const,
+  }))
 
   return c.json(
     {

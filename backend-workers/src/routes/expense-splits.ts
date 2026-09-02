@@ -152,8 +152,17 @@ function transition(
       return c.json(errorResponse('VALIDATION_ERROR', INVALID_STATUS_MESSAGE), 400)
     }
 
+    // 遷移元statusをUPDATEのWHERE句にも含め、更新行数が0なら「並行して別の遷移が走った」とみなして
+    // 400を返す(check-then-update の競合対策。行ロックの無いD1で状態機械を破らないため)。
     const { setClause, nextStatus } = buildUpdate()
-    await c.env.DB.prepare(`UPDATE expense_splits SET ${setClause} WHERE id = ?`).bind(splitId).run()
+    const placeholders = allowedFrom.map(() => '?').join(', ')
+    const updateResult = await c.env.DB
+      .prepare(`UPDATE expense_splits SET ${setClause} WHERE id = ? AND status IN (${placeholders})`)
+      .bind(splitId, ...allowedFrom)
+      .run()
+    if (updateResult.meta.changes === 0) {
+      return c.json(errorResponse('VALIDATION_ERROR', INVALID_STATUS_MESSAGE), 400)
+    }
 
     const updated = await loadSplit(c.env.DB, householdId, splitId)
     return c.json(toResponse(updated ?? { ...split, status: nextStatus }, userId))
