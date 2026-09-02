@@ -67,17 +67,13 @@ interface SplitBody {
 
 async function createExpenseWithSplits(
   headers: Record<string, string>,
-  payerUserId: number,
+  _payerUserId: number,
   splits: SplitBody[],
   opts: { amount?: number; splitInputType?: 'ratio' | 'amount' } = {},
 ) {
   const categoryId = await getFirstCategoryId(headers)
   const amount = opts.amount ?? 1000
   const inputType = opts.splitInputType ?? 'ratio'
-  const payerShare =
-    inputType === 'ratio'
-      ? { debtorUserId: payerUserId, ratio: 100 - splits.reduce((s, x) => s + (x.ratio ?? 0), 0) }
-      : { debtorUserId: payerUserId, amountDue: amount - splits.reduce((s, x) => s + (x.amountDue ?? 0), 0) }
   const res = await app.request(
     '/api/expenses',
     {
@@ -89,7 +85,7 @@ async function createExpenseWithSplits(
         purpose: '共同購入',
         categoryId,
         splitInputType: inputType,
-        splits: [payerShare, ...splits],
+        splits,
       }),
     },
     env,
@@ -137,30 +133,20 @@ describe('POST /api/expenses(割り勘)', () => {
     expect(res.status).toBe(400)
   })
 
-  it('割合合計が100でないと400', async () => {
+  it('相手の割合合計が100を超えると400', async () => {
     const owner = await createUserWithHousehold('taro@example.com')
     const member = await createUserWithoutHousehold('hanako@example.com')
     await joinHousehold(member.headers, owner.headers)
-    const categoryId = await getFirstCategoryId(owner.headers)
-    const res = await app.request(
-      '/api/expenses',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...owner.headers },
-        body: JSON.stringify({
-          expenseDate: '2024-01-01',
-          amount: 1000,
-          purpose: 'x',
-          categoryId,
-          splitInputType: 'ratio',
-          splits: [
-            { debtorUserId: owner.userId, ratio: 40 },
-            { debtorUserId: member.userId, ratio: 40 },
-          ],
-        }),
-      },
-      env,
-    )
+    const res = await createExpenseWithSplits(owner.headers, owner.userId, [
+      { debtorUserId: member.userId, ratio: 60 },
+      { debtorExternalName: 'E2EUser C', ratio: 60 },
+    ])
+    expect(res.status).toBe(400)
+  })
+
+  it('自分を割り勘の相手に指定すると400', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const res = await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: owner.userId, ratio: 50 }])
     expect(res.status).toBe(400)
   })
 

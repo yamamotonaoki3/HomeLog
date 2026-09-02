@@ -20,12 +20,12 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 const INVALID_SPLIT_TARGET_MESSAGE = '割り勘の相手が正しくありません'
 const SPLIT_ROW_IDENTITY_MESSAGE = '割り勘の相手は世帯メンバーか世帯外の人のどちらかを指定してください'
 const SPLIT_DUPLICATE_MESSAGE = '同じ相手を複数回指定することはできません'
-const SPLIT_PAYER_REQUIRED_MESSAGE = '割り勘には自分(支払者)の負担分も含めてください'
+const SPLIT_PAYER_AS_DEBTOR_MESSAGE = '自分を割り勘の相手に指定することはできません'
 
 const AMOUNT_MAX = 9_999_999_999
 
-// 割り勘内訳の1行。debtorUserId / debtorExternalId / debtorExternalName のいずれか1つだけを指定する。
-// 支払者本人の負担分は debtorUserId に自分のIDを入れて送る(サーバ側で判別し、行としては永続化しない)。
+// 割り勘の相手(支払者以外)1人分。debtorUserId / debtorExternalId / debtorExternalName のいずれか1つだけを指定する。
+// 支払者本人の負担分はリクエストに含めない(支出金額 - 相手の負担額合計 として暗黙に決まる)。
 const splitRowSchema = z.object({
   debtorUserId: z.number().int().nullish(),
   debtorExternalId: z.number().int().nullish(),
@@ -84,7 +84,8 @@ interface PreparedSplit {
 type SplitRowInput = z.infer<typeof splitRowSchema>
 
 /**
- * 支出登録リクエストの `splits`(支払者を含む全参加者)を検証し、永続化する内訳行(支払者以外)を確定する。
+ * 支出登録リクエストの `splits`(支払者以外の割り勘の相手)を検証し、永続化する内訳行を確定する。
+ * 支払者本人の負担分は「支出金額 - 相手の負担額合計」として暗黙に決まる(行は作らない)。
  * 世帯メンバーか否か・世帯外の相手が自世帯のものか、をDBで確認したうえで split-calc.ts に計算を委譲する。
  */
 async function prepareSplits(
@@ -100,10 +101,8 @@ async function prepareSplits(
   }
 
   const dedupeKeys = new Set<string>()
-  let payerCount = 0
   const prepared: {
     key: string
-    isPayer: boolean
     debtorUserId: number | null
     debtorExternalId: number | null
     newExternalName: string | null
@@ -117,9 +116,12 @@ async function prepareSplits(
     if (identityCount !== 1) {
       return { ok: false, message: SPLIT_ROW_IDENTITY_MESSAGE }
     }
+    // 支払者本人は暗黙の負担者。相手として明示指定させない。
+    if (row.debtorUserId != null && row.debtorUserId === payerUserId) {
+      return { ok: false, message: SPLIT_PAYER_AS_DEBTOR_MESSAGE }
+    }
 
     let key: string
-    const isPayer = row.debtorUserId != null && row.debtorUserId === payerUserId
     if (row.debtorUserId != null) {
       key = `u:${row.debtorUserId}`
     } else if (row.debtorExternalId != null) {
@@ -131,12 +133,10 @@ async function prepareSplits(
       return { ok: false, message: SPLIT_DUPLICATE_MESSAGE }
     }
     dedupeKeys.add(key)
-    if (isPayer) payerCount += 1
 
     prepared.push({
       key,
-      isPayer,
-      debtorUserId: isPayer ? null : row.debtorUserId ?? null,
+      debtorUserId: row.debtorUserId ?? null,
       debtorExternalId: row.debtorExternalId ?? null,
       newExternalName: name,
       ratio: row.ratio,
@@ -144,12 +144,8 @@ async function prepareSplits(
     })
   }
 
-  if (payerCount !== 1) {
-    return { ok: false, message: SPLIT_PAYER_REQUIRED_MESSAGE }
-  }
-
-  // 世帯メンバーであることの確認(支払者以外の debtorUserId)。
-  const memberIds = prepared.filter((row) => !row.isPayer && row.debtorUserId != null).map((row) => row.debtorUserId!)
+  // 世帯メンバーであることの確認(debtorUserId)。
+  const memberIds = prepared.filter((row) => row.debtorUserId != null).map((row) => row.debtorUserId!)
   for (const memberId of memberIds) {
     const membership = await db
       .select({ userId: householdMembers.userId })
@@ -174,31 +170,24 @@ async function prepareSplits(
     }
   }
 
-  const calcRows: SplitInputRow[] = prepared.map((row) => ({
-    key: row.key,
-    isPayer: row.isPayer,
-    ratio: row.ratio,
-    amountDue: row.amountDue,
-  }))
+  const calcRows: SplitInputRow[] = prepared.map((row) => ({ key: row.key, ratio: row.ratio, amountDue: row.amountDue }))
   const result = resolveSplits(amount, splitInputType, calcRows)
   if (!result.ok) {
     return { ok: false, message: result.error }
   }
 
   const resolvedByKey = new Map(result.rows.map((row) => [row.key, row]))
-  const rows: PreparedSplit[] = prepared
-    .filter((row) => !row.isPayer)
-    .map((row) => {
-      const resolved = resolvedByKey.get(row.key)!
-      return {
-        debtorUserId: row.debtorUserId,
-        debtorExternalId: row.debtorExternalId,
-        newExternalName: row.newExternalName,
-        splitInputType,
-        splitRatio: resolved.ratio,
-        amountDue: resolved.amountDue,
-      }
-    })
+  const rows: PreparedSplit[] = prepared.map((row) => {
+    const resolved = resolvedByKey.get(row.key)!
+    return {
+      debtorUserId: row.debtorUserId,
+      debtorExternalId: row.debtorExternalId,
+      newExternalName: row.newExternalName,
+      splitInputType,
+      splitRatio: resolved.ratio,
+      amountDue: resolved.amountDue,
+    }
+  })
   return { ok: true, rows }
 }
 
