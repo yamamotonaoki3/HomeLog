@@ -99,7 +99,8 @@ function toResponse(row: SplitRow, userId: number) {
     splitRatio: row.split_ratio,
     amountDue: row.amount_due,
     status: row.status,
-    debtorAccountId: row.debtor_account_id,
+    // 支払い元口座は負担者本人にしか返さない(他人の口座IDを露出させない)。
+    debtorAccountId: role === 'debtor' ? row.debtor_account_id : null,
     requestedAt: row.requested_at,
     settledAt: row.settled_at,
   }

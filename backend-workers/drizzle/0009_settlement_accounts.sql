@@ -7,6 +7,8 @@ ALTER TABLE incomes ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DEL
 -- 負担者が「支払った」時点で選んだ支払い元口座(任意)。精算確定(立替者の受領確定)まで内訳行に保持する。
 ALTER TABLE expense_splits ADD COLUMN debtor_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL;
 
--- status値のリネーム。承認者が「負担者」から「立替者(受領側)」に変わり、approval_requested の意味が
--- 「負担者が支払った報告を出し、立替者の受領確定を待っている」状態に反転するため。
-UPDATE expense_splits SET status = 'payment_reported' WHERE status = 'approval_requested';
+-- 旧フローの中間状態を新フローへ移す。旧 approval_requested は「立替者が受領申請を出し、負担者の承認待ち」
+-- という意味で、負担者が実際に支払った証拠にはならない。新フローでそのまま payment_reported に変換すると
+-- 立替者が負担者の操作なしに confirm-receipt で精算(＝家計簿記録)できてしまうため、負担者の mark-paid を
+-- 改めて要求する requested に戻す。
+UPDATE expense_splits SET status = 'requested' WHERE status = 'approval_requested';
