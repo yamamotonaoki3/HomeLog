@@ -39,6 +39,8 @@ function toResponse(income: typeof incomes.$inferSelect) {
     content: income.content,
     categoryId: income.categoryId,
     memo: income.memo,
+    // 割り勘精算による収入のみ非NULL(入金先口座)。通常の収入登録では常にnull。
+    accountId: income.accountId,
   }
 }
 

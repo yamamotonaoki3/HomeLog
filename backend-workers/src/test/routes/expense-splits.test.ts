@@ -7,12 +7,52 @@ async function resetDb() {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM expense_splits'),
     env.DB.prepare('DELETE FROM external_persons'),
+    env.DB.prepare('DELETE FROM incomes'),
     env.DB.prepare('DELETE FROM expenses'),
+    env.DB.prepare('DELETE FROM cards'),
+    env.DB.prepare('DELETE FROM accounts'),
+    env.DB.prepare('DELETE FROM income_categories'),
     env.DB.prepare('DELETE FROM kakeibo_categories'),
     env.DB.prepare('DELETE FROM household_members'),
     env.DB.prepare('DELETE FROM households'),
     env.DB.prepare('DELETE FROM users'),
   ])
+}
+
+async function createAccount(headers: Record<string, string>, name: string, balance: number): Promise<number> {
+  const res = await app.request(
+    '/api/accounts',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ name, type: 'bank', balance }),
+    },
+    env,
+  )
+  const account = await res.json<{ id: number }>()
+  return account.id
+}
+
+async function accountBalance(headers: Record<string, string>, accountId: number): Promise<number> {
+  const res = await app.request('/api/accounts', { headers }, env)
+  const accounts = await res.json<{ id: number; balance: number }[]>()
+  return accounts.find((a) => a.id === accountId)!.balance
+}
+
+async function listExpenses(headers: Record<string, string>) {
+  const res = await app.request('/api/expenses', { headers }, env)
+  return res.json<{ amount: number; purpose: string; categoryId: number; includeInHouseholdTotal: boolean; accountId: number | null }[]>()
+}
+
+async function listIncomes(headers: Record<string, string>) {
+  const res = await app.request('/api/incomes', { headers }, env)
+  return res.json<{ amount: number; content: string; categoryId: number; accountId: number | null }[]>()
+}
+
+async function settlementCategoryId(headers: Record<string, string>, kind: 'kakeibo' | 'income'): Promise<number> {
+  const res = await app.request(kind === 'kakeibo' ? '/api/kakeibo-categories' : '/api/income-categories', { headers }, env)
+  const categories = await res.json<{ id: number; name: string }[]>()
+  return categories.find((c) => c.name === '割り勘精算')!.id
 }
 
 async function createUserWithHousehold(email: string, displayName = 'テスト太郎') {
@@ -189,50 +229,109 @@ describe('GET /api/expense-splits', () => {
   })
 })
 
-describe('状態遷移', () => {
+describe('状態遷移(改訂フロー)', () => {
   async function setup() {
-    const owner = await createUserWithHousehold('taro@example.com')
-    const member = await createUserWithoutHousehold('hanako@example.com')
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const member = await createUserWithoutHousehold('hanako@example.com', 'テスト花子')
     await joinHousehold(member.headers, owner.headers)
-    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }])
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }], { amount: 1000 })
     const splitId = await firstSplitId(owner.headers)
     return { owner, member, splitId }
   }
 
-  const patch = (id: number, path: string, headers: Record<string, string>) =>
-    app.request(`/api/expense-splits/${id}/${path}`, { method: 'PATCH', headers }, env)
+  const patch = (id: number, path: string, headers: Record<string, string>, body?: unknown) =>
+    app.request(
+      `/api/expense-splits/${id}/${path}`,
+      {
+        method: 'PATCH',
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      },
+      env,
+    )
 
-  it('request→receipt-request→approveでsettledになる', async () => {
+  it('請求→負担者mark-paid→立替者confirm-receiptでsettledになる', async () => {
     const { owner, member, splitId } = await setup()
     expect((await patch(splitId, 'request', owner.headers)).status).toBe(200)
-    expect((await patch(splitId, 'receipt-request', owner.headers)).status).toBe(200)
-    const res = await patch(splitId, 'approve', member.headers)
+    expect((await patch(splitId, 'mark-paid', member.headers)).status).toBe(200)
+    const res = await patch(splitId, 'confirm-receipt', owner.headers)
     expect(res.status).toBe(200)
     const body = await res.json<{ status: string; settledAt: string | null }>()
     expect(body.status).toBe('settled')
     expect(body.settledAt).not.toBeNull()
   })
 
-  it('負担者はrequestできない(404)', async () => {
-    const { member, splitId } = await setup()
-    expect((await patch(splitId, 'request', member.headers)).status).toBe(404)
+  it('confirm-receiptで立替者に収入・負担者に支出が「割り勘精算」で作成される', async () => {
+    const { owner, member, splitId } = await setup()
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
+    await patch(splitId, 'confirm-receipt', owner.headers)
+
+    const payerIncomes = await listIncomes(owner.headers)
+    expect(payerIncomes).toHaveLength(1)
+    expect(payerIncomes[0].amount).toBe(500)
+    expect(payerIncomes[0].categoryId).toBe(await settlementCategoryId(owner.headers, 'income'))
+
+    const debtorExpenses = await listExpenses(member.headers)
+    expect(debtorExpenses).toHaveLength(1)
+    expect(debtorExpenses[0].amount).toBe(500)
+    expect(debtorExpenses[0].includeInHouseholdTotal).toBe(false)
+    expect(debtorExpenses[0].categoryId).toBe(await settlementCategoryId(member.headers, 'kakeibo'))
   })
 
-  it('支払者はapproveできない(404)', async () => {
+  it('口座を指定して精算すると両者の残高が増減する', async () => {
+    const { owner, member, splitId } = await setup()
+    const debtorAccount = await createAccount(member.headers, '花子の口座', 10000)
+    const payerAccount = await createAccount(owner.headers, '太郎の口座', 3000)
+
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers, { accountId: debtorAccount })
+    await patch(splitId, 'confirm-receipt', owner.headers, { accountId: payerAccount })
+
+    expect(await accountBalance(member.headers, debtorAccount)).toBe(9500) // 10000 - 500
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3500) // 3000 + 500
+  })
+
+  it('口座を指定しなければ家計簿の収支だけ作られ残高は動かない', async () => {
+    const { owner, member, splitId } = await setup()
+    const payerAccount = await createAccount(owner.headers, '太郎の口座', 3000)
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
+    await patch(splitId, 'confirm-receipt', owner.headers)
+
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3000)
+    expect(await listIncomes(owner.headers)).toHaveLength(1)
+    expect(await listExpenses(member.headers)).toHaveLength(1)
+  })
+
+  it('他人の口座IDをmark-paidに渡すと400', async () => {
+    const { owner, member, splitId } = await setup()
+    const payerAccount = await createAccount(owner.headers, '太郎の口座', 3000)
+    await patch(splitId, 'request', owner.headers)
+    const res = await patch(splitId, 'mark-paid', member.headers, { accountId: payerAccount })
+    expect(res.status).toBe(400)
+  })
+
+  it('負担者はconfirm-receiptできない(404)、立替者はmark-paidできない(404)', async () => {
+    const { owner, member, splitId } = await setup()
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
+    expect((await patch(splitId, 'confirm-receipt', member.headers)).status).toBe(404)
+
+    const s2 = await setup2(owner)
+    expect((await patch(s2.splitId, 'mark-paid', owner.headers)).status).toBe(404)
+  })
+
+  it('payment_reported以外からのconfirm-receiptは400', async () => {
     const { owner, splitId } = await setup()
     await patch(splitId, 'request', owner.headers)
-    await patch(splitId, 'receipt-request', owner.headers)
-    expect((await patch(splitId, 'approve', owner.headers)).status).toBe(404)
-  })
-
-  it('unpaidからapproveは400(状態不整合)', async () => {
-    const { member, splitId } = await setup()
-    expect((await patch(splitId, 'approve', member.headers)).status).toBe(400)
+    expect((await patch(splitId, 'confirm-receipt', owner.headers)).status).toBe(400)
   })
 
   it('負担者はholdでpendingにできる', async () => {
     const { owner, member, splitId } = await setup()
     await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
     const res = await patch(splitId, 'hold', member.headers)
     expect(res.status).toBe(200)
     expect((await res.json<{ status: string }>()).status).toBe('pending')
@@ -243,13 +342,43 @@ describe('状態遷移', () => {
     expect((await patch(splitId, 'settle-self', owner.headers)).status).toBe(404)
   })
 
-  it('settle-selfは相手が世帯外なら支払者の自己申告でsettled', async () => {
-    const owner = await createUserWithHousehold('taro@example.com')
-    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', ratio: 50 }])
+  it('settle-self(世帯外)は立替者の収入のみ作成し、負担者支出は作られない', async () => {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const payerAccount = await createAccount(owner.headers, '太郎の口座', 3000)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', amountDue: 400 }], {
+      amount: 1000,
+      splitInputType: 'amount',
+    })
     const splitId = await firstSplitId(owner.headers)
-    const res = await patch(splitId, 'settle-self', owner.headers)
+    const res = await patch(splitId, 'settle-self', owner.headers, { accountId: payerAccount })
     expect(res.status).toBe(200)
     expect((await res.json<{ status: string }>()).status).toBe('settled')
+
+    const incomes = await listIncomes(owner.headers)
+    expect(incomes).toHaveLength(1)
+    expect(incomes[0].amount).toBe(400)
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3400)
+    // 立替者の支出一覧は元の共同支出1件のみ。settle-self では負担者(世帯外)の支出行は作られない
+    expect(await listExpenses(owner.headers)).toHaveLength(1)
+  })
+
+  it('settledの内訳は削除できない(400)、未精算は削除できる(204)', async () => {
+    const { owner, member, splitId } = await setup()
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
+    await patch(splitId, 'confirm-receipt', owner.headers)
+    const del = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del.status).toBe(400)
+
+    const s2 = await setup2(owner)
+    const del2 = await app.request(`/api/expense-splits/${s2.splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del2.status).toBe(204)
+  })
+
+  it('負担者はDELETEできない(404)', async () => {
+    const { member, splitId } = await setup()
+    const res = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: member.headers }, env)
+    expect(res.status).toBe(404)
   })
 
   it('他世帯のsplitは404', async () => {
@@ -258,22 +387,10 @@ describe('状態遷移', () => {
     expect((await patch(splitId, 'request', outsider.headers)).status).toBe(404)
   })
 
-  it('支払者はDELETEできる', async () => {
-    const { owner, splitId } = await setup()
-    const res = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
-    expect(res.status).toBe(204)
-    expect(await firstSplitIdOrNull(owner.headers)).toBeNull()
-  })
-
-  it('負担者はDELETEできない(404)', async () => {
-    const { member, splitId } = await setup()
-    const res = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: member.headers }, env)
-    expect(res.status).toBe(404)
-  })
+  // 既存の owner/member 世帯に、外部相手との別の割り勘内訳をもう1件作る。
+  async function setup2(owner: { headers: Record<string, string>; userId: number }) {
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser Z', ratio: 30 }], { amount: 2000 })
+    const list = await (await app.request('/api/expense-splits', { headers: owner.headers }, env)).json<{ id: number }[]>()
+    return { splitId: list[0].id }
+  }
 })
-
-async function firstSplitIdOrNull(headers: Record<string, string>): Promise<number | null> {
-  const res = await app.request('/api/expense-splits', { headers }, env)
-  const list = await res.json<{ id: number }[]>()
-  return list[0]?.id ?? null
-}

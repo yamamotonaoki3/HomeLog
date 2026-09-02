@@ -63,6 +63,7 @@
 - 世帯全体でどれだけ支出があったかの**合計金額**は世帯メンバー全員が確認できるようにする（[F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md)参照）。
 - 個人的な支出（世帯の共同生活に関係しない私的な支出）は世帯合計から除外したいというニーズがあるため、支出・固定費それぞれに **世帯合計対象フラグ**（`include_in_household_total`）を持たせ、フラグがtrueのものだけを合計対象とする。
 - 世帯合計に含める・含めないの判定はユーザーが支出登録時に都度指定する（自動判定ロジックは今回のスコープ外）。
+- 割り勘の精算完了時に自動作成される収入・支出（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 8章）は、元の共同支出との二重計上を避けるため **`include_in_household_total = false`** で作成し、世帯合計の対象外とする。
 - 世帯合計サマリーで開示するのは合計金額のみであり、「誰が何にいくら使ったか」という個別の内訳は非公開のまま。
 - トップ画面（S-04）の「収支」表示は、**ログインユーザー本人の収入合計－支出合計**（世帯合計対象フラグの有無に関わらず本人が登録した全件）で算出する個人単位の値である。他メンバーの収入・支出は前述の権限方針により参照できないため、この「収支」は常に本人個人の収支であり、世帯全体の収支ではない（世帯合計支出とは別の指標。[F13_kakeibo_income](features/F13_kakeibo_income.md)参照）。
 
@@ -86,8 +87,8 @@
 | 項目 | デフォルト値 | 備考 |
 | --- | --- | --- |
 | 支出・固定費の`include_in_household_total` | `false` | 個人支出として登録される。世帯合計に含めたい場合のみユーザーがONにする（8章参照） |
-| 家計簿（支出）カテゴリー初期リスト | 食費／日用品／交際費／光熱費／住居費／通信費／医療費／趣味・娯楽／固定費／その他 | [F03_kakeibo_expense](features/F03_kakeibo_expense.md)参照。「固定費」は[F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)の毎月自動計上で使用する |
-| 家計簿（収入）カテゴリー初期リスト | 給与／ボーナス／副業／その他 | [F13_kakeibo_income](features/F13_kakeibo_income.md)参照 |
+| 家計簿（支出）カテゴリー初期リスト | 食費／日用品／交際費／光熱費／住居費／通信費／医療費／趣味・娯楽／固定費／割り勘精算／その他 | [F03_kakeibo_expense](features/F03_kakeibo_expense.md)参照。「固定費」は[F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)の毎月自動計上、「割り勘精算」は[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 8章の精算時自動記録で使用する |
+| 家計簿（収入）カテゴリー初期リスト | 給与／ボーナス／副業／割り勘精算／その他 | [F13_kakeibo_income](features/F13_kakeibo_income.md)参照。「割り勘精算」は[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 8章の精算時自動記録で使用する |
 | パスワード強度 | 8文字以上、英字と数字を両方含む | [F01_auth](features/F01_auth.md)参照 |
 | 割り勘の入力モード | ％入力（`ratio`） | ％入力/金額入力をトグルで切替可能（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 7章参照） |
 | 割り勘の負担割合（2人） | 50% : 50% | [F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)参照 |

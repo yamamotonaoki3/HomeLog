@@ -105,6 +105,7 @@ erDiagram
         bigint expense_id FK
         bigint debtor_user_id FK
         bigint debtor_external_id FK
+        bigint debtor_account_id FK
         varchar split_input_type
         numeric split_ratio
         numeric amount_due
@@ -159,6 +160,7 @@ erDiagram
         bigint household_id FK
         bigint earner_user_id FK
         bigint category_id FK
+        bigint account_id FK
         numeric amount
         varchar content
         varchar memo
@@ -254,9 +256,11 @@ erDiagram
     expenses ||--o{ expense_splits : "分割される"
     users ||--o{ expense_splits : "負担する(debtor)"
     external_persons ||--o{ expense_splits : "負担する(debtor)"
+    accounts ||--o{ expense_splits : "支払い元になる(精算時)"
 
     users ||--o{ incomes : "得る(earner)"
     income_categories ||--o{ incomes : "分類する"
+    accounts ||--o{ incomes : "入金先になる(割り勘精算)"
 
     zaiko_categories ||--o{ inventory_items : "分類する"
     stores ||--o{ inventory_items : "紐付く"
@@ -405,7 +409,8 @@ erDiagram
 | expense_splits.split_input_type | VARCHAR(10) | ○ | 入力モード。`ratio`（％入力）/`amount`（金額入力）。デフォルト`ratio`（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 7章参照） |
 | expense_splits.split_ratio | NUMERIC(5,2) | ○ | 負担割合（%）。％入力時はユーザー入力値（デフォルト50.00）、金額入力時はamount_dueから逆算した参考値 |
 | expense_splits.amount_due | NUMERIC | ○ | 負担額。％入力時はsplit_ratioから自動計算、金額入力時はユーザー入力値 |
-| expense_splits.status | VARCHAR(20) | ○ | `unpaid`（未請求）/`requested`（請求中）/`approval_requested`（受領承認待ち：支払った人が受領を申請し、負担者の承認待ち）/`pending`（保留中）/`settled`（精算済み）。settledにするには負担者の承認が必要（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)参照） |
+| expense_splits.debtor_account_id | BIGINT | — | FK → accounts.id（負担者が「支払う」時に選んだ支払い元口座。精算確定まで保持。任意） |
+| expense_splits.status | VARCHAR(20) | ○ | `unpaid`（未請求）/`requested`（請求中：立替者が請求）/`payment_reported`（負担者が「支払った」と報告し、立替者の受領確定待ち）/`pending`（保留中）/`settled`（精算済み）。settledにするには立替者（受領側）の受領確定が必要（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)参照） |
 | expense_splits.settled_at | TIMESTAMP | — | 精算完了日時 |
 
 ※ `debtor_user_id` と `debtor_external_id` はどちらか一方のみ設定する（世帯内/世帯外の排他）。
@@ -427,6 +432,7 @@ erDiagram
 | household_id | BIGINT | ○ | FK → households.id |
 | earner_user_id | BIGINT | ○ | FK → users.id（収入を得た人。常に登録者本人。[F13_kakeibo_income](features/F13_kakeibo_income.md) 6章参照） |
 | category_id | BIGINT | ○ | FK → income_categories.id |
+| account_id | BIGINT | — | FK → accounts.id（割り勘精算による収入のみ設定される入金先口座。通常の収入登録では常にNULL。[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 8章参照） |
 | amount | NUMERIC | ○ | 収入金額 |
 | content | VARCHAR(100) | ○ | 収入内容（例：〇月分給与） |
 | memo | VARCHAR(255) | — | メモ |

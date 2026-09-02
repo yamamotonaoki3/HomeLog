@@ -36,15 +36,15 @@ beforeEach(async () => {
 })
 
 describe('GET /api/income-categories', () => {
-  it('初回アクセス時にデフォルト4カテゴリーを遅延シードして返す', async () => {
+  it('初回アクセス時にデフォルト5カテゴリーを遅延シードして返す', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
 
     const res = await app.request('/api/income-categories', { headers }, env)
 
     expect(res.status).toBe(200)
     const body = await res.json<{ name: string; isDefault: boolean }[]>()
-    expect(body).toHaveLength(4)
-    expect(body.map((c) => c.name).sort()).toEqual(['その他', 'ボーナス', '副業', '給与'].sort())
+    expect(body).toHaveLength(5)
+    expect(body.map((c) => c.name).sort()).toEqual(['その他', 'ボーナス', '副業', '割り勘精算', '給与'].sort())
   })
 })
 

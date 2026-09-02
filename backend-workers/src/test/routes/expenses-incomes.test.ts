@@ -210,6 +210,23 @@ describe('POST /api/expenses', () => {
     expect(res.status).toBe(400)
   })
 
+  it('使用用途は任意(空欄・未指定でも201、空文字で保存される)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await getFirstCategoryId(headers)
+
+    const res = await app.request(
+      '/api/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ expenseDate: '2024-01-01', amount: 500, categoryId }),
+      },
+      env,
+    )
+    expect(res.status).toBe(201)
+    expect((await res.json<{ purpose: string }>()).purpose).toBe('')
+  })
+
   it('金額が0以下の場合は400を返す', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await getFirstCategoryId(headers)

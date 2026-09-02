@@ -13,7 +13,7 @@ const IN_USE_MESSAGE = '使用中のカテゴリーは削除できません'
 const DEFAULT_IMMUTABLE_MESSAGE = 'デフォルトカテゴリーは編集・削除できません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
-const DEFAULT_CATEGORY_NAMES = ['給与', 'ボーナス', '副業', 'その他']
+const DEFAULT_CATEGORY_NAMES = ['給与', 'ボーナス', '副業', '割り勘精算', 'その他']
 
 const categoryNameSchema = z.object({
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: 'カテゴリー名を入力してください' }),
