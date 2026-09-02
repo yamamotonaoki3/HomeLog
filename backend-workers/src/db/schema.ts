@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 // 既存Java実装のFlyway V1相当のテーブル定義をSQLite(D1)向けに翻訳したもの。
 // Phase 2以降、household等のテーブルをこのファイルに追加していく。
@@ -301,6 +301,43 @@ export const events = sqliteTable('events', {
   notifyEnabled: integer('notify_enabled', { mode: 'boolean' }).notNull().default(false),
   defaultAmount: integer('default_amount'),
   showOnDashboard: integer('show_on_dashboard', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+// F-04 割り勘・精算管理。世帯外(非アプリ利用者)の精算相手。割り勘UIで名前を入力すると都度作成される。
+export const externalPersons = sqliteTable('external_persons', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
+// 支出の割り勘内訳。1行 = 支払者(expenses.payer_user_id)以外の1人が支払者に対して負う負担。
+// 支払者自身の負担分は行を作らない(端数は行を持たない支払者へ自然に寄る)。
+export const expenseSplits = sqliteTable('expense_splits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  expenseId: integer('expense_id')
+    .notNull()
+    .references(() => expenses.id, { onDelete: 'cascade' }),
+  // debtorUserId と debtorExternalId はどちらか一方のみ設定する(アプリ層で検証)。
+  debtorUserId: integer('debtor_user_id').references(() => users.id),
+  debtorExternalId: integer('debtor_external_id').references(() => externalPersons.id),
+  // 'ratio'(％入力) / 'amount'(金額入力)。
+  splitInputType: text('split_input_type').notNull().default('ratio'),
+  // 負担割合(%)。小数第2位まで持つ参考値(例: 33.33)。
+  splitRatio: real('split_ratio').notNull(),
+  // 負担額(整数円)。
+  amountDue: integer('amount_due').notNull(),
+  // unpaid | requested | approval_requested | pending | settled
+  status: text('status').notNull().default('unpaid'),
+  requestedAt: text('requested_at'),
+  settledAt: text('settled_at'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),
