@@ -1,8 +1,9 @@
 // F-04 割り勘・精算管理。
 
 // 割り勘内訳の状態(F04_kakeibo_warikan.md 3章)。
-// unpaid: 未請求 / requested: 請求中 / approval_requested: 受領承認待ち / pending: 保留中 / settled: 精算済み
-export type SplitStatus = 'unpaid' | 'requested' | 'approval_requested' | 'pending' | 'settled'
+// unpaid: 未請求 / requested: 請求中(立替者が請求) / payment_reported: 受領確認待ち(負担者が支払報告)
+//   / pending: 保留中 / settled: 精算済み
+export type SplitStatus = 'unpaid' | 'requested' | 'payment_reported' | 'pending' | 'settled'
 
 // GET /api/expense-splits から返ってくる割り勘内訳1件分。
 export interface ExpenseSplit {
@@ -21,6 +22,8 @@ export interface ExpenseSplit {
   splitRatio: number
   amountDue: number
   status: SplitStatus
+  // 負担者が「支払う」で選んだ支払い元口座。負担者本人が見たときのみ返る(他人には null)。
+  debtorAccountId: number | null
   requestedAt: string | null
   settledAt: string | null
 }

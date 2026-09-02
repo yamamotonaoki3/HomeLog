@@ -38,8 +38,21 @@ function setup() {
 
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('金額'), '1000')
-  await user.type(screen.getByLabelText('使用用途'), 'ランチ')
+  await user.type(screen.getByLabelText('使用用途（任意）'), 'ランチ')
 }
+
+describe('TransactionModal 使用用途', () => {
+  it('支出は使用用途を空欄のまま登録できる(空文字で送信される)', async () => {
+    const { calls } = setup()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('金額'), '1000')
+
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0].purpose).toBe('')
+  })
+})
 
 describe('TransactionModal 割り勘', () => {
   it('割り勘ONで相手を追加すると送信ボディにsplitsが入る', async () => {

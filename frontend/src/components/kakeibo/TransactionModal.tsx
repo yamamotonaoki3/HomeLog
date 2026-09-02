@@ -90,8 +90,9 @@ export function TransactionModal({
     e.preventDefault()
     const descriptionLabel = kind === 'expense' ? '使用用途' : '収入内容'
     const trimmedDescription = (kind === 'expense' ? purpose : content).trim()
-    if (trimmedDescription.length < 1 || trimmedDescription.length > 100) {
-      setError(`${descriptionLabel}は1〜100文字で入力してください`)
+    // 支出の使用用途は任意(空欄可・0〜100文字)。収入内容は必須(1〜100文字)。
+    if (kind === 'expense' ? trimmedDescription.length > 100 : trimmedDescription.length < 1 || trimmedDescription.length > 100) {
+      setError(kind === 'expense' ? `${descriptionLabel}は100文字以内で入力してください` : `${descriptionLabel}は1〜100文字で入力してください`)
       return
     }
     const amountValue = Number(amount)
@@ -190,7 +191,7 @@ export function TransactionModal({
           />
           {kind === 'expense' ? (
             <>
-              <label htmlFor="tx-purpose">使用用途</label>
+              <label htmlFor="tx-purpose">使用用途（任意）</label>
               <input
                 id="tx-purpose"
                 type="text"

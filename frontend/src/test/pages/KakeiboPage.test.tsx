@@ -163,12 +163,14 @@ describe('KakeiboPage 未精算サマリー', () => {
         {
           id: 1, expenseId: 1, expensePurpose: 'A', expenseAmount: 2000, expenseDate: '2026-01-01',
           role: 'debtor', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
-          splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'requested', requestedAt: null, settledAt: null,
+          splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'requested',
+          debtorAccountId: null, requestedAt: null, settledAt: null,
         },
         {
           id: 2, expenseId: 2, expensePurpose: 'B', expenseAmount: 600, expenseDate: '2026-01-02',
           role: 'payer', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
-          splitInputType: 'ratio', splitRatio: 50, amountDue: 300, status: 'unpaid', requestedAt: null, settledAt: null,
+          splitInputType: 'ratio', splitRatio: 50, amountDue: 300, status: 'unpaid',
+          debtorAccountId: null, requestedAt: null, settledAt: null,
         },
       ],
     })
@@ -298,7 +300,7 @@ describe('KakeiboPage', () => {
 
     const modal = screen.getByTestId('transaction-modal')
     expect(within(modal).getByRole('tab', { name: '支出' })).toHaveAttribute('aria-selected', 'true')
-    expect(within(modal).getByLabelText('使用用途')).toBeInTheDocument()
+    expect(within(modal).getByLabelText('使用用途（任意）')).toBeInTheDocument()
     expect(within(modal).getByLabelText('世帯合計に含める')).toBeInTheDocument()
   })
 
@@ -327,7 +329,7 @@ describe('KakeiboPage', () => {
     await user.click(within(modal).getByRole('tab', { name: '収入' }))
 
     expect(within(modal).getByLabelText('収入内容')).toBeInTheDocument()
-    expect(within(modal).queryByLabelText('使用用途')).not.toBeInTheDocument()
+    expect(within(modal).queryByLabelText('使用用途（任意）')).not.toBeInTheDocument()
     expect(within(modal).queryByLabelText('世帯合計に含める')).not.toBeInTheDocument()
   })
 
@@ -340,7 +342,7 @@ describe('KakeiboPage', () => {
 
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '1500')
-    await user.type(screen.getByLabelText('使用用途'), '書籍')
+    await user.type(screen.getByLabelText('使用用途（任意）'), '書籍')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('書籍')).toBeInTheDocument())
@@ -387,14 +389,14 @@ describe('KakeiboPage', () => {
 
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '0')
-    await user.type(screen.getByLabelText('使用用途'), '書籍')
+    await user.type(screen.getByLabelText('使用用途（任意）'), '書籍')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('金額は1以上の整数で入力してください')).toBeInTheDocument())
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
-  it('使用用途が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
+  it('使用用途は任意なので空欄でも支出を登録できる', async () => {
     const { calls } = setupApi()
     renderKakeiboPage()
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
@@ -405,8 +407,9 @@ describe('KakeiboPage', () => {
     await user.type(screen.getByLabelText('金額'), '1000')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
-    await waitFor(() => expect(screen.getByText('使用用途は1〜100文字で入力してください')).toBeInTheDocument())
-    expect(calls.some((c) => c.method === 'POST')).toBe(false)
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url === '/api/expenses')).toBe(true))
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/expenses')!
+    expect((post.body as { purpose: string }).purpose).toBe('')
   })
 
   it('収入内容が空はクライアント側でエラー表示しAPIを呼ばない', async () => {
@@ -497,7 +500,7 @@ describe('KakeiboPage', () => {
     await user.selectOptions(within(modal).getByLabelText('口座/カード（任意）'), '〇〇銀行')
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '3000')
-    await user.type(screen.getByLabelText('使用用途'), '口座指定の支出')
+    await user.type(screen.getByLabelText('使用用途（任意）'), '口座指定の支出')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('口座指定の支出')).toBeInTheDocument())
@@ -519,7 +522,7 @@ describe('KakeiboPage', () => {
     await user.selectOptions(within(modal).getByLabelText('口座/カード（任意）'), 'card:50')
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '2000')
-    await user.type(screen.getByLabelText('使用用途'), 'カード指定の支出')
+    await user.type(screen.getByLabelText('使用用途（任意）'), 'カード指定の支出')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('カード指定の支出')).toBeInTheDocument())
@@ -570,7 +573,7 @@ describe('KakeiboPage', () => {
     const user = await openModal()
     const modal = screen.getByTestId('transaction-modal')
 
-    await user.type(within(modal).getByLabelText('使用用途'), '旅行代')
+    await user.type(within(modal).getByLabelText('使用用途（任意）'), '旅行代')
     await user.clear(within(modal).getByLabelText('金額'))
     await user.type(within(modal).getByLabelText('金額'), '5000')
     await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
