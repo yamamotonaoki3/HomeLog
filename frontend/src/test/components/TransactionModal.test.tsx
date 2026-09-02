@@ -58,7 +58,7 @@ describe('TransactionModal 割り勘', () => {
     expect(calls[0].splits).toEqual([{ debtorUserId: 20, ratio: 50 }])
   })
 
-  it('相手の割合合計が100%を超えると送信をブロックし差額を表示する', async () => {
+  it('負担割合が100%を超えると送信をブロックする', async () => {
     const { calls } = setup()
     const user = userEvent.setup()
     await fillBasics(user)

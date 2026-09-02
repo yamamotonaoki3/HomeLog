@@ -100,6 +100,8 @@ export function SplitFields({ amount, members, onChange }: Props) {
         invalid = '割り勘の負担分を正しく入力してください'
       } else if (inputType === 'amount' && !Number.isInteger(numeric)) {
         invalid = '負担額は整数(円)で入力してください'
+      } else if (inputType === 'ratio' && numeric > 100) {
+        invalid = '負担割合は0〜100%で入力してください'
       }
       if (row.kind === 'member') {
         if (row.memberId === '') {
