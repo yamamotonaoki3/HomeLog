@@ -60,13 +60,15 @@ export function resolveSplits(
     if (ratioSum - 100 > RATIO_SUM_TOLERANCE) {
       return { ok: false, error: `負担割合の合計が100%を超えています(現在 ${round2(ratioSum)}%)` }
     }
-    return {
-      ok: true,
-      rows: rows.map((row) => {
-        const ratio = row.ratio ?? 0
-        return { key: row.key, ratio: round2(ratio), amountDue: Math.floor((expenseAmount * ratio) / 100) }
-      }),
+    const resolved = rows.map((row) => {
+      const ratio = row.ratio ?? 0
+      return { key: row.key, ratio: round2(ratio), amountDue: Math.floor((expenseAmount * ratio) / 100) }
+    })
+    // 許容誤差の範囲内でも、丸め後の負担額合計が支出金額を超えていないことを厳密に確認する。
+    if (resolved.reduce((sum, row) => sum + row.amountDue, 0) > expenseAmount) {
+      return { ok: false, error: '負担額の合計が支出金額を超えています' }
     }
+    return { ok: true, rows: resolved }
   }
 
   // amount モード
