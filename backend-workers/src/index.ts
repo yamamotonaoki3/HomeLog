@@ -4,6 +4,7 @@ import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
 import { dashboardRoute } from './routes/dashboard'
 import { eventsRoute } from './routes/events'
+import { expenseSplitsRoute } from './routes/expense-splits'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
@@ -48,6 +49,7 @@ app.route('/api/income-categories', incomeCategoriesRoute)
 app.route('/api/accounts', accountsRoute)
 app.route('/api/cards', cardsRoute)
 app.route('/api/expenses', expensesRoute)
+app.route('/api/expense-splits', expenseSplitsRoute)
 app.route('/api/incomes', incomesRoute)
 app.route('/api/fixed-costs', fixedCostsRoute)
 app.route('/api/dashboard', dashboardRoute)

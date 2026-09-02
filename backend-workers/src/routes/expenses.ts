@@ -2,11 +2,12 @@ import { and, desc, eq, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { accounts, cards, events, expenses, kakeiboCategories } from '../db/schema'
+import { accounts, cards, events, expenses, externalPersons, householdMembers, kakeiboCategories } from '../db/schema'
 import { isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { parseOptionalIntQueryParam } from '../lib/query-params'
 import { resolveHouseholdId } from '../lib/household-context'
+import { resolveSplits, type SplitInputRow } from '../lib/split-calc'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
@@ -16,8 +17,22 @@ const INVALID_ACCOUNT_MESSAGE = '指定された口座が見つかりません'
 const INVALID_CARD_MESSAGE = '指定されたカードが見つかりません'
 const INVALID_EVENT_MESSAGE = '指定されたイベントが見つかりません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
+const INVALID_SPLIT_TARGET_MESSAGE = '割り勘の相手が正しくありません'
+const SPLIT_ROW_IDENTITY_MESSAGE = '割り勘の相手は世帯メンバーか世帯外の人のどちらかを指定してください'
+const SPLIT_DUPLICATE_MESSAGE = '同じ相手を複数回指定することはできません'
+const SPLIT_PAYER_REQUIRED_MESSAGE = '割り勘には自分(支払者)の負担分も含めてください'
 
 const AMOUNT_MAX = 9_999_999_999
+
+// 割り勘内訳の1行。debtorUserId / debtorExternalId / debtorExternalName のいずれか1つだけを指定する。
+// 支払者本人の負担分は debtorUserId に自分のIDを入れて送る(サーバ側で判別し、行としては永続化しない)。
+const splitRowSchema = z.object({
+  debtorUserId: z.number().int().nullish(),
+  debtorExternalId: z.number().int().nullish(),
+  debtorExternalName: z.string().max(50).nullish(),
+  ratio: z.number().nonnegative().max(100).nullish(),
+  amountDue: z.number().int().nonnegative().max(AMOUNT_MAX).nullish(),
+})
 
 const createExpenseSchema = z.object({
   expenseDate: z.string().refine(isValidCalendarDate, { message: '日付の形式が不正です' }),
@@ -29,6 +44,8 @@ const createExpenseSchema = z.object({
   accountId: z.number().int().nullish(),
   cardId: z.number().int().nullish(),
   eventId: z.number().int().nullish(),
+  splitInputType: z.enum(['ratio', 'amount']).nullish(),
+  splits: z.array(splitRowSchema).max(20).nullish(),
 })
 
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -52,6 +69,137 @@ function toResponse(expense: typeof expenses.$inferSelect) {
     cardId: expense.cardId,
     eventId: expense.eventId,
   }
+}
+
+interface PreparedSplit {
+  debtorUserId: number | null
+  debtorExternalId: number | null
+  // 事前に external_persons へINSERTしてIDに解決する(バッチ前)。
+  newExternalName: string | null
+  splitInputType: 'ratio' | 'amount'
+  splitRatio: number
+  amountDue: number
+}
+
+type SplitRowInput = z.infer<typeof splitRowSchema>
+
+/**
+ * 支出登録リクエストの `splits`(支払者を含む全参加者)を検証し、永続化する内訳行(支払者以外)を確定する。
+ * 世帯メンバーか否か・世帯外の相手が自世帯のものか、をDBで確認したうえで split-calc.ts に計算を委譲する。
+ */
+async function prepareSplits(
+  db: ReturnType<typeof drizzle>,
+  householdId: number,
+  payerUserId: number,
+  amount: number,
+  splitInputType: 'ratio' | 'amount',
+  splits: SplitRowInput[],
+): Promise<{ ok: true; rows: PreparedSplit[] } | { ok: false; message: string }> {
+  if (splits.length === 0) {
+    return { ok: true, rows: [] }
+  }
+
+  const dedupeKeys = new Set<string>()
+  let payerCount = 0
+  const prepared: {
+    key: string
+    isPayer: boolean
+    debtorUserId: number | null
+    debtorExternalId: number | null
+    newExternalName: string | null
+    ratio?: number | null
+    amountDue?: number | null
+  }[] = []
+
+  for (const row of splits) {
+    const name = row.debtorExternalName?.trim() ? row.debtorExternalName.trim() : null
+    const identityCount = Number(row.debtorUserId != null) + Number(row.debtorExternalId != null) + Number(name != null)
+    if (identityCount !== 1) {
+      return { ok: false, message: SPLIT_ROW_IDENTITY_MESSAGE }
+    }
+
+    let key: string
+    const isPayer = row.debtorUserId != null && row.debtorUserId === payerUserId
+    if (row.debtorUserId != null) {
+      key = `u:${row.debtorUserId}`
+    } else if (row.debtorExternalId != null) {
+      key = `e:${row.debtorExternalId}`
+    } else {
+      key = `n:${name!.toLowerCase()}`
+    }
+    if (dedupeKeys.has(key)) {
+      return { ok: false, message: SPLIT_DUPLICATE_MESSAGE }
+    }
+    dedupeKeys.add(key)
+    if (isPayer) payerCount += 1
+
+    prepared.push({
+      key,
+      isPayer,
+      debtorUserId: isPayer ? null : row.debtorUserId ?? null,
+      debtorExternalId: row.debtorExternalId ?? null,
+      newExternalName: name,
+      ratio: row.ratio,
+      amountDue: row.amountDue,
+    })
+  }
+
+  if (payerCount !== 1) {
+    return { ok: false, message: SPLIT_PAYER_REQUIRED_MESSAGE }
+  }
+
+  // 世帯メンバーであることの確認(支払者以外の debtorUserId)。
+  const memberIds = prepared.filter((row) => !row.isPayer && row.debtorUserId != null).map((row) => row.debtorUserId!)
+  for (const memberId of memberIds) {
+    const membership = await db
+      .select({ userId: householdMembers.userId })
+      .from(householdMembers)
+      .where(and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, memberId)))
+      .get()
+    if (!membership) {
+      return { ok: false, message: INVALID_SPLIT_TARGET_MESSAGE }
+    }
+  }
+
+  // 世帯外の相手(既存)が自世帯のものであることの確認。
+  const externalIds = prepared.filter((row) => row.debtorExternalId != null).map((row) => row.debtorExternalId!)
+  for (const externalId of externalIds) {
+    const person = await db
+      .select({ id: externalPersons.id })
+      .from(externalPersons)
+      .where(and(eq(externalPersons.id, externalId), eq(externalPersons.householdId, householdId)))
+      .get()
+    if (!person) {
+      return { ok: false, message: INVALID_SPLIT_TARGET_MESSAGE }
+    }
+  }
+
+  const calcRows: SplitInputRow[] = prepared.map((row) => ({
+    key: row.key,
+    isPayer: row.isPayer,
+    ratio: row.ratio,
+    amountDue: row.amountDue,
+  }))
+  const result = resolveSplits(amount, splitInputType, calcRows)
+  if (!result.ok) {
+    return { ok: false, message: result.error }
+  }
+
+  const resolvedByKey = new Map(result.rows.map((row) => [row.key, row]))
+  const rows: PreparedSplit[] = prepared
+    .filter((row) => !row.isPayer)
+    .map((row) => {
+      const resolved = resolvedByKey.get(row.key)!
+      return {
+        debtorUserId: row.debtorUserId,
+        debtorExternalId: row.debtorExternalId,
+        newExternalName: row.newExternalName,
+        splitInputType,
+        splitRatio: resolved.ratio,
+        amountDue: resolved.amountDue,
+      }
+    })
+  return { ok: true, rows }
 }
 
 export const expensesRoute = new Hono<AppEnv>()
@@ -90,7 +238,8 @@ expensesRoute.post('/', async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
-  const { expenseDate, amount, purpose, categoryId, memo, includeInHouseholdTotal, accountId, cardId, eventId } = parsed.data
+  const { expenseDate, amount, purpose, categoryId, memo, includeInHouseholdTotal, accountId, cardId, eventId, splitInputType, splits } =
+    parsed.data
 
   if (accountId != null && cardId != null) {
     return c.json(errorResponse('VALIDATION_ERROR', ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE), 400)
@@ -133,6 +282,12 @@ expensesRoute.post('/', async (c) => {
     }
   }
 
+  // 割り勘内訳(F-04)。指定があれば検証・計算し、支出INSERT後にまとめてINSERTする。
+  const preparedSplits = await prepareSplits(db, householdId, userId, amount, splitInputType ?? 'ratio', splits ?? [])
+  if (!preparedSplits.ok) {
+    return c.json(errorResponse('VALIDATION_ERROR', preparedSplits.message), 400)
+  }
+
   // 実際に支出行へ設定するaccount_id/card_id。creditカードが指定された場合は
   // (カード自体は残高を持たないため)親口座のIDをaccount_idに設定し、card_idはNULLのままにする
   // (既存Java実装のinsertExpenseForCardと同じ挙動)。
@@ -173,8 +328,31 @@ expensesRoute.post('/', async (c) => {
     balanceUpdateStatement = { table: 'accounts', id: accountId }
   }
 
-  // 「支出INSERT」+「(口座/カードが指定されていれば)残高の相対減算UPDATE」を1つのD1バッチ
-  // (トランザクション)にまとめる(既存Javaの行ロックに代わる方式)。
+  // 新規の世帯外の相手を先に作成しIDへ解決する。ここで失敗しても残るのは名前マスタの行のみで
+  // 参照整合性・残高・支出には一切影響しないため、支出本体のバッチとは分けてよい(P1対応)。
+  const externalIdByName = new Map<string, number>()
+  const newExternalNames = [...new Set(preparedSplits.rows.map((row) => row.newExternalName).filter((n): n is string => !!n))]
+  if (newExternalNames.length > 0) {
+    const created = await c.env.DB.batch(
+      newExternalNames.map((name) =>
+        c.env.DB.prepare('INSERT INTO external_persons (household_id, name) VALUES (?, ?) RETURNING id').bind(householdId, name),
+      ),
+    )
+    created.forEach((result, index) => {
+      const inserted = result.results[0] as { id: number }
+      externalIdByName.set(newExternalNames[index], inserted.id)
+    })
+  }
+
+  const resolvedSplitRows = preparedSplits.rows.map((row) => ({
+    ...row,
+    debtorExternalId: row.newExternalName ? externalIdByName.get(row.newExternalName)! : row.debtorExternalId,
+  }))
+
+  // 「支出INSERT」+「割り勘内訳INSERT」+「(口座/カード指定時)残高の相対減算UPDATE」を1つのD1バッチ
+  // (トランザクション)にまとめて原子的に確定する。バッチは順次実行され後続文は先行文の書き込みを
+  // 見られるため、内訳INSERTの expense_id は同一トランザクション内の (SELECT MAX(id) FROM expenses) で解決する
+  // (バッチはSQLiteトランザクションで隔離されるため、途中で他の支出INSERTが割り込むことはない)。
   const statements = [
     c.env.DB.prepare(
       `INSERT INTO expenses
@@ -195,6 +373,15 @@ expensesRoute.post('/', async (c) => {
       includeInHouseholdTotal ? 1 : 0,
     ),
   ]
+  for (const row of resolvedSplitRows) {
+    statements.push(
+      c.env.DB.prepare(
+        `INSERT INTO expense_splits
+           (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
+         VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, ?, 'unpaid')`,
+      ).bind(row.debtorUserId, row.debtorExternalId, row.splitInputType, row.splitRatio, row.amountDue),
+    )
+  }
   if (balanceUpdateStatement) {
     statements.push(
       c.env.DB
@@ -217,6 +404,15 @@ expensesRoute.post('/', async (c) => {
     event_id: number | null
   }
 
+  const insertedSplits = resolvedSplitRows.map((row) => ({
+    debtorUserId: row.debtorUserId,
+    debtorExternalId: row.debtorExternalId,
+    splitInputType: row.splitInputType,
+    splitRatio: row.splitRatio,
+    amountDue: row.amountDue,
+    status: 'unpaid' as const,
+  }))
+
   return c.json(
     {
       id: insertedRow.id,
@@ -229,6 +425,7 @@ expensesRoute.post('/', async (c) => {
       accountId: insertedRow.account_id,
       cardId: insertedRow.card_id,
       eventId: insertedRow.event_id,
+      splits: insertedSplits,
     },
     201,
   )
