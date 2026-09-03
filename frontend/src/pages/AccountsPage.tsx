@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, Card } from '../api/kakeiboTypes'
 import { Toast } from '../components/Toast'
 import { AccountModal } from '../components/kakeibo/AccountModal'
+import { AccountTransactionsModal } from '../components/kakeibo/AccountTransactionsModal'
 import { CardModal } from '../components/kakeibo/CardModal'
 import { ChargeModal } from '../components/kakeibo/ChargeModal'
 
@@ -13,6 +14,7 @@ export function AccountsPage() {
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [cardModalOpen, setCardModalOpen] = useState(false)
   const [chargeTargetCard, setChargeTargetCard] = useState<Card | null>(null)
+  const [historyAccount, setHistoryAccount] = useState<Account | null>(null)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -100,7 +102,10 @@ export function AccountsPage() {
           <ul>
             {accounts.map((account) => (
               <li key={account.id}>
-                {account.name}（{account.type === 'bank' ? '銀行' : '電子マネー'}） 残高: {account.balance}円
+                <button type="button" className="link-button" onClick={() => setHistoryAccount(account)}>
+                  {account.name}
+                </button>
+                （{account.type === 'bank' ? '銀行' : '電子マネー'}） 残高: {account.balance}円
                 {account.cards.length > 0 && (
                   <ul>
                     {account.cards.map((card) =>
@@ -138,6 +143,9 @@ export function AccountsPage() {
           onClose={() => setChargeTargetCard(null)}
           onSaved={handleChargeSaved}
         />
+      )}
+      {historyAccount && (
+        <AccountTransactionsModal account={historyAccount} onClose={() => setHistoryAccount(null)} />
       )}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>

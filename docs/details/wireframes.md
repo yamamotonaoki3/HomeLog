@@ -674,6 +674,7 @@ flowchart TD
 │ ▼ PayPay（e_money）　残高: 3,200円             │
 └──────────────────────────────────────────────┘
 （残高は本人のみ表示。支出登録で当該口座を選択すると自動的に減算される）
+（口座名をクリックすると、その口座の取引履歴モーダルを開く。日付・内容・種別・金額（±）・取引後残高を日付降順で表示。[F11_kakeibo_account](features/F11_kakeibo_account.md) 4章）
 ```
 
 ```mermaid
@@ -683,8 +684,9 @@ flowchart TD
         AddAccountBtn["「口座を登録」ボタン（口座名・種別・初期残高）"]
         AddCardBtn["「カードを登録」ボタン（紐づける口座・カード名）"]
         List["口座一覧（口座配下にカードをネスト表示。残高は本人のみ表示）"]
+        History["口座名クリック → 取引履歴モーダル"]
     end
-    AddAccountBtn --- AddCardBtn --- List
+    AddAccountBtn --- AddCardBtn --- List --- History
 ```
 
 ---

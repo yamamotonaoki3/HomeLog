@@ -5,13 +5,17 @@ import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { AccountsPage } from '../../pages/AccountsPage'
-import type { Account } from '../../api/kakeiboTypes'
+import type { Account, AccountTransactionsResponse } from '../../api/kakeiboTypes'
 
-function setupApi(initial: { accounts?: Account[] } = {}) {
+function setupApi(initial: { accounts?: Account[]; transactions?: Record<number, AccountTransactionsResponse> } = {}) {
   const state = { accounts: initial.accounts ?? [] }
   const calls: { method: string; url: string; body?: unknown }[] = []
 
   server.use(
+    http.get('/api/accounts/:id/transactions', ({ params }) => {
+      const tx = initial.transactions?.[Number(params.id)]
+      return HttpResponse.json(tx ?? { currentBalance: 0, transactions: [] })
+    }),
     http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
     http.post('/api/accounts', async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>
@@ -95,6 +99,55 @@ describe('AccountsPage', () => {
     await waitFor(() => expect(screen.getByText(/〇〇銀行/)).toBeInTheDocument())
     expect(screen.getByText(/残高: 10000円/)).toBeInTheDocument()
     expect(screen.getByText('〇〇カード')).toBeInTheDocument()
+  })
+
+  it('口座名をクリックすると取引履歴モーダルが日付・±金額・残高込みで表示される', async () => {
+    setupApi({
+      accounts: [{ id: 5, name: '〇〇銀行', type: 'bank', balance: 8000, cards: [] }],
+      transactions: {
+        5: {
+          currentBalance: 8000,
+          transactions: [
+            { id: 2, type: 'income', date: '2026-01-12', description: '割り勘精算', category: '割り勘精算', memo: null, direction: 'in', amount: 1000, balanceAfter: 8000 },
+            { id: 1, type: 'expense', date: '2026-01-10', description: '書籍', category: '趣味・娯楽', memo: null, direction: 'out', amount: 3000, balanceAfter: 7000 },
+          ],
+        },
+      },
+    })
+    const user = userEvent.setup()
+    renderAccountsPage()
+    await waitFor(() => expect(screen.getByText(/〇〇銀行/)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '〇〇銀行' }))
+
+    const modal = await screen.findByTestId('account-transactions-modal')
+    expect(within(modal).getByText(/残高: 8000円/)).toBeInTheDocument()
+    const incomeRow = within(modal).getByRole('row', { name: /割り勘精算/ })
+    expect(incomeRow).toHaveTextContent('収入')
+    expect(incomeRow).toHaveTextContent('+1000円')
+    expect(incomeRow).toHaveTextContent('8000円')
+    const expenseRow = within(modal).getByRole('row', { name: /書籍/ })
+    expect(expenseRow).toHaveTextContent('支出')
+    expect(expenseRow).toHaveTextContent('-3000円')
+    expect(expenseRow).toHaveTextContent('7000円')
+    // カテゴリー列は表示しない
+    expect(within(modal).queryByText('趣味・娯楽')).not.toBeInTheDocument()
+    expect(within(modal).queryByText('カテゴリー')).not.toBeInTheDocument()
+  })
+
+  it('取引がゼロの口座は「取引はありません」を表示する', async () => {
+    setupApi({
+      accounts: [{ id: 6, name: 'PayPay', type: 'e_money', balance: 500, cards: [] }],
+      transactions: { 6: { currentBalance: 500, transactions: [] } },
+    })
+    const user = userEvent.setup()
+    renderAccountsPage()
+    await waitFor(() => expect(screen.getByText(/PayPay/)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'PayPay' }))
+
+    const modal = await screen.findByTestId('account-transactions-modal')
+    expect(within(modal).getByText('取引はありません')).toBeInTheDocument()
   })
 
   it('口座を登録すると一覧に反映されモーダルが閉じる', async () => {
