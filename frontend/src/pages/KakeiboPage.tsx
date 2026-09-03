@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
+import { getCurrentUserId } from '../api/tokenStorage'
 import type { Event } from '../api/eventTypes'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, Expense, FixedCost, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
+import type { ExpenseSplit } from '../api/warikanTypes'
+import type { HouseholdMember } from '../components/kakeibo/SplitFields'
 import { Toast } from '../components/Toast'
 import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
 import { TransactionModal } from '../components/kakeibo/TransactionModal'
+
+interface HouseholdMe {
+  members: HouseholdMember[]
+}
 
 type TypeFilter = 'all' | 'expense' | 'income'
 
@@ -25,6 +33,13 @@ export function KakeiboPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [events, setEvents] = useState<Event[]>([])
+  const [members, setMembers] = useState<HouseholdMember[]>([])
+  const [splits, setSplits] = useState<ExpenseSplit[]>([])
+
+  const fetchSplits = useCallback(async () => {
+    const response = await apiClient.get<ExpenseSplit[]>('/expense-splits')
+    setSplits(response.data)
+  }, [])
 
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -174,6 +189,28 @@ export function KakeiboPage() {
         }
       })
 
+    apiClient
+      .get<HouseholdMe>('/households/me')
+      .then((response) => {
+        // 割り勘の相手候補は「自分以外」の世帯メンバー(自分を相手に指定するとAPIが400を返すため)。
+        const myId = getCurrentUserId()
+        if (!cancelled) setMembers(response.data.members.filter((member) => member.userId !== myId))
+      })
+      .catch(() => {
+        // 割り勘の相手候補が取れないだけなので、致命的ではない(トーストは出さない)。
+      })
+
+    apiClient
+      .get<ExpenseSplit[]>('/expense-splits')
+      .then((response) => {
+        if (!cancelled) setSplits(response.data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          showToast(getApiErrorMessage(err, '割り勘の取得に失敗しました。時間をおいて再度お試しください'))
+        }
+      })
+
     return () => {
       cancelled = true
     }
@@ -227,6 +264,8 @@ export function KakeiboPage() {
         showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
         throw err
       }
+      // 割り勘付きで登録された可能性があるためサマリーも更新する(失敗しても支出登録自体は成功扱い)。
+      fetchSplits().catch(() => undefined)
       setModalOpen(false)
       showToast('支出を登録しました')
       return
@@ -254,10 +293,24 @@ export function KakeiboPage() {
   const addDisabled = categories.length === 0 && incomeCategories.length === 0
   const fixedCostTotal = fixedCosts.reduce((sum, fixedCost) => sum + fixedCost.amount, 0)
 
+  const unsettledSplits = splits.filter((split) => split.status !== 'settled')
+  const owedByMe = unsettledSplits.filter((split) => split.role === 'debtor')
+  const owedToMe = unsettledSplits.filter((split) => split.role === 'payer')
+  const sumAmount = (list: ExpenseSplit[]) => list.reduce((sum, split) => sum + split.amountDue, 0)
+
   return (
     <div className="page">
       <div className="panel" data-testid="fixed-cost-summary">
         <p>今月の固定費予定額：{fixedCostTotal}円</p>
+      </div>
+      <div className="panel" data-testid="warikan-summary">
+        <p>
+          未精算：支払う {owedByMe.length}件 {sumAmount(owedByMe)}円 ／ 受け取る {owedToMe.length}件{' '}
+          {sumAmount(owedToMe)}円
+        </p>
+        <Link to="/warikan" className="btn btn-secondary btn-tiny">
+          精算一覧へ
+        </Link>
       </div>
       <TransactionListPanel
         expenses={expenses}
@@ -279,6 +332,7 @@ export function KakeiboPage() {
           incomeCategories={incomeCategories}
           accounts={accounts}
           events={events}
+          members={members}
           initialKind={initialKind}
           onClose={() => setModalOpen(false)}
           onSaved={handleSaved}

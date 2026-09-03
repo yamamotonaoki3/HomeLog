@@ -1,8 +1,9 @@
-import { Fragment, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Event } from '../../api/eventTypes'
 import type { Account, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
+import { SplitFields, type HouseholdMember, type SplitFieldsResult } from './SplitFields'
 
 type Kind = 'expense' | 'income'
 
@@ -12,6 +13,8 @@ interface Props {
   accounts: Account[]
   // イベント紐付けは支出のみが対象(F06ドキュメント「支出とイベントの紐付け」)。
   events: Event[]
+  // 割り勘の相手候補(自分以外の世帯メンバー)。
+  members: HouseholdMember[]
   initialKind: Kind
   onClose: () => void
   onSaved: (kind: Kind) => Promise<void>
@@ -34,6 +37,7 @@ export function TransactionModal({
   incomeCategories,
   accounts,
   events,
+  members,
   initialKind,
   onClose,
   onSaved,
@@ -41,6 +45,14 @@ export function TransactionModal({
   const [kind, setKind] = useState<Kind>(initialKind)
   const [date, setDate] = useState(today())
   const [amount, setAmount] = useState('')
+  const [splitResult, setSplitResult] = useState<SplitFieldsResult>({
+    enabled: false,
+    valid: true,
+    splitInputType: 'ratio',
+    splits: [],
+    errorMessage: '',
+  })
+  const handleSplitChange = useCallback((result: SplitFieldsResult) => setSplitResult(result), [])
   const [purpose, setPurpose] = useState('')
   const [content, setContent] = useState('')
   const [categoryId, setCategoryId] = useState<string>(
@@ -78,8 +90,9 @@ export function TransactionModal({
     e.preventDefault()
     const descriptionLabel = kind === 'expense' ? '使用用途' : '収入内容'
     const trimmedDescription = (kind === 'expense' ? purpose : content).trim()
-    if (trimmedDescription.length < 1 || trimmedDescription.length > 100) {
-      setError(`${descriptionLabel}は1〜100文字で入力してください`)
+    // 支出の使用用途は任意(空欄可・0〜100文字)。収入内容は必須(1〜100文字)。
+    if (kind === 'expense' ? trimmedDescription.length > 100 : trimmedDescription.length < 1 || trimmedDescription.length > 100) {
+      setError(kind === 'expense' ? `${descriptionLabel}は100文字以内で入力してください` : `${descriptionLabel}は1〜100文字で入力してください`)
       return
     }
     const amountValue = Number(amount)
@@ -90,6 +103,11 @@ export function TransactionModal({
     const trimmedMemo = memo.trim()
     if (trimmedMemo.length > 255) {
       setError('メモは255文字以内で入力してください')
+      return
+    }
+    // 割り勘の入力エラーは API 呼び出し前にブロックする。
+    if (kind === 'expense' && splitResult.enabled && !splitResult.valid) {
+      setError(splitResult.errorMessage || '割り勘の入力内容を確認してください')
       return
     }
     setError('')
@@ -107,6 +125,9 @@ export function TransactionModal({
           accountId: selectionType === 'account' ? Number(selectionId) : null,
           cardId: selectionType === 'card' ? Number(selectionId) : null,
           eventId: eventSelection === '' ? null : Number(eventSelection),
+          ...(splitResult.enabled && splitResult.splits.length > 0
+            ? { splitInputType: splitResult.splitInputType, splits: splitResult.splits }
+            : {}),
         })
       } else {
         await apiClient.post('/incomes', {
@@ -170,7 +191,7 @@ export function TransactionModal({
           />
           {kind === 'expense' ? (
             <>
-              <label htmlFor="tx-purpose">使用用途</label>
+              <label htmlFor="tx-purpose">使用用途（任意）</label>
               <input
                 id="tx-purpose"
                 type="text"
@@ -237,6 +258,7 @@ export function TransactionModal({
                   </option>
                 ))}
               </select>
+              <SplitFields amount={Number(amount) || 0} members={members} onChange={handleSplitChange} />
             </>
           )}
           <label htmlFor="tx-memo">メモ</label>
