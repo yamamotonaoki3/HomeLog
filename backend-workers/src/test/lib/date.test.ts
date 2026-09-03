@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { isValidCalendarDate } from '../../lib/date'
+import { formatJstToday, isValidCalendarDate } from '../../lib/date'
+
+describe('formatJstToday', () => {
+  it('YYYY-MM-DD形式の実在する日付を返す', () => {
+    const value = formatJstToday()
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(isValidCalendarDate(value)).toBe(true)
+  })
+})
 
 describe('isValidCalendarDate', () => {
   it('実在する日付はtrue', () => {

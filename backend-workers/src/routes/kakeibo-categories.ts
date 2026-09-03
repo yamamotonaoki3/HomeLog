@@ -13,7 +13,7 @@ const IN_USE_MESSAGE = '使用中のカテゴリーは削除できません'
 const DEFAULT_IMMUTABLE_MESSAGE = 'デフォルトカテゴリーは編集・削除できません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
-const DEFAULT_CATEGORY_NAMES = ['食費', '日用品', '交際費', '光熱費', '住居費', '通信費', '医療費', '趣味・娯楽', '固定費', 'その他']
+const DEFAULT_CATEGORY_NAMES = ['食費', '日用品', '交際費', '光熱費', '住居費', '通信費', '医療費', '趣味・娯楽', '固定費', '割り勘精算', 'その他']
 
 const categoryNameSchema = z.object({
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: 'カテゴリー名を入力してください' }),

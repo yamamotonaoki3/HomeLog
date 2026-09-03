@@ -8,6 +8,11 @@ export function getJstToday(): Date {
   return new Date(nowUtc.getTime() + 9 * 60 * 60 * 1000)
 }
 
+/** JST基準の「今日」を "YYYY-MM-DD" 形式で返す(割り勘精算の家計簿記録の日付等に使う)。 */
+export function formatJstToday(): string {
+  return getJstToday().toISOString().slice(0, 10)
+}
+
 /** JST基準の日付から、当月の開始日("YYYY-MM-01")と翌月の開始日("YYYY-MM-01")を算出する。 */
 export function currentMonthRange(jstToday: Date): { monthStart: string; nextMonthStart: string } {
   const year = jstToday.getUTCFullYear()
