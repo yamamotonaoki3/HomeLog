@@ -5,11 +5,14 @@ import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_splits'),
+    env.DB.prepare('DELETE FROM incomes'),
     env.DB.prepare('DELETE FROM expenses'),
     env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM card_charges'),
     env.DB.prepare('DELETE FROM cards'),
     env.DB.prepare('DELETE FROM accounts'),
+    env.DB.prepare('DELETE FROM income_categories'),
     env.DB.prepare('DELETE FROM kakeibo_categories'),
     env.DB.prepare('DELETE FROM household_members'),
     env.DB.prepare('DELETE FROM households'),
@@ -315,5 +318,145 @@ describe('カード管理', () => {
     const res = await app.request(`/api/cards/${card.id}`, { method: 'DELETE', headers }, env)
 
     expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /api/accounts/:id/transactions', () => {
+  async function firstCategoryId(headers: Record<string, string>, kind: 'kakeibo' | 'income'): Promise<number> {
+    const res = await app.request(kind === 'kakeibo' ? '/api/kakeibo-categories' : '/api/income-categories', { headers }, env)
+    const [category] = await res.json<{ id: number }[]>()
+    return category.id
+  }
+
+  // 明示的な business date / created_at を持つ支出・収入を直接挿入し、口座残高も同期させる。
+  async function seedExpense(accountId: number, categoryId: number, amount: number, date: string, createdAt: string, purpose = '買い物') {
+    const hh = await env.DB.prepare('SELECT household_id, owner_user_id FROM accounts WHERE id = ?').bind(accountId).first<{ household_id: number; owner_user_id: number }>()
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO expenses (household_id, payer_user_id, category_id, account_id, amount, purpose, expense_date, include_in_household_total, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      ).bind(hh!.household_id, hh!.owner_user_id, categoryId, accountId, amount, purpose, date, createdAt),
+      env.DB.prepare('UPDATE accounts SET balance = balance - ? WHERE id = ?').bind(amount, accountId),
+    ])
+  }
+  async function seedIncome(accountId: number, categoryId: number, amount: number, date: string, createdAt: string) {
+    const hh = await env.DB.prepare('SELECT household_id, owner_user_id FROM accounts WHERE id = ?').bind(accountId).first<{ household_id: number; owner_user_id: number }>()
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO incomes (household_id, earner_user_id, category_id, account_id, amount, content, income_date, created_at)
+         VALUES (?, ?, ?, ?, ?, '割り勘精算', ?, ?)`,
+      ).bind(hh!.household_id, hh!.owner_user_id, categoryId, accountId, amount, date, createdAt),
+      env.DB.prepare('UPDATE accounts SET balance = balance + ? WHERE id = ?').bind(amount, accountId),
+    ])
+  }
+
+  it('支出・収入を日付降順で返し、取引後残高を変動順に再構成する', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const kCat = await firstCategoryId(headers, 'kakeibo')
+    const iCat = await firstCategoryId(headers, 'income')
+
+    await seedExpense(account.id, kCat, 3000, '2026-01-10', '2026-01-10 10:00:00') // 10000 -> 7000
+    await seedIncome(account.id, iCat, 1000, '2026-01-12', '2026-01-12 10:00:00') // 7000 -> 8000
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      currentBalance: number
+      transactions: { type: string; direction: string; amount: number; balanceAfter: number }[]
+    }>()
+
+    expect(body.currentBalance).toBe(8000)
+    expect(body.transactions).toHaveLength(2)
+    expect(body.transactions[0]).toMatchObject({ type: 'income', direction: 'in', amount: 1000, balanceAfter: 8000 })
+    expect(body.transactions[1]).toMatchObject({ type: 'expense', direction: 'out', amount: 3000, balanceAfter: 7000 })
+  })
+
+  it('遡って登録された取引でも、取引後残高は変動順(created_at順)で正しく計算される', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const kCat = await firstCategoryId(headers, 'kakeibo')
+    const iCat = await firstCategoryId(headers, 'income')
+
+    // 先に収入(業務日付は後の 1/12)、後から支出を 1/10 に遡って登録。
+    await seedIncome(account.id, iCat, 1000, '2026-01-12', '2026-01-05 10:00:00') // 10000 -> 11000
+    await seedExpense(account.id, kCat, 3000, '2026-01-10', '2026-01-06 10:00:00') // 11000 -> 8000
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      currentBalance: number
+      transactions: { type: string; date: string; balanceAfter: number }[]
+    }>()
+
+    expect(body.currentBalance).toBe(8000)
+    // 表示は業務日付の降順: 1/12 の収入 → 1/10 の支出
+    expect(body.transactions[0]).toMatchObject({ type: 'income', date: '2026-01-12', balanceAfter: 11000 })
+    expect(body.transactions[1]).toMatchObject({ type: 'expense', date: '2026-01-10', balanceAfter: 8000 })
+  })
+
+  it('チャージ元になった口座はチャージが out として履歴に出る', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'Suica', cardType: 'charge' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    await app.request(
+      `/api/cards/${card.id}/charges`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ fromAccountId: account.id, amount: 2000 }) },
+      env,
+    )
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      transactions: { type: string; direction: string; amount: number; description: string; balanceAfter: number }[]
+    }>()
+    expect(body.transactions).toHaveLength(1)
+    expect(body.transactions[0]).toMatchObject({ type: 'charge', direction: 'out', amount: 2000, balanceAfter: 8000 })
+    expect(body.transactions[0].description).toContain('Suica')
+  })
+
+  it('取引ゼロの口座は空配列を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 5000)
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      currentBalance: number
+      transactions: unknown[]
+    }>()
+    expect(body.currentBalance).toBe(5000)
+    expect(body.transactions).toEqual([])
+  })
+
+  it('他人の口座の取引履歴は404', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const other = await createUserWithHousehold('hanako@example.com')
+    const account = await createAccount(headers)
+    const res = await app.request(`/api/accounts/${account.id}/transactions`, { headers: other.headers }, env)
+    expect(res.status).toBe(404)
+  })
+
+  it('creditカード経由の支出(expenses.account_idに親口座)も履歴に出る', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'クレカ' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    const categoryId = await firstCategoryId(headers, 'kakeibo')
+    await app.request(
+      '/api/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ expenseDate: '2026-02-01', amount: 1500, purpose: '外食', categoryId, cardId: card.id }),
+      },
+      env,
+    )
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      transactions: { type: string; direction: string; amount: number; description: string }[]
+    }>()
+    expect(body.transactions).toHaveLength(1)
+    expect(body.transactions[0]).toMatchObject({ type: 'expense', direction: 'out', amount: 1500, description: '外食' })
   })
 })

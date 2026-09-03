@@ -13,6 +13,19 @@ export function formatJstToday(): string {
   return getJstToday().toISOString().slice(0, 10)
 }
 
+/**
+ * SQLiteの current_timestamp("YYYY-MM-DD HH:MM:SS"、UTC)を JST基準の日付("YYYY-MM-DD")に変換する。
+ * 明示的な日付列を持たない card_charges 等の created_at から「取引日」を求めるのに使う。
+ * パースできない場合は先頭10文字をそのまま返す(フォールバック)。
+ */
+export function utcTimestampToJstDate(utcTimestamp: string): string {
+  const parsed = new Date(`${utcTimestamp.replace(' ', 'T')}Z`)
+  if (Number.isNaN(parsed.getTime())) {
+    return utcTimestamp.slice(0, 10)
+  }
+  return new Date(parsed.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 /** JST基準の日付から、当月の開始日("YYYY-MM-01")と翌月の開始日("YYYY-MM-01")を算出する。 */
 export function currentMonthRange(jstToday: Date): { monthStart: string; nextMonthStart: string } {
   const year = jstToday.getUTCFullYear()

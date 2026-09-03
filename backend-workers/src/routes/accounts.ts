@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { accounts, cardCharges, cards, expenses, fixedCosts } from '../db/schema'
+import { utcTimestampToJstDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -72,6 +73,143 @@ accountsRoute.get('/', async (c) => {
   }
 
   return c.json(result)
+})
+
+// 口座の取引履歴(S-15、F11_kakeibo_account.md §4)。
+// accounts.balance を増減させるのは「支出(expenses.account_id)」「収入(incomes.account_id)」
+// 「チャージ元(card_charges.from_account_id)」の3種のみ。いずれも削除エンドポイントが無く、
+// PATCH /accounts/:id も残高を触らないため、現在残高から符号付き差分を遡って各行の取引後残高を
+// 正確に再構成できる。
+interface TransactionRow {
+  id: number
+  type: 'expense' | 'income' | 'charge'
+  date: string
+  description: string
+  category: string | null
+  memo: string | null
+  direction: 'in' | 'out'
+  amount: number
+  balanceAfter: number
+}
+
+accountsRoute.get('/:id/transactions', async (c) => {
+  const accountId = Number(c.req.param('id'))
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const account = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .get()
+  if (!account) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
+
+  const [expenseRows, incomeRows, chargeRows] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT e.id, e.expense_date AS date, e.amount, e.purpose, e.memo, e.created_at, k.name AS category
+         FROM expenses e JOIN kakeibo_categories k ON k.id = e.category_id
+        WHERE e.account_id = ?`,
+    ).bind(accountId),
+    c.env.DB.prepare(
+      `SELECT i.id, i.income_date AS date, i.amount, i.content, i.memo, i.created_at, ic.name AS category
+         FROM incomes i JOIN income_categories ic ON ic.id = i.category_id
+        WHERE i.account_id = ?`,
+    ).bind(accountId),
+    c.env.DB.prepare(
+      `SELECT ch.id, ch.amount, ch.created_at, cd.name AS card_name
+         FROM card_charges ch JOIN cards cd ON cd.id = ch.card_id
+        WHERE ch.from_account_id = ?`,
+    ).bind(accountId),
+  ])
+
+  type Raw = { row: Omit<TransactionRow, 'balanceAfter'>; sortKey: string }
+  const merged: Raw[] = []
+  for (const r of expenseRows.results as { id: number; date: string; amount: number; purpose: string; memo: string | null; created_at: string; category: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'expense',
+        date: r.date,
+        description: r.purpose.trim() !== '' ? r.purpose : r.category,
+        category: r.category,
+        memo: r.memo,
+        direction: 'out',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? r.date,
+    })
+  }
+  for (const r of incomeRows.results as { id: number; date: string; amount: number; content: string; memo: string | null; created_at: string; category: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'income',
+        date: r.date,
+        description: r.content,
+        category: r.category,
+        memo: r.memo,
+        direction: 'in',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? r.date,
+    })
+  }
+  for (const r of chargeRows.results as { id: number; amount: number; created_at: string; card_name: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'charge',
+        // card_charges は明示的な日付列を持たない。created_at(UTC)をJST日付へ変換して「取引日」とする。
+        date: r.created_at ? utcTimestampToJstDate(r.created_at) : '',
+        description: `「${r.card_name}」へチャージ`,
+        category: null,
+        memo: null,
+        direction: 'out',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? '',
+    })
+  }
+
+  // 同一秒・異ソースの取引は created_at(秒精度)だけでは順序が決まらないため、種別・id で
+  // 決定的に補完する(同一ソース内の id は登録順そのもの)。
+  // 【既知の限界・受容済み(2026-09-03 ユーザー確認)】同一口座で同じ1秒に「支出と収入」のような
+  // 異なる種別の取引が複数発生した場合、そのクラスタ内の中間の balanceAfter は実際の変動順と
+  // 食い違うことがある。現在残高、およびクラスタの前後の残高は常に正確。ミリ秒精度の timestamp
+  // 導入(3テーブルの migration + 全INSERT修正)はこの機能の規模に見合わないため見送る。
+  const typeOrder: Record<TransactionRow['type'], number> = { charge: 0, expense: 1, income: 2 }
+  const compareMutationDesc = (a: Raw, b: Raw): number => {
+    if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1
+    if (a.row.type !== b.row.type) return typeOrder[a.row.type] - typeOrder[b.row.type]
+    return b.row.id - a.row.id
+  }
+
+  // (1) 取引後残高は「口座残高が実際に変動した順(= created_at 順)」で再構成する。
+  // 業務日付(expense_date 等)は遡って登録できるため、表示順とは別に計算する必要がある。
+  let running = account.balance
+  const balanceByKey = new Map<string, number>()
+  for (const item of [...merged].sort(compareMutationDesc)) {
+    balanceByKey.set(`${item.row.type}:${item.row.id}`, running)
+    running -= item.row.direction === 'in' ? item.row.amount : -item.row.amount
+  }
+
+  // (2) 表示は業務日付の降順(同日は created_at 降順 → 種別 → id)。各行の残高は (1) で確定済みのものを使う。
+  merged.sort((a, b) => {
+    if (a.row.date !== b.row.date) return a.row.date < b.row.date ? 1 : -1
+    return compareMutationDesc(a, b)
+  })
+  const transactions: TransactionRow[] = merged.map(({ row }) => ({
+    ...row,
+    balanceAfter: balanceByKey.get(`${row.type}:${row.id}`) ?? account.balance,
+  }))
+
+  return c.json({ currentBalance: account.balance, transactions })
 })
 
 accountsRoute.post('/', async (c) => {
