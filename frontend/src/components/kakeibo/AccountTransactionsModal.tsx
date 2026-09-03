@@ -57,9 +57,8 @@ export function AccountTransactionsModal({ account, onClose }: Props) {
             <thead>
               <tr>
                 <th>日付</th>
-                <th>種別</th>
                 <th>内容</th>
-                <th>カテゴリー</th>
+                <th>種別</th>
                 <th>金額</th>
                 <th>残高</th>
               </tr>
@@ -68,9 +67,8 @@ export function AccountTransactionsModal({ account, onClose }: Props) {
               {data.transactions.map((tx) => (
                 <tr key={`${tx.type}-${tx.id}`}>
                   <td>{tx.date}</td>
-                  <td>{TYPE_LABEL[tx.type]}</td>
                   <td>{tx.description}</td>
-                  <td>{tx.category ?? ''}</td>
+                  <td>{TYPE_LABEL[tx.type]}</td>
                   <td>
                     {tx.direction === 'out' ? '-' : '+'}
                     {tx.amount}円

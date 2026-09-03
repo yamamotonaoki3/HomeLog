@@ -123,11 +123,16 @@ describe('AccountsPage', () => {
     const modal = await screen.findByTestId('account-transactions-modal')
     expect(within(modal).getByText(/残高: 8000円/)).toBeInTheDocument()
     const incomeRow = within(modal).getByRole('row', { name: /割り勘精算/ })
+    expect(incomeRow).toHaveTextContent('収入')
     expect(incomeRow).toHaveTextContent('+1000円')
     expect(incomeRow).toHaveTextContent('8000円')
     const expenseRow = within(modal).getByRole('row', { name: /書籍/ })
+    expect(expenseRow).toHaveTextContent('支出')
     expect(expenseRow).toHaveTextContent('-3000円')
     expect(expenseRow).toHaveTextContent('7000円')
+    // カテゴリー列は表示しない
+    expect(within(modal).queryByText('趣味・娯楽')).not.toBeInTheDocument()
+    expect(within(modal).queryByText('カテゴリー')).not.toBeInTheDocument()
   })
 
   it('取引がゼロの口座は「取引はありません」を表示する', async () => {
