@@ -177,8 +177,12 @@ accountsRoute.get('/:id/transactions', async (c) => {
     })
   }
 
-  // 同一秒・異ソースの取引(例: 固定費の一括計上)は created_at だけでは順序が決まらないため、
-  // 種別・id で決定的に補完する(同一ソース内の id は登録順そのもの)。
+  // 同一秒・異ソースの取引は created_at(秒精度)だけでは順序が決まらないため、種別・id で
+  // 決定的に補完する(同一ソース内の id は登録順そのもの)。
+  // 【既知の限界・受容済み(2026-09-03 ユーザー確認)】同一口座で同じ1秒に「支出と収入」のような
+  // 異なる種別の取引が複数発生した場合、そのクラスタ内の中間の balanceAfter は実際の変動順と
+  // 食い違うことがある。現在残高、およびクラスタの前後の残高は常に正確。ミリ秒精度の timestamp
+  // 導入(3テーブルの migration + 全INSERT修正)はこの機能の規模に見合わないため見送る。
   const typeOrder: Record<TransactionRow['type'], number> = { charge: 0, expense: 1, income: 2 }
   const compareMutationDesc = (a: Raw, b: Raw): number => {
     if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1
