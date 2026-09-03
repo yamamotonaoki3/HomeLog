@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { formatJstToday, isValidCalendarDate } from '../../lib/date'
+import { formatJstToday, isValidCalendarDate, utcTimestampToJstDate } from '../../lib/date'
 
 describe('formatJstToday', () => {
   it('YYYY-MM-DD形式の実在する日付を返す', () => {
     const value = formatJstToday()
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(isValidCalendarDate(value)).toBe(true)
+  })
+})
+
+describe('utcTimestampToJstDate', () => {
+  it('UTC深夜はJSTでは翌日になる', () => {
+    expect(utcTimestampToJstDate('2026-01-09 20:00:00')).toBe('2026-01-10')
+  })
+
+  it('UTC昼はJSTでも同日', () => {
+    expect(utcTimestampToJstDate('2026-01-10 03:00:00')).toBe('2026-01-10')
+  })
+
+  it('パースできない値は先頭10文字を返す', () => {
+    expect(utcTimestampToJstDate('not-a-timestamp')).toBe('not-a-time')
   })
 })
 

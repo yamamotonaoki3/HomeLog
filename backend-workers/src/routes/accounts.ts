@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { accounts, cardCharges, cards, expenses, fixedCosts } from '../db/schema'
+import { utcTimestampToJstDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -164,7 +165,8 @@ accountsRoute.get('/:id/transactions', async (c) => {
       row: {
         id: r.id,
         type: 'charge',
-        date: (r.created_at ?? '').slice(0, 10),
+        // card_charges は明示的な日付列を持たない。created_at(UTC)をJST日付へ変換して「取引日」とする。
+        date: r.created_at ? utcTimestampToJstDate(r.created_at) : '',
         description: `「${r.card_name}」へチャージ`,
         category: null,
         memo: null,
