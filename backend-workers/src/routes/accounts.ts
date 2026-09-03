@@ -74,6 +74,125 @@ accountsRoute.get('/', async (c) => {
   return c.json(result)
 })
 
+// 口座の取引履歴(S-15、F11_kakeibo_account.md §4)。
+// accounts.balance を増減させるのは「支出(expenses.account_id)」「収入(incomes.account_id)」
+// 「チャージ元(card_charges.from_account_id)」の3種のみ。いずれも削除エンドポイントが無く、
+// PATCH /accounts/:id も残高を触らないため、現在残高から符号付き差分を遡って各行の取引後残高を
+// 正確に再構成できる。
+interface TransactionRow {
+  id: number
+  type: 'expense' | 'income' | 'charge'
+  date: string
+  description: string
+  category: string | null
+  memo: string | null
+  direction: 'in' | 'out'
+  amount: number
+  balanceAfter: number
+}
+
+accountsRoute.get('/:id/transactions', async (c) => {
+  const accountId = Number(c.req.param('id'))
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const account = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .get()
+  if (!account) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
+
+  const [expenseRows, incomeRows, chargeRows] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT e.id, e.expense_date AS date, e.amount, e.purpose, e.memo, e.created_at, k.name AS category
+         FROM expenses e JOIN kakeibo_categories k ON k.id = e.category_id
+        WHERE e.account_id = ?`,
+    ).bind(accountId),
+    c.env.DB.prepare(
+      `SELECT i.id, i.income_date AS date, i.amount, i.content, i.memo, i.created_at, ic.name AS category
+         FROM incomes i JOIN income_categories ic ON ic.id = i.category_id
+        WHERE i.account_id = ?`,
+    ).bind(accountId),
+    c.env.DB.prepare(
+      `SELECT ch.id, ch.amount, ch.created_at, cd.name AS card_name
+         FROM card_charges ch JOIN cards cd ON cd.id = ch.card_id
+        WHERE ch.from_account_id = ?`,
+    ).bind(accountId),
+  ])
+
+  type Raw = { row: Omit<TransactionRow, 'balanceAfter'>; sortKey: string }
+  const merged: Raw[] = []
+  for (const r of expenseRows.results as { id: number; date: string; amount: number; purpose: string; memo: string | null; created_at: string; category: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'expense',
+        date: r.date,
+        description: r.purpose.trim() !== '' ? r.purpose : r.category,
+        category: r.category,
+        memo: r.memo,
+        direction: 'out',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? r.date,
+    })
+  }
+  for (const r of incomeRows.results as { id: number; date: string; amount: number; content: string; memo: string | null; created_at: string; category: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'income',
+        date: r.date,
+        description: r.content,
+        category: r.category,
+        memo: r.memo,
+        direction: 'in',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? r.date,
+    })
+  }
+  for (const r of chargeRows.results as { id: number; amount: number; created_at: string; card_name: string }[]) {
+    merged.push({
+      row: {
+        id: r.id,
+        type: 'charge',
+        date: (r.created_at ?? '').slice(0, 10),
+        description: `「${r.card_name}」へチャージ`,
+        category: null,
+        memo: null,
+        direction: 'out',
+        amount: r.amount,
+      },
+      sortKey: r.created_at ?? '',
+    })
+  }
+
+  // 日付降順 → created_at降順 → (同一ソース内)id降順。
+  merged.sort((a, b) => {
+    if (a.row.date !== b.row.date) return a.row.date < b.row.date ? 1 : -1
+    if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1
+    return b.row.id - a.row.id
+  })
+
+  // 新しい取引から順に「取引後残高」を割り当て、1つ前の取引の分だけ遡る。
+  let running = account.balance
+  const transactions: TransactionRow[] = merged.map(({ row }) => {
+    const withBalance: TransactionRow = { ...row, balanceAfter: running }
+    running -= row.direction === 'in' ? row.amount : -row.amount
+    return withBalance
+  })
+
+  return c.json({ currentBalance: account.balance, transactions })
+})
+
 accountsRoute.post('/', async (c) => {
   const parsed = createAccountSchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {

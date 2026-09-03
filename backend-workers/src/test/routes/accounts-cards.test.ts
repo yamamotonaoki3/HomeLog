@@ -5,11 +5,14 @@ import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_splits'),
+    env.DB.prepare('DELETE FROM incomes'),
     env.DB.prepare('DELETE FROM expenses'),
     env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM card_charges'),
     env.DB.prepare('DELETE FROM cards'),
     env.DB.prepare('DELETE FROM accounts'),
+    env.DB.prepare('DELETE FROM income_categories'),
     env.DB.prepare('DELETE FROM kakeibo_categories'),
     env.DB.prepare('DELETE FROM household_members'),
     env.DB.prepare('DELETE FROM households'),
@@ -315,5 +318,124 @@ describe('カード管理', () => {
     const res = await app.request(`/api/cards/${card.id}`, { method: 'DELETE', headers }, env)
 
     expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /api/accounts/:id/transactions', () => {
+  async function firstCategoryId(headers: Record<string, string>, kind: 'kakeibo' | 'income'): Promise<number> {
+    const res = await app.request(kind === 'kakeibo' ? '/api/kakeibo-categories' : '/api/income-categories', { headers }, env)
+    const [category] = await res.json<{ id: number }[]>()
+    return category.id
+  }
+
+  async function addExpense(headers: Record<string, string>, accountId: number, amount: number, purpose = '買い物') {
+    const categoryId = await firstCategoryId(headers, 'kakeibo')
+    await app.request(
+      '/api/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ expenseDate: '2026-01-10', amount, purpose, categoryId, accountId }),
+      },
+      env,
+    )
+  }
+
+  it('支出・収入を日付降順で返し、取引後残高を現在残高から逆算する', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    await addExpense(headers, account.id, 3000) // 10000 -> 7000
+
+    // 割り勘精算経由の収入の代わりに、account_id 付き収入を直接挿入し残高も同期させる。
+    const incomeCategoryId = await firstCategoryId(headers, 'income')
+    const householdRow = await env.DB.prepare('SELECT household_id FROM accounts WHERE id = ?').bind(account.id).first<{ household_id: number }>()
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO incomes (household_id, earner_user_id, category_id, account_id, amount, content, income_date, created_at)
+         VALUES (?, (SELECT owner_user_id FROM accounts WHERE id = ?), ?, ?, 1000, '割り勘精算', '2026-01-12', '2026-01-12 00:00:00')`,
+      ).bind(householdRow!.household_id, account.id, incomeCategoryId, account.id),
+      env.DB.prepare('UPDATE accounts SET balance = balance + 1000 WHERE id = ?').bind(account.id), // 7000 -> 8000
+    ])
+
+    const res = await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)
+    expect(res.status).toBe(200)
+    const body = await res.json<{
+      currentBalance: number
+      transactions: { type: string; direction: string; amount: number; balanceAfter: number; description: string }[]
+    }>()
+
+    expect(body.currentBalance).toBe(8000)
+    expect(body.transactions).toHaveLength(2)
+    expect(body.transactions[0]).toMatchObject({ type: 'income', direction: 'in', amount: 1000, balanceAfter: 8000 })
+    expect(body.transactions[1]).toMatchObject({ type: 'expense', direction: 'out', amount: 3000, balanceAfter: 7000 })
+  })
+
+  it('チャージ元になった口座はチャージが out として履歴に出る', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'Suica', cardType: 'charge' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    await app.request(
+      `/api/cards/${card.id}/charges`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ fromAccountId: account.id, amount: 2000 }) },
+      env,
+    )
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      transactions: { type: string; direction: string; amount: number; description: string; balanceAfter: number }[]
+    }>()
+    expect(body.transactions).toHaveLength(1)
+    expect(body.transactions[0]).toMatchObject({ type: 'charge', direction: 'out', amount: 2000, balanceAfter: 8000 })
+    expect(body.transactions[0].description).toContain('Suica')
+  })
+
+  it('取引ゼロの口座は空配列を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 5000)
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      currentBalance: number
+      transactions: unknown[]
+    }>()
+    expect(body.currentBalance).toBe(5000)
+    expect(body.transactions).toEqual([])
+  })
+
+  it('他人の口座の取引履歴は404', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const other = await createUserWithHousehold('hanako@example.com')
+    const account = await createAccount(headers)
+    const res = await app.request(`/api/accounts/${account.id}/transactions`, { headers: other.headers }, env)
+    expect(res.status).toBe(404)
+  })
+
+  it('creditカード経由の支出(expenses.account_idに親口座)も履歴に出る', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const cardRes = await app.request(
+      '/api/cards',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ accountId: account.id, name: 'クレカ' }) },
+      env,
+    )
+    const card = await cardRes.json<{ id: number }>()
+    const categoryId = await firstCategoryId(headers, 'kakeibo')
+    await app.request(
+      '/api/expenses',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ expenseDate: '2026-02-01', amount: 1500, purpose: '外食', categoryId, cardId: card.id }),
+      },
+      env,
+    )
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      transactions: { type: string; direction: string; amount: number; description: string }[]
+    }>()
+    expect(body.transactions).toHaveLength(1)
+    expect(body.transactions[0]).toMatchObject({ type: 'expense', direction: 'out', amount: 1500, description: '外食' })
   })
 })
