@@ -177,26 +177,33 @@ accountsRoute.get('/:id/transactions', async (c) => {
     })
   }
 
-  // 日付降順 → created_at降順 → 種別の固定順 → (同一ソース内)id降順。
-  // created_at はSQLiteの current_timestamp が秒精度のため、同一口座で同じ秒に登録された
-  // 異なるソースの取引(例: 固定費の一括計上)は厳密な時系列順に並ばないことがある。その場合は
-  // 種別・id で決定的に(常に同じ順で)並べる。同一ソース内の id 降順は正しく新しい順になる。
+  // 同一秒・異ソースの取引(例: 固定費の一括計上)は created_at だけでは順序が決まらないため、
+  // 種別・id で決定的に補完する(同一ソース内の id は登録順そのもの)。
   const typeOrder: Record<TransactionRow['type'], number> = { charge: 0, expense: 1, income: 2 }
-  merged.sort((a, b) => {
-    if (a.row.date !== b.row.date) return a.row.date < b.row.date ? 1 : -1
+  const compareMutationDesc = (a: Raw, b: Raw): number => {
     if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1
     if (a.row.type !== b.row.type) return typeOrder[a.row.type] - typeOrder[b.row.type]
     return b.row.id - a.row.id
-  })
+  }
 
-  // 新しい取引から順に「取引後残高」を割り当て、1つ前の取引の分だけ遡る。
-  // 取引後残高の合計は常に現在残高に閉じる(同一秒内の中間残高だけが上記の理由で厳密でない場合がある)。
+  // (1) 取引後残高は「口座残高が実際に変動した順(= created_at 順)」で再構成する。
+  // 業務日付(expense_date 等)は遡って登録できるため、表示順とは別に計算する必要がある。
   let running = account.balance
-  const transactions: TransactionRow[] = merged.map(({ row }) => {
-    const withBalance: TransactionRow = { ...row, balanceAfter: running }
-    running -= row.direction === 'in' ? row.amount : -row.amount
-    return withBalance
+  const balanceByKey = new Map<string, number>()
+  for (const item of [...merged].sort(compareMutationDesc)) {
+    balanceByKey.set(`${item.row.type}:${item.row.id}`, running)
+    running -= item.row.direction === 'in' ? item.row.amount : -item.row.amount
+  }
+
+  // (2) 表示は業務日付の降順(同日は created_at 降順 → 種別 → id)。各行の残高は (1) で確定済みのものを使う。
+  merged.sort((a, b) => {
+    if (a.row.date !== b.row.date) return a.row.date < b.row.date ? 1 : -1
+    return compareMutationDesc(a, b)
   })
+  const transactions: TransactionRow[] = merged.map(({ row }) => ({
+    ...row,
+    balanceAfter: balanceByKey.get(`${row.type}:${row.id}`) ?? account.balance,
+  }))
 
   return c.json({ currentBalance: account.balance, transactions })
 })

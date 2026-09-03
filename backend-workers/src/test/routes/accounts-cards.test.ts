@@ -328,46 +328,67 @@ describe('GET /api/accounts/:id/transactions', () => {
     return category.id
   }
 
-  async function addExpense(headers: Record<string, string>, accountId: number, amount: number, purpose = '買い物') {
-    const categoryId = await firstCategoryId(headers, 'kakeibo')
-    await app.request(
-      '/api/expenses',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ expenseDate: '2026-01-10', amount, purpose, categoryId, accountId }),
-      },
-      env,
-    )
+  // 明示的な business date / created_at を持つ支出・収入を直接挿入し、口座残高も同期させる。
+  async function seedExpense(accountId: number, categoryId: number, amount: number, date: string, createdAt: string, purpose = '買い物') {
+    const hh = await env.DB.prepare('SELECT household_id, owner_user_id FROM accounts WHERE id = ?').bind(accountId).first<{ household_id: number; owner_user_id: number }>()
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO expenses (household_id, payer_user_id, category_id, account_id, amount, purpose, expense_date, include_in_household_total, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      ).bind(hh!.household_id, hh!.owner_user_id, categoryId, accountId, amount, purpose, date, createdAt),
+      env.DB.prepare('UPDATE accounts SET balance = balance - ? WHERE id = ?').bind(amount, accountId),
+    ])
   }
-
-  it('支出・収入を日付降順で返し、取引後残高を現在残高から逆算する', async () => {
-    const { headers } = await createUserWithHousehold('taro@example.com')
-    const account = await createAccount(headers, 10000)
-    await addExpense(headers, account.id, 3000) // 10000 -> 7000
-
-    // 割り勘精算経由の収入の代わりに、account_id 付き収入を直接挿入し残高も同期させる。
-    const incomeCategoryId = await firstCategoryId(headers, 'income')
-    const householdRow = await env.DB.prepare('SELECT household_id FROM accounts WHERE id = ?').bind(account.id).first<{ household_id: number }>()
+  async function seedIncome(accountId: number, categoryId: number, amount: number, date: string, createdAt: string) {
+    const hh = await env.DB.prepare('SELECT household_id, owner_user_id FROM accounts WHERE id = ?').bind(accountId).first<{ household_id: number; owner_user_id: number }>()
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO incomes (household_id, earner_user_id, category_id, account_id, amount, content, income_date, created_at)
-         VALUES (?, (SELECT owner_user_id FROM accounts WHERE id = ?), ?, ?, 1000, '割り勘精算', '2026-01-12', '2026-01-12 00:00:00')`,
-      ).bind(householdRow!.household_id, account.id, incomeCategoryId, account.id),
-      env.DB.prepare('UPDATE accounts SET balance = balance + 1000 WHERE id = ?').bind(account.id), // 7000 -> 8000
+         VALUES (?, ?, ?, ?, ?, '割り勘精算', ?, ?)`,
+      ).bind(hh!.household_id, hh!.owner_user_id, categoryId, accountId, amount, date, createdAt),
+      env.DB.prepare('UPDATE accounts SET balance = balance + ? WHERE id = ?').bind(amount, accountId),
     ])
+  }
 
-    const res = await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)
-    expect(res.status).toBe(200)
-    const body = await res.json<{
+  it('支出・収入を日付降順で返し、取引後残高を変動順に再構成する', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const kCat = await firstCategoryId(headers, 'kakeibo')
+    const iCat = await firstCategoryId(headers, 'income')
+
+    await seedExpense(account.id, kCat, 3000, '2026-01-10', '2026-01-10 10:00:00') // 10000 -> 7000
+    await seedIncome(account.id, iCat, 1000, '2026-01-12', '2026-01-12 10:00:00') // 7000 -> 8000
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
       currentBalance: number
-      transactions: { type: string; direction: string; amount: number; balanceAfter: number; description: string }[]
+      transactions: { type: string; direction: string; amount: number; balanceAfter: number }[]
     }>()
 
     expect(body.currentBalance).toBe(8000)
     expect(body.transactions).toHaveLength(2)
     expect(body.transactions[0]).toMatchObject({ type: 'income', direction: 'in', amount: 1000, balanceAfter: 8000 })
     expect(body.transactions[1]).toMatchObject({ type: 'expense', direction: 'out', amount: 3000, balanceAfter: 7000 })
+  })
+
+  it('遡って登録された取引でも、取引後残高は変動順(created_at順)で正しく計算される', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const account = await createAccount(headers, 10000)
+    const kCat = await firstCategoryId(headers, 'kakeibo')
+    const iCat = await firstCategoryId(headers, 'income')
+
+    // 先に収入(業務日付は後の 1/12)、後から支出を 1/10 に遡って登録。
+    await seedIncome(account.id, iCat, 1000, '2026-01-12', '2026-01-05 10:00:00') // 10000 -> 11000
+    await seedExpense(account.id, kCat, 3000, '2026-01-10', '2026-01-06 10:00:00') // 11000 -> 8000
+
+    const body = await (await app.request(`/api/accounts/${account.id}/transactions`, { headers }, env)).json<{
+      currentBalance: number
+      transactions: { type: string; date: string; balanceAfter: number }[]
+    }>()
+
+    expect(body.currentBalance).toBe(8000)
+    // 表示は業務日付の降順: 1/12 の収入 → 1/10 の支出
+    expect(body.transactions[0]).toMatchObject({ type: 'income', date: '2026-01-12', balanceAfter: 11000 })
+    expect(body.transactions[1]).toMatchObject({ type: 'expense', date: '2026-01-10', balanceAfter: 8000 })
   })
 
   it('チャージ元になった口座はチャージが out として履歴に出る', async () => {
