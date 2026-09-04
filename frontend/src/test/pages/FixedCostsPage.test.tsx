@@ -15,6 +15,14 @@ function setupApi(initial: { fixedCosts?: FixedCost[]; accounts?: Account[] } = 
   server.use(
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
     http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
+    http.get('/api/households/me', () =>
+      HttpResponse.json({
+        members: [
+          { userId: 1, displayName: 'テスト太郎' },
+          { userId: 2, displayName: 'テスト花子' },
+        ],
+      }),
+    ),
     http.post('/api/fixed-costs', async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>
       calls.push({ method: 'POST', url: '/api/fixed-costs', body })
@@ -26,6 +34,12 @@ function setupApi(initial: { fixedCosts?: FixedCost[]; accounts?: Account[] } = 
         personal: body.personal as boolean,
         includeInHouseholdTotal: body.includeInHouseholdTotal as boolean,
         editable: true,
+        splitInputType: (body.splitInputType as 'ratio' | 'amount' | null) ?? null,
+        splits: ((body.splits as { debtorUserId: number }[] | undefined) ?? []).map((s) => ({
+          debtorUserId: s.debtorUserId,
+          splitRatio: 0,
+          amountDue: 0,
+        })),
         accountId: (body.accountId as number | null) ?? null,
         cardId: (body.cardId as number | null) ?? null,
       }
@@ -84,6 +98,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: true,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: null,
         },
@@ -108,6 +124,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: true,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: 5,
           cardId: null,
         },
@@ -131,6 +149,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: false,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: 50,
         },
@@ -162,6 +182,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: false,
           editable: false,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: null,
         },
@@ -261,6 +283,59 @@ describe('FixedCostsPage', () => {
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/fixed-costs')).toBe(false)
   })
 
+  it('割り勘設定のある固定費は一覧に人数を表示する', async () => {
+    setupApi({
+      fixedCosts: [
+        {
+          id: 1,
+          name: '家賃',
+          amount: 80000,
+          paymentDay: 27,
+          personal: false,
+          includeInHouseholdTotal: true,
+          editable: true,
+          splitInputType: 'ratio',
+          splits: [{ debtorUserId: 2, splitRatio: 50, amountDue: 40000 }],
+          accountId: null,
+          cardId: null,
+        },
+      ],
+    })
+    renderFixedCostsPage()
+
+    await waitFor(() => expect(screen.getByText('1人と割り勘')).toBeInTheDocument())
+  })
+
+  it('固定費登録時に割り勘設定を送信できる', async () => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    renderFixedCostsPage()
+    await waitFor(() => expect(screen.getByText('固定費はありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '固定費を登録' }))
+    await user.type(screen.getByLabelText('固定費名'), '家賃')
+    await user.clear(screen.getByLabelText('金額'))
+    await user.type(screen.getByLabelText('金額'), '80000')
+    await user.clear(screen.getByLabelText('支払日'))
+    await user.type(screen.getByLabelText('支払日'), '27')
+
+    await user.click(screen.getByLabelText('割り勘する'))
+    await waitFor(() => expect(screen.getByLabelText('世帯メンバー')).toBeInTheDocument())
+    // 世帯外の種別セレクトは固定費では表示しない
+    expect(screen.queryByLabelText('割り勘の相手の種別')).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('世帯メンバー'), '2')
+
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    await waitFor(() => {
+      const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/fixed-costs')
+      expect(postCall?.body).toMatchObject({
+        splitInputType: 'ratio',
+        splits: [{ debtorUserId: 2 }],
+      })
+    })
+  })
+
   it('固定費を編集すると一覧に反映される', async () => {
     const { calls } = setupApi({
       fixedCosts: [
@@ -272,6 +347,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: true,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: null,
         },
@@ -304,6 +381,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: true,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: 5,
           cardId: null,
         },
@@ -330,6 +409,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: false,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: null,
         },
@@ -358,6 +439,8 @@ describe('FixedCostsPage', () => {
           personal: false,
           includeInHouseholdTotal: false,
           editable: true,
+        splitInputType: null,
+        splits: [],
           accountId: null,
           cardId: null,
         },
@@ -377,6 +460,8 @@ describe('FixedCostsPage', () => {
                 personal: false,
                 includeInHouseholdTotal: false,
                 editable: true,
+        splitInputType: null,
+        splits: [],
                 accountId: null,
                 cardId: null,
               },
