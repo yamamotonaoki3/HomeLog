@@ -70,13 +70,13 @@ export function FixedCostsPage() {
       .then((response) => {
         // 割り勘の相手候補は「自分以外」の世帯メンバー。
         const myId = getCurrentUserId()
-        if (!cancelled) setMembers(response.data.members.filter((member) => member.userId !== myId))
+        if (cancelled) return
+        setMembers(response.data.members.filter((member) => member.userId !== myId))
+        // 取得成功時のみ「取得済み」とする。失敗時に空配列を「相手が全員退出」と誤判定しないため。
+        setMembersLoaded(true)
       })
       .catch(() => {
         // 相手候補が取れないだけなので致命的ではない。
-      })
-      .finally(() => {
-        if (!cancelled) setMembersLoaded(true)
       })
 
     return () => {
