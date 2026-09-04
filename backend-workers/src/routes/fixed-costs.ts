@@ -259,27 +259,27 @@ fixedCostsRoute.post('/', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', preparedSplits.message), 400)
   }
 
-  const inserted = await db
-    .insert(fixedCosts)
-    .values({
-      householdId,
-      ownerUserId: personal ? userId : null,
-      createdByUserId: userId,
-      accountId: accountId ?? null,
-      cardId: cardId ?? null,
-      name,
-      amount,
-      paymentDay,
-      includeInHouseholdTotal: includeInHouseholdTotal ?? false,
-    })
-    .returning()
-    .get()
+  // 固定費本体と割り勘設定を1つのD1バッチ(トランザクション)で確定する。割り勘INSERTの fixed_cost_id は
+  // 同一トランザクション内の (SELECT MAX(id) FROM fixed_costs) で解決する。
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO fixed_costs
+         (household_id, owner_user_id, created_by_user_id, account_id, card_id, name, amount, payment_day, include_in_household_total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    ).bind(householdId, personal ? userId : null, userId, accountId ?? null, cardId ?? null, name, amount, paymentDay, includeInHouseholdTotal ? 1 : 0),
+    ...preparedSplits.rows.map((row) =>
+      c.env.DB
+        .prepare(
+          `INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due)
+           VALUES ((SELECT MAX(id) FROM fixed_costs), ?, ?, ?, ?)`,
+        )
+        .bind(row.debtorUserId, row.splitInputType, row.splitRatio, row.amountDue),
+    ),
+  ])
+  const newId = (results[0].results[0] as { id: number }).id
+  const created = await db.select().from(fixedCosts).where(eq(fixedCosts.id, newId)).get()
 
-  if (preparedSplits.rows.length > 0) {
-    await db.insert(fixedCostSplits).values(preparedSplits.rows.map((row) => ({ fixedCostId: inserted.id, ...row })))
-  }
-
-  return c.json(toResponse(inserted, userId, await loadSplits(db, inserted.id)), 201)
+  return c.json(toResponse(created!, userId, await loadSplits(db, newId)), 201)
 })
 
 fixedCostsRoute.patch('/:id', async (c) => {
@@ -318,24 +318,25 @@ fixedCostsRoute.patch('/:id', async (c) => {
   }
 
   const ownerUserId = personal ? userId : null
-  await db
-    .update(fixedCosts)
-    .set({
-      name,
-      amount,
-      paymentDay,
-      ownerUserId,
-      includeInHouseholdTotal: includeInHouseholdTotal ?? false,
-      accountId: accountId ?? null,
-      cardId: cardId ?? null,
-    })
-    .where(eq(fixedCosts.id, fixedCostId))
-
-  // 割り勘設定は毎回「送られてきた内容で全置換」する。
-  await db.delete(fixedCostSplits).where(eq(fixedCostSplits.fixedCostId, fixedCostId))
-  if (preparedSplits.rows.length > 0) {
-    await db.insert(fixedCostSplits).values(preparedSplits.rows.map((row) => ({ fixedCostId, ...row })))
-  }
+  // 固定費の更新・既存割り勘設定の削除・新しい割り勘設定の追加を1つのD1バッチで確定する
+  // (途中失敗で「金額だけ更新／割り勘設定だけ消える」状態を作らない)。
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare(
+        `UPDATE fixed_costs SET name = ?, amount = ?, payment_day = ?, owner_user_id = ?,
+           include_in_household_total = ?, account_id = ?, card_id = ? WHERE id = ?`,
+      )
+      .bind(name, amount, paymentDay, ownerUserId, includeInHouseholdTotal ? 1 : 0, accountId ?? null, cardId ?? null, fixedCostId),
+    c.env.DB.prepare('DELETE FROM fixed_cost_splits WHERE fixed_cost_id = ?').bind(fixedCostId),
+    ...preparedSplits.rows.map((row) =>
+      c.env.DB
+        .prepare(
+          `INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .bind(fixedCostId, row.debtorUserId, row.splitInputType, row.splitRatio, row.amountDue),
+    ),
+  ])
 
   return c.json(
     toResponse(

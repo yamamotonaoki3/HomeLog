@@ -247,4 +247,26 @@ describe('postDueFixedCosts', () => {
     const count = await env.DB.prepare('SELECT COUNT(*) AS c FROM expense_splits').first<{ c: number }>()
     expect(count?.c).toBe(1)
   })
+
+  it('割り勘の相手が世帯を退出していたら、その相手の expense_splits は作らない', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('hanako@example.com', 'x', 'テスト花子')
+      .first<{ id: number }>()
+    // household_members には追加しない = すでに退出済みの状態。
+
+    const fixedCostId = await createFixedCost({ householdId: owner.householdId, userId: owner.userId, name: '家賃', amount: 100000, paymentDay: 27 })
+    await env.DB.prepare(
+      `INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due)
+       VALUES (?, ?, 'ratio', 40, 40000)`,
+    )
+      .bind(fixedCostId, member!.id)
+      .run()
+
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 7, 27)))
+
+    // 支出は計上されるが、退出済みの相手への内訳は作られない。
+    expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses').first<{ c: number }>())?.c).toBe(1)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expense_splits').first<{ c: number }>())?.c).toBe(0)
+  })
 })

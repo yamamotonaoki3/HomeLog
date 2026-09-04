@@ -123,9 +123,17 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
   // F-05 §6-3: 割り勘設定がある固定費は、その設定を雛形に expense_splits(status='unpaid') も生成する。
   // 保存済みの割合/負担額を、現在の固定費金額に対して resolveSplits で計算し直す
   // (金額変更後もつじつまが合うように)。同一バッチ(トランザクション)で expenses と一緒に確定する。
+  // 割り勘の相手が世帯を退出している場合はその行を除外する(fixed_cost_splits の FK は users を指すため
+  // 退出しても行が残る。退出した相手に毎月 expense_splits を作らないよう household_members で絞り込む)。
   const splitRows = await db
-    .prepare('SELECT debtor_user_id, split_input_type, split_ratio, amount_due FROM fixed_cost_splits WHERE fixed_cost_id = ? ORDER BY id')
-    .bind(fixedCost.id)
+    .prepare(
+      `SELECT s.debtor_user_id, s.split_input_type, s.split_ratio, s.amount_due
+         FROM fixed_cost_splits s
+         JOIN household_members hm ON hm.user_id = s.debtor_user_id AND hm.household_id = ?
+        WHERE s.fixed_cost_id = ?
+        ORDER BY s.id`,
+    )
+    .bind(fixedCost.householdId, fixedCost.id)
     .all<{ debtor_user_id: number; split_input_type: string; split_ratio: number; amount_due: number }>()
   if (splitRows.results.length > 0) {
     const inputType = splitRows.results[0].split_input_type === 'amount' ? 'amount' : 'ratio'
