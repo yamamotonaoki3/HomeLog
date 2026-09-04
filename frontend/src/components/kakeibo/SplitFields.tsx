@@ -133,6 +133,9 @@ export function SplitFields({
       if (row.kind === 'member') {
         if (row.memberId === '') {
           invalid = '割り勘の相手(世帯メンバー)を選択してください'
+        } else if (members.length > 0 && !members.some((m) => String(m.userId) === row.memberId)) {
+          // 編集時の初期値に、その後世帯を退出したメンバーが含まれていた場合。選び直しを促す。
+          invalid = '世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください'
         } else {
           splits.push(
             inputType === 'ratio'
@@ -188,7 +191,7 @@ export function SplitFields({
       } as SplitFieldsResult,
       myShareLabel: myShare,
     }
-  }, [enabled, inputType, rows, amount])
+  }, [enabled, inputType, rows, amount, members])
 
   useEffect(() => {
     onChange(result)

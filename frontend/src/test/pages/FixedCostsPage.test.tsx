@@ -336,6 +336,39 @@ describe('FixedCostsPage', () => {
     })
   })
 
+  it('割り勘の相手が退出済みの固定費は編集時に選び直しを促す', async () => {
+    const { calls } = setupApi({
+      fixedCosts: [
+        {
+          id: 1,
+          name: '家賃',
+          amount: 80000,
+          paymentDay: 27,
+          personal: false,
+          includeInHouseholdTotal: true,
+          editable: true,
+          splitInputType: 'ratio',
+          // userId 99 は現在の世帯メンバー一覧に存在しない（退出済み）。
+          splits: [{ debtorUserId: 99, splitRatio: 50, amountDue: 40000 }],
+          accountId: null,
+          cardId: null,
+        },
+      ],
+    })
+    const user = userEvent.setup()
+    renderFixedCostsPage()
+    await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    await waitFor(() =>
+      expect(
+        screen.getByText('世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください'),
+      ).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '更新' }))
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false)
+  })
+
   it('固定費を編集すると一覧に反映される', async () => {
     const { calls } = setupApi({
       fixedCosts: [
