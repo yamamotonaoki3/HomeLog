@@ -348,6 +348,23 @@ export const expenseSplits = sqliteTable('expense_splits', {
     .default(sql`(current_timestamp)`),
 })
 
+// F-05 §6-3 固定費の割り勘設定。毎月の自動計上時に expense_splits の雛形として使う。世帯内メンバーのみ。
+export const fixedCostSplits = sqliteTable('fixed_cost_splits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  fixedCostId: integer('fixed_cost_id')
+    .notNull()
+    .references(() => fixedCosts.id, { onDelete: 'cascade' }),
+  debtorUserId: integer('debtor_user_id')
+    .notNull()
+    .references(() => users.id),
+  splitInputType: text('split_input_type').notNull().default('ratio'),
+  splitRatio: real('split_ratio').notNull(),
+  amountDue: integer('amount_due').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
 export const fixedCosts = sqliteTable('fixed_costs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')

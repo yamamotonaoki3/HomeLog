@@ -5,6 +5,8 @@ import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_splits'),
+    env.DB.prepare('DELETE FROM fixed_cost_splits'),
     env.DB.prepare('DELETE FROM expenses'),
     env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM cards'),
@@ -202,5 +204,109 @@ describe('PATCH/DELETE /api/fixed-costs/:id', () => {
 
     const deleteRes = await app.request(`/api/fixed-costs/${fixedCost.id}`, { method: 'DELETE', headers: memberHeaders }, env)
     expect(deleteRes.status).toBe(404)
+  })
+})
+
+describe('固定費の割り勘設定', () => {
+  async function setupHouseholdWithMember() {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await createUserWithoutHousehold('hanako@example.com')
+    await joinHousehold(member.userId, member.headers, owner.headers)
+    return { owner, member }
+  }
+
+  const postFixedCost = (headers: Record<string, string>, body: unknown) =>
+    app.request('/api/fixed-costs', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }, env)
+
+  it('割り勘設定つきで登録でき、登録者本人のGETには設定が返る', async () => {
+    const { owner, member } = await setupHouseholdWithMember()
+    const res = await postFixedCost(owner.headers, {
+      name: '家賃',
+      amount: 100000,
+      paymentDay: 27,
+      personal: false,
+      splitInputType: 'ratio',
+      splits: [{ debtorUserId: member.userId, ratio: 50 }],
+    })
+    expect(res.status).toBe(201)
+    const body = await res.json<{ splitInputType: string; splits: { debtorUserId: number; splitRatio: number; amountDue: number }[] }>()
+    expect(body.splitInputType).toBe('ratio')
+    expect(body.splits).toEqual([{ debtorUserId: member.userId, splitRatio: 50, amountDue: 50000 }])
+
+    // 世帯共有の固定費なので member も一覧では見えるが、割り勘設定は非表示。
+    const memberList = await (await app.request('/api/fixed-costs', { headers: member.headers }, env)).json<{ splits: unknown[] }[]>()
+    expect(memberList[0].splits).toEqual([])
+  })
+
+  it('非メンバーの debtorUserId は400', async () => {
+    const { owner } = await setupHouseholdWithMember()
+    const stranger = await createUserWithoutHousehold('stranger@example.com')
+    const res = await postFixedCost(owner.headers, {
+      name: '家賃',
+      amount: 100000,
+      paymentDay: 27,
+      personal: false,
+      splitInputType: 'ratio',
+      splits: [{ debtorUserId: stranger.userId, ratio: 50 }],
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('自分を割り勘の相手に指定すると400', async () => {
+    const { owner, member } = await setupHouseholdWithMember()
+    const res = await postFixedCost(owner.headers, {
+      name: '家賃',
+      amount: 100000,
+      paymentDay: 27,
+      personal: false,
+      splitInputType: 'ratio',
+      splits: [{ debtorUserId: owner.userId, ratio: 50 }],
+    })
+    void member
+    expect(res.status).toBe(400)
+  })
+
+  it('相手の割合合計が100を超えると400', async () => {
+    const { owner, member } = await setupHouseholdWithMember()
+    const third = await createUserWithoutHousehold('third@example.com')
+    await joinHousehold(third.userId, third.headers, owner.headers)
+    const res = await postFixedCost(owner.headers, {
+      name: '家賃',
+      amount: 100000,
+      paymentDay: 27,
+      personal: false,
+      splitInputType: 'ratio',
+      splits: [
+        { debtorUserId: member.userId, ratio: 60 },
+        { debtorUserId: third.userId, ratio: 60 },
+      ],
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('PATCH で割り勘設定を全置換できる（空配列で削除）', async () => {
+    const { owner, member } = await setupHouseholdWithMember()
+    const created = await (
+      await postFixedCost(owner.headers, {
+        name: '家賃',
+        amount: 100000,
+        paymentDay: 27,
+        personal: false,
+        splitInputType: 'ratio',
+        splits: [{ debtorUserId: member.userId, ratio: 50 }],
+      })
+    ).json<{ id: number }>()
+
+    const patchRes = await app.request(
+      `/api/fixed-costs/${created.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...owner.headers },
+        body: JSON.stringify({ name: '家賃', amount: 100000, paymentDay: 27, personal: false, splits: [] }),
+      },
+      env,
+    )
+    expect(patchRes.status).toBe(200)
+    expect((await patchRes.json<{ splits: unknown[] }>()).splits).toEqual([])
   })
 })

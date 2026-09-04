@@ -1,10 +1,11 @@
-import { and, eq, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { accounts, cards, fixedCosts } from '../db/schema'
+import { accounts, cards, fixedCostSplits, fixedCosts, householdMembers } from '../db/schema'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
+import { resolveSplits, type SplitInputRow } from '../lib/split-calc'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
@@ -13,8 +14,18 @@ const ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE = '口座とカードは同時に�
 const INVALID_ACCOUNT_MESSAGE = '指定された口座が見つかりません'
 const INVALID_CARD_MESSAGE = '指定されたカードが見つかりません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
+const SPLIT_TARGET_NOT_MEMBER_MESSAGE = '割り勘の相手は世帯メンバーから選んでください'
+const SPLIT_PAYER_AS_DEBTOR_MESSAGE = '自分を割り勘の相手に指定することはできません'
+const SPLIT_DUPLICATE_MESSAGE = '同じ相手を複数回指定することはできません'
 
 const AMOUNT_MAX = 9_999_999_999
+
+// 割り勘の相手(登録者以外の世帯メンバー)1人分。
+const fixedCostSplitRowSchema = z.object({
+  debtorUserId: z.number().int(),
+  ratio: z.number().nonnegative().max(100).nullish(),
+  amountDue: z.number().int().nonnegative().max(AMOUNT_MAX).nullish(),
+})
 
 const fixedCostSchema = z.object({
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: '固定費名を入力してください' }),
@@ -24,6 +35,8 @@ const fixedCostSchema = z.object({
   includeInHouseholdTotal: z.boolean().nullish(),
   accountId: z.number().int().nullish(),
   cardId: z.number().int().nullish(),
+  splitInputType: z.enum(['ratio', 'amount']).nullish(),
+  splits: z.array(fixedCostSplitRowSchema).max(20).nullish(),
 })
 
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -74,7 +87,89 @@ async function validateAccountOrCard(
   return { ok: true }
 }
 
-function toResponse(fixedCost: typeof fixedCosts.$inferSelect, userId: number) {
+interface PreparedSplit {
+  debtorUserId: number
+  splitInputType: 'ratio' | 'amount'
+  splitRatio: number
+  amountDue: number
+}
+
+type FixedCostSplitInput = z.infer<typeof fixedCostSplitRowSchema>
+
+/**
+ * 固定費の割り勘設定を検証し、保存する行を確定する。負担者(登録者以外の世帯メンバー)のみを行にし、
+ * 登録者本人の負担分は「固定費金額 - 相手の負担額合計」として暗黙に決まる(F-04 の支出割り勘と同じ考え方)。
+ */
+async function prepareFixedCostSplits(
+  db: ReturnType<typeof drizzle>,
+  householdId: number,
+  payerUserId: number,
+  amount: number,
+  splitInputType: 'ratio' | 'amount',
+  splits: FixedCostSplitInput[],
+): Promise<{ ok: true; rows: PreparedSplit[] } | { ok: false; message: string }> {
+  if (splits.length === 0) {
+    return { ok: true, rows: [] }
+  }
+
+  const seen = new Set<number>()
+  for (const row of splits) {
+    if (row.debtorUserId === payerUserId) {
+      return { ok: false, message: SPLIT_PAYER_AS_DEBTOR_MESSAGE }
+    }
+    if (seen.has(row.debtorUserId)) {
+      return { ok: false, message: SPLIT_DUPLICATE_MESSAGE }
+    }
+    seen.add(row.debtorUserId)
+  }
+
+  const memberRows = await db
+    .select({ userId: householdMembers.userId })
+    .from(householdMembers)
+    .where(and(eq(householdMembers.householdId, householdId), inArray(householdMembers.userId, [...seen])))
+    .all()
+  if (memberRows.length !== seen.size) {
+    return { ok: false, message: SPLIT_TARGET_NOT_MEMBER_MESSAGE }
+  }
+
+  const calcRows: SplitInputRow[] = splits.map((row) => ({
+    key: `u:${row.debtorUserId}`,
+    ratio: row.ratio,
+    amountDue: row.amountDue,
+  }))
+  const result = resolveSplits(amount, splitInputType, calcRows)
+  if (!result.ok) {
+    return { ok: false, message: result.error }
+  }
+  const resolvedByKey = new Map(result.rows.map((row) => [row.key, row]))
+  return {
+    ok: true,
+    rows: splits.map((row) => {
+      const resolved = resolvedByKey.get(`u:${row.debtorUserId}`)!
+      return { debtorUserId: row.debtorUserId, splitInputType, splitRatio: resolved.ratio, amountDue: resolved.amountDue }
+    }),
+  }
+}
+
+async function loadSplits(db: ReturnType<typeof drizzle>, fixedCostId: number) {
+  return db
+    .select({
+      debtorUserId: fixedCostSplits.debtorUserId,
+      splitInputType: fixedCostSplits.splitInputType,
+      splitRatio: fixedCostSplits.splitRatio,
+      amountDue: fixedCostSplits.amountDue,
+    })
+    .from(fixedCostSplits)
+    .where(eq(fixedCostSplits.fixedCostId, fixedCostId))
+    .orderBy(fixedCostSplits.id)
+    .all()
+}
+
+function toResponse(
+  fixedCost: typeof fixedCosts.$inferSelect,
+  userId: number,
+  splits: Awaited<ReturnType<typeof loadSplits>>,
+) {
   const personal = fixedCost.ownerUserId !== null
   const editable = fixedCost.createdByUserId === userId
   return {
@@ -87,6 +182,9 @@ function toResponse(fixedCost: typeof fixedCosts.$inferSelect, userId: number) {
     editable,
     accountId: editable ? fixedCost.accountId : null,
     cardId: editable ? fixedCost.cardId : null,
+    // 割り勘設定は登録者本人にのみ返す(他人の負担額を露出させない)。
+    splitInputType: editable ? (splits[0]?.splitInputType ?? null) : null,
+    splits: editable ? splits.map((s) => ({ debtorUserId: s.debtorUserId, splitRatio: s.splitRatio, amountDue: s.amountDue })) : [],
   }
 }
 
@@ -111,7 +209,31 @@ fixedCostsRoute.get('/', async (c) => {
     .orderBy(fixedCosts.id)
     .all()
 
-  return c.json(rows.map((row) => toResponse(row, userId)))
+  // 自分が登録した固定費の割り勘設定だけをまとめて取得する。
+  const ownIds = rows.filter((row) => row.createdByUserId === userId).map((row) => row.id)
+  const allSplits =
+    ownIds.length === 0
+      ? []
+      : await db
+          .select({
+            fixedCostId: fixedCostSplits.fixedCostId,
+            debtorUserId: fixedCostSplits.debtorUserId,
+            splitInputType: fixedCostSplits.splitInputType,
+            splitRatio: fixedCostSplits.splitRatio,
+            amountDue: fixedCostSplits.amountDue,
+          })
+          .from(fixedCostSplits)
+          .where(inArray(fixedCostSplits.fixedCostId, ownIds))
+          .orderBy(fixedCostSplits.id)
+          .all()
+  const splitsByFixedCost = new Map<number, typeof allSplits>()
+  for (const s of allSplits) {
+    const list = splitsByFixedCost.get(s.fixedCostId) ?? []
+    list.push(s)
+    splitsByFixedCost.set(s.fixedCostId, list)
+  }
+
+  return c.json(rows.map((row) => toResponse(row, userId, splitsByFixedCost.get(row.id) ?? [])))
 })
 
 fixedCostsRoute.post('/', async (c) => {
@@ -127,10 +249,14 @@ fixedCostsRoute.post('/', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  const { name, amount, paymentDay, personal, includeInHouseholdTotal, accountId, cardId } = parsed.data
+  const { name, amount, paymentDay, personal, includeInHouseholdTotal, accountId, cardId, splitInputType, splits } = parsed.data
   const validation = await validateAccountOrCard(db, userId, householdId, accountId, cardId)
   if (!validation.ok) {
     return c.json(errorResponse('VALIDATION_ERROR', validation.message), 400)
+  }
+  const preparedSplits = await prepareFixedCostSplits(db, householdId, userId, amount, splitInputType ?? 'ratio', splits ?? [])
+  if (!preparedSplits.ok) {
+    return c.json(errorResponse('VALIDATION_ERROR', preparedSplits.message), 400)
   }
 
   const inserted = await db
@@ -149,7 +275,11 @@ fixedCostsRoute.post('/', async (c) => {
     .returning()
     .get()
 
-  return c.json(toResponse(inserted, userId), 201)
+  if (preparedSplits.rows.length > 0) {
+    await db.insert(fixedCostSplits).values(preparedSplits.rows.map((row) => ({ fixedCostId: inserted.id, ...row })))
+  }
+
+  return c.json(toResponse(inserted, userId, await loadSplits(db, inserted.id)), 201)
 })
 
 fixedCostsRoute.patch('/:id', async (c) => {
@@ -177,10 +307,14 @@ fixedCostsRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  const { name, amount, paymentDay, personal, includeInHouseholdTotal, accountId, cardId } = parsed.data
+  const { name, amount, paymentDay, personal, includeInHouseholdTotal, accountId, cardId, splitInputType, splits } = parsed.data
   const validation = await validateAccountOrCard(db, userId, householdId, accountId, cardId)
   if (!validation.ok) {
     return c.json(errorResponse('VALIDATION_ERROR', validation.message), 400)
+  }
+  const preparedSplits = await prepareFixedCostSplits(db, householdId, userId, amount, splitInputType ?? 'ratio', splits ?? [])
+  if (!preparedSplits.ok) {
+    return c.json(errorResponse('VALIDATION_ERROR', preparedSplits.message), 400)
   }
 
   const ownerUserId = personal ? userId : null
@@ -197,6 +331,12 @@ fixedCostsRoute.patch('/:id', async (c) => {
     })
     .where(eq(fixedCosts.id, fixedCostId))
 
+  // 割り勘設定は毎回「送られてきた内容で全置換」する。
+  await db.delete(fixedCostSplits).where(eq(fixedCostSplits.fixedCostId, fixedCostId))
+  if (preparedSplits.rows.length > 0) {
+    await db.insert(fixedCostSplits).values(preparedSplits.rows.map((row) => ({ fixedCostId, ...row })))
+  }
+
   return c.json(
     toResponse(
       {
@@ -210,6 +350,7 @@ fixedCostsRoute.patch('/:id', async (c) => {
         cardId: cardId ?? null,
       },
       userId,
+      await loadSplits(db, fixedCostId),
     ),
   )
 })
