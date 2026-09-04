@@ -11,6 +11,8 @@ interface Props {
   accounts: Account[]
   // 割り勘の相手候補（自分以外の世帯メンバー）。
   members: HouseholdMember[]
+  // 世帯メンバー取得が完了したか（退出済みメンバー判定の保留制御）。
+  membersLoaded?: boolean
   onClose: () => void
   onSaved: () => Promise<void>
 }
@@ -32,7 +34,7 @@ function toInitialSplits(fixedCost: FixedCost | null): InitialSplit[] {
   }))
 }
 
-export function FixedCostModal({ fixedCost, accounts, members, onClose, onSaved }: Props) {
+export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = true, onClose, onSaved }: Props) {
   const isEdit = fixedCost !== null
   const [name, setName] = useState(fixedCost?.name ?? '')
   const [amount, setAmount] = useState(fixedCost ? String(fixedCost.amount) : '')
@@ -174,6 +176,7 @@ export function FixedCostModal({ fixedCost, accounts, members, onClose, onSaved 
           <SplitFields
             amount={Number(amount) || 0}
             members={members}
+            membersLoaded={membersLoaded}
             allowExternal={false}
             initialSplits={toInitialSplits(fixedCost)}
             initialSplitInputType={fixedCost?.splitInputType ?? undefined}

@@ -27,6 +27,9 @@ interface Props {
   onChange: (result: SplitFieldsResult) => void
   // false のとき「世帯外の人」を選べなくする(固定費の割り勘は世帯内メンバーのみ)。
   allowExternal?: boolean
+  // 親側の世帯メンバー取得が完了しているか。false の間は「退出済みメンバー」判定を保留する
+  // (取得前の空配列を「相手がいない」と誤判定しないため)。未指定なら取得済みとみなす。
+  membersLoaded?: boolean
   // 編集時の初期値。指定があれば割り勘を有効にした状態で開く。
   initialSplits?: InitialSplit[]
   initialSplitInputType?: 'ratio' | 'amount'
@@ -60,6 +63,7 @@ export function SplitFields({
   members,
   onChange,
   allowExternal = true,
+  membersLoaded = true,
   initialSplits,
   initialSplitInputType,
 }: Props) {
@@ -133,7 +137,7 @@ export function SplitFields({
       if (row.kind === 'member') {
         if (row.memberId === '') {
           invalid = '割り勘の相手(世帯メンバー)を選択してください'
-        } else if (members.length > 0 && !members.some((m) => String(m.userId) === row.memberId)) {
+        } else if (membersLoaded && !members.some((m) => String(m.userId) === row.memberId)) {
           // 編集時の初期値に、その後世帯を退出したメンバーが含まれていた場合。選び直しを促す。
           invalid = '世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください'
         } else {
@@ -191,7 +195,7 @@ export function SplitFields({
       } as SplitFieldsResult,
       myShareLabel: myShare,
     }
-  }, [enabled, inputType, rows, amount, members])
+  }, [enabled, inputType, rows, amount, members, membersLoaded])
 
   useEffect(() => {
     onChange(result)

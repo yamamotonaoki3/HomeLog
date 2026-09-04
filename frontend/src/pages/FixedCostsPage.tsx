@@ -16,6 +16,7 @@ export function FixedCostsPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [members, setMembers] = useState<HouseholdMember[]>([])
+  const [membersLoaded, setMembersLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modalTarget, setModalTarget] = useState<FixedCost | null | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<FixedCost | null>(null)
@@ -73,6 +74,9 @@ export function FixedCostsPage() {
       })
       .catch(() => {
         // 相手候補が取れないだけなので致命的ではない。
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoaded(true)
       })
 
     return () => {
@@ -182,6 +186,7 @@ export function FixedCostsPage() {
           fixedCost={modalTarget}
           accounts={accounts}
           members={members}
+          membersLoaded={membersLoaded}
           onClose={() => setModalTarget(undefined)}
           onSaved={handleSaved}
         />
