@@ -1,4 +1,5 @@
 import { fixedCosts } from '../db/schema'
+import { resolveSplits, type SplitInputRow } from './split-calc'
 
 const FIXED_COST_CATEGORY_NAME = '固定費'
 
@@ -117,6 +118,48 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
     statements.push(
       db.prepare(`UPDATE ${balanceUpdateStatement.table} SET balance = balance - ? WHERE id = ?`).bind(fixedCost.amount, balanceUpdateStatement.id),
     )
+  }
+
+  // F-05 §6-3: 割り勘設定がある固定費は、その設定を雛形に expense_splits(status='unpaid') も生成する。
+  // 保存済みの割合/負担額を、現在の固定費金額に対して resolveSplits で計算し直す
+  // (金額変更後もつじつまが合うように)。同一バッチ(トランザクション)で expenses と一緒に確定する。
+  // 割り勘の相手が世帯を退出している場合はその行を除外する(fixed_cost_splits の FK は users を指すため
+  // 退出しても行が残る。退出した相手に毎月 expense_splits を作らないよう household_members で絞り込む)。
+  const splitRows = await db
+    .prepare(
+      `SELECT s.debtor_user_id, s.split_input_type, s.split_ratio, s.amount_due
+         FROM fixed_cost_splits s
+         JOIN household_members hm ON hm.user_id = s.debtor_user_id AND hm.household_id = ?
+        WHERE s.fixed_cost_id = ?
+        ORDER BY s.id`,
+    )
+    .bind(fixedCost.householdId, fixedCost.id)
+    .all<{ debtor_user_id: number; split_input_type: string; split_ratio: number; amount_due: number }>()
+  if (splitRows.results.length > 0) {
+    const inputType = splitRows.results[0].split_input_type === 'amount' ? 'amount' : 'ratio'
+    const calcRows: SplitInputRow[] = splitRows.results.map((row) => ({
+      key: `u:${row.debtor_user_id}`,
+      ratio: inputType === 'ratio' ? row.split_ratio : undefined,
+      amountDue: inputType === 'amount' ? row.amount_due : undefined,
+    }))
+    const resolved = resolveSplits(fixedCost.amount, inputType, calcRows)
+    if (resolved.ok) {
+      for (const row of resolved.rows) {
+        const debtorUserId = Number(row.key.slice(2))
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO expense_splits
+                 (expense_id, debtor_user_id, split_input_type, split_ratio, amount_due, status)
+               VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, 'unpaid')`,
+            )
+            .bind(debtorUserId, inputType, row.ratio, row.amountDue),
+        )
+      }
+    } else {
+      // 固定費金額の変更で割り勘の合計が合わなくなった等。支出だけ計上し、割り勘の生成はスキップする。
+      console.warn(`固定費の割り勘設定が現在の金額と整合しないため expense_splits をスキップしました。fixedCostId=${fixedCost.id}: ${resolved.error}`)
+    }
   }
 
   try {

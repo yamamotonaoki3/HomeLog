@@ -4,6 +4,8 @@ import { postDueFixedCosts } from '../../lib/fixed-cost-posting'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_splits'),
+    env.DB.prepare('DELETE FROM fixed_cost_splits'),
     env.DB.prepare('DELETE FROM expenses'),
     env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM cards'),
@@ -211,5 +213,60 @@ describe('postDueFixedCosts', () => {
 
     const expenses = await env.DB.prepare('SELECT purpose FROM expenses ORDER BY purpose').all<{ purpose: string }>()
     expect(expenses.results.map((e) => e.purpose)).toEqual(['世帯Aの固定費', '世帯Bの固定費'])
+  })
+
+  it('割り勘設定つきの固定費は計上時に expense_splits(unpaid) も生成する', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('hanako@example.com', 'x', 'テスト花子')
+      .first<{ id: number }>()
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member!.id).run()
+
+    const fixedCostId = await createFixedCost({ householdId: owner.householdId, userId: owner.userId, name: '家賃', amount: 100000, paymentDay: 27 })
+    await env.DB.prepare(
+      `INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due)
+       VALUES (?, ?, 'ratio', 40, 40000)`,
+    )
+      .bind(fixedCostId, member!.id)
+      .run()
+
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 7, 27)))
+
+    const expense = await env.DB.prepare('SELECT id, amount FROM expenses').first<{ id: number; amount: number }>()
+    expect(expense?.amount).toBe(100000)
+    const split = await env.DB.prepare('SELECT expense_id, debtor_user_id, amount_due, status FROM expense_splits').first<{
+      expense_id: number
+      debtor_user_id: number
+      amount_due: number
+      status: string
+    }>()
+    expect(split).toMatchObject({ expense_id: expense!.id, debtor_user_id: member!.id, amount_due: 40000, status: 'unpaid' })
+
+    // 二重実行しても割り勘内訳が二重生成されない(expenses の二重計上防止に乗る)。
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 7, 27)))
+    const count = await env.DB.prepare('SELECT COUNT(*) AS c FROM expense_splits').first<{ c: number }>()
+    expect(count?.c).toBe(1)
+  })
+
+  it('割り勘の相手が世帯を退出していたら、その相手の expense_splits は作らない', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('hanako@example.com', 'x', 'テスト花子')
+      .first<{ id: number }>()
+    // household_members には追加しない = すでに退出済みの状態。
+
+    const fixedCostId = await createFixedCost({ householdId: owner.householdId, userId: owner.userId, name: '家賃', amount: 100000, paymentDay: 27 })
+    await env.DB.prepare(
+      `INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due)
+       VALUES (?, ?, 'ratio', 40, 40000)`,
+    )
+      .bind(fixedCostId, member!.id)
+      .run()
+
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 7, 27)))
+
+    // 支出は計上されるが、退出済みの相手への内訳は作られない。
+    expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses').first<{ c: number }>())?.c).toBe(1)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expense_splits').first<{ c: number }>())?.c).toBe(0)
   })
 })
