@@ -164,13 +164,13 @@ describe('KakeiboPage 未精算サマリー', () => {
           id: 1, expenseId: 1, expensePurpose: 'A', expenseAmount: 2000, expenseDate: '2026-01-01',
           role: 'debtor', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
           splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'requested',
-          debtorAccountId: null, requestedAt: null, settledAt: null,
+          debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0,
         },
         {
           id: 2, expenseId: 2, expensePurpose: 'B', expenseAmount: 600, expenseDate: '2026-01-02',
           role: 'payer', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
           splitInputType: 'ratio', splitRatio: 50, amountDue: 300, status: 'unpaid',
-          debtorAccountId: null, requestedAt: null, settledAt: null,
+          debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0,
         },
       ],
     })

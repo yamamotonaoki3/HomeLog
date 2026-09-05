@@ -26,6 +26,18 @@ export interface ExpenseSplit {
   debtorAccountId: number | null
   requestedAt: string | null
   settledAt: string | null
+  // この内訳のコメント件数(GET/POST /api/expense-splits/:id/comments)。
+  commentCount: number
+}
+
+// GET/POST /api/expense-splits/:id/comments の1件分。
+export interface ExpenseSplitComment {
+  id: number
+  authorUserId: number
+  authorLabel: string
+  authorRole: 'payer' | 'debtor'
+  body: string
+  createdAt: string
 }
 
 // POST /api/expenses に添えて送る割り勘の相手(支払者=自分は含めない)1人分。
