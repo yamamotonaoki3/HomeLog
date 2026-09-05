@@ -49,18 +49,75 @@ const FETCH_FAILED_MESSAGE = 'URLの取得に失敗しました。URLを確認�
 // HTMLRewriterでのOGP抽出中、レスポンスボディを丸ごとメモリに載せないための上限(2MB)。
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
+function parseIpv4(address: string): number[] | null {
+  const octets = address.split('.')
+  if (octets.length !== 4) return null
+
+  const parsed = octets.map(Number)
+  if (parsed.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null
+  return parsed
+}
+
+function isBlockedIpv4(address: string): boolean {
+  const octets = parseIpv4(address)
+  if (!octets) return false
+
+  const [first, second] = octets
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  )
+}
+
+function parseIpv6(address: string): number[] | null {
+  if ((address.match(/::/g) ?? []).length > 1) return null
+
+  const [head = '', tail = ''] = address.split('::')
+  const parseGroups = (part: string): number[] | null => {
+    if (part === '') return []
+    const groups = part.split(':')
+    if (groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return null
+    return groups.map((group) => Number.parseInt(group, 16))
+  }
+
+  const headGroups = parseGroups(head)
+  const tailGroups = parseGroups(tail)
+  if (!headGroups || !tailGroups) return null
+
+  if (address.includes('::')) {
+    const omittedCount = 8 - headGroups.length - tailGroups.length
+    if (omittedCount < 1) return null
+    return [...headGroups, ...Array<number>(omittedCount).fill(0), ...tailGroups]
+  }
+
+  return headGroups.length === 8 ? headGroups : null
+}
+
 // プライベートIP帯・ループバックアドレスへのアクセスを弾く(SSRF対策の多層防御)。
 // Cloudflare WorkersのfetchはすでにIPアドレスへの直接アクセス等をある程度制限しているが、
 // hostnameの文字列だけでも判定できる範囲は明示的にブロックしておく。
 function isBlockedHostname(hostname: string): boolean {
   const lower = hostname.toLowerCase()
-  if (lower === 'localhost' || lower === '127.0.0.1' || lower === '0.0.0.0' || lower === '::1') {
-    return true
-  }
-  if (/^10\./.test(lower)) return true
-  if (/^192\.168\./.test(lower)) return true
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(lower)) return true
-  return false
+  if (lower === 'localhost') return true
+  if (isBlockedIpv4(lower)) return true
+
+  // URL.hostnameはIPv6リテラルを角括弧付きで返すため、解析前に取り除く。
+  const ipv6Address = lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower
+  const groups = parseIpv6(ipv6Address)
+  if (!groups) return false
+
+  const isUnspecified = groups.every((group) => group === 0)
+  const isLoopback = groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1
+  const isUniqueLocal = (groups[0] & 0xfe00) === 0xfc00
+  const isLinkLocal = (groups[0] & 0xffc0) === 0xfe80
+  const isIpv4Mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff
+  const mappedIpv4 = `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`
+
+  return isUnspecified || isLoopback || isUniqueLocal || isLinkLocal || (isIpv4Mapped && isBlockedIpv4(mappedIpv4))
 }
 
 // HTMLRewriterで<meta property="og:title">/<meta property="og:image">/<title>を

@@ -328,7 +328,23 @@ describe('POST /api/recipes/from-url', () => {
     expect(res.status).toBe(400)
   })
 
-  it.each(['http://localhost/x', 'http://127.0.0.1/x', 'http://10.0.0.5/x', 'http://192.168.1.1/x', 'http://172.16.0.1/x'])(
+  it.each([
+    'http://localhost/x',
+    'http://127.0.0.1/x',
+    'http://127.255.255.254/x',
+    'http://10.0.0.5/x',
+    'http://192.168.1.1/x',
+    'http://172.16.0.1/x',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://[::]/x',
+    'http://[::1]/x',
+    'http://[fc00::1]/x',
+    'http://[fdff:ffff::1]/x',
+    'http://[fe80::1]/x',
+    'http://[febf:ffff::1]/x',
+    'http://[::ffff:127.0.0.1]/x',
+    'http://[::ffff:169.254.169.254]/x',
+  ])(
     'プライベートIP/localhost指定(%s)は400を返す',
     async (url) => {
       const { headers } = await createUserWithHousehold('taro@example.com')
