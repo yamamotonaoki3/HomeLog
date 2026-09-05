@@ -113,6 +113,13 @@ erDiagram
         timestamp requested_at
         timestamp settled_at
     }
+    expense_split_comments {
+        bigserial id PK
+        bigint expense_split_id FK
+        bigint author_user_id FK
+        text body
+        timestamp created_at
+    }
     fixed_cost_splits {
         bigserial id PK
         bigint fixed_cost_id FK
@@ -257,6 +264,8 @@ erDiagram
     users ||--o{ expense_splits : "負担する(debtor)"
     external_persons ||--o{ expense_splits : "負担する(debtor)"
     accounts ||--o{ expense_splits : "支払い元になる(精算時)"
+    expense_splits ||--o{ expense_split_comments : "コメントされる"
+    users ||--o{ expense_split_comments : "投稿する(author)"
 
     users ||--o{ incomes : "得る(earner)"
     income_categories ||--o{ incomes : "分類する"
@@ -414,6 +423,19 @@ erDiagram
 | expense_splits.settled_at | TIMESTAMP | — | 精算完了日時 |
 
 ※ `debtor_user_id` と `debtor_external_id` はどちらか一方のみ設定する（世帯内/世帯外の排他）。
+
+### expense_split_comments（割り勘内訳のコメント）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| id | BIGSERIAL | ○ | PK |
+| expense_split_id | BIGINT | ○ | FK → expense_splits.id |
+| author_user_id | BIGINT | ○ | FK → users.id（投稿者。常にその内訳の立替者 or 負担者。世帯外の負担者はログインできず投稿不可） |
+| body | VARCHAR(500) | ○ | コメント本文（最大500文字） |
+| created_at | TIMESTAMP | ○ | 投稿日時 |
+
+割り勘内訳（負担者が保留にした場合等）についての立替者・負担者間の連絡用スレッド。`expense_splits.status` を
+問わず常時閲覧・投稿可能（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md)参照）。
 
 ### income_categories（収入カテゴリーマスタ）
 
