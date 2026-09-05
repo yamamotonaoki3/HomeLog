@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { WarikanPage } from '../../pages/WarikanPage'
-import type { ExpenseSplit } from '../../api/warikanTypes'
+import type { ExpenseSplit, ExpenseSplitComment } from '../../api/warikanTypes'
 import type { Account } from '../../api/kakeiboTypes'
 
 function split(over: Partial<ExpenseSplit>): ExpenseSplit {
@@ -26,6 +26,7 @@ function split(over: Partial<ExpenseSplit>): ExpenseSplit {
     debtorAccountId: null,
     requestedAt: null,
     settledAt: null,
+    commentCount: 0,
     ...over,
   }
 }
@@ -33,11 +34,31 @@ function split(over: Partial<ExpenseSplit>): ExpenseSplit {
 const account: Account = { id: 7, name: 'メイン口座', type: 'bank', balance: 5000, cards: [] }
 
 function setupApi(initial: ExpenseSplit[], accounts: Account[] = [account]) {
-  const state = { splits: [...initial] }
+  const state = { splits: [...initial], comments: new Map<number, ExpenseSplitComment[]>() }
   const calls: { path: string; body: unknown }[] = []
+  let nextCommentId = 1
   server.use(
     http.get('/api/expense-splits', () => HttpResponse.json(state.splits)),
     http.get('/api/accounts', () => HttpResponse.json(accounts)),
+    http.get('/api/expense-splits/:id/comments', ({ params }) => {
+      return HttpResponse.json(state.comments.get(Number(params.id)) ?? [])
+    }),
+    http.post('/api/expense-splits/:id/comments', async ({ params, request }) => {
+      const body = (await request.json()) as { body: string }
+      const splitId = Number(params.id)
+      const comment: ExpenseSplitComment = {
+        id: nextCommentId++,
+        authorUserId: 1,
+        authorLabel: 'テスト太郎',
+        authorRole: 'payer',
+        body: body.body,
+        createdAt: '2026-01-01 00:00:00',
+      }
+      state.comments.set(splitId, [...(state.comments.get(splitId) ?? []), comment])
+      state.splits = state.splits.map((s) => (s.id === splitId ? { ...s, commentCount: (state.comments.get(splitId) ?? []).length } : s))
+      calls.push({ path: `${params.id}/comments`, body })
+      return HttpResponse.json(comment, { status: 201 })
+    }),
     http.patch('/api/expense-splits/:id/:action', async ({ params, request }) => {
       let body: unknown = undefined
       try {
@@ -155,5 +176,43 @@ describe('WarikanPage(改訂フロー)', () => {
 
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('DELETE 1'))
     await waitFor(() => expect(screen.getByText('割り勘の内訳はありません')).toBeInTheDocument())
+  })
+})
+
+describe('WarikanPage コメント', () => {
+  it('立替者・負担者どちらの行にもstatusを問わずコメントボタンが出て、件数0のときはバッジが無い', async () => {
+    setupApi([split({ role: 'payer', status: 'settled', commentCount: 0 })])
+    renderPage()
+    const button = within(await rowOf()).getByRole('button', { name: 'コメント' })
+    expect(button).toBeInTheDocument()
+  })
+
+  it('コメント件数が0より多いときはバッジを表示する', async () => {
+    setupApi([split({ commentCount: 3 })])
+    renderPage()
+    expect(within(await rowOf()).getByRole('button', { name: 'コメント(3)' })).toBeInTheDocument()
+  })
+
+  it('コメントボタンでモーダルが開く', async () => {
+    setupApi([split({})])
+    renderPage()
+    const user = userEvent.setup()
+    await user.click(within(await rowOf()).getByRole('button', { name: 'コメント' }))
+    expect(await screen.findByTestId('expense-split-comments-modal')).toBeInTheDocument()
+  })
+
+  it('コメントを投稿すると閉じた後にバッジが更新される', async () => {
+    setupApi([split({ commentCount: 0 })])
+    renderPage()
+    const user = userEvent.setup()
+
+    await user.click(within(await rowOf()).getByRole('button', { name: 'コメント' }))
+    const modal = await screen.findByTestId('expense-split-comments-modal')
+    await user.type(within(modal).getByLabelText('コメントを投稿'), 'コメントテスト')
+    await user.click(within(modal).getByRole('button', { name: '投稿' }))
+    await waitFor(() => expect(within(modal).getByText('コメントテスト')).toBeInTheDocument())
+
+    await user.click(within(modal).getByRole('button', { name: '閉じる' }))
+    expect(await within(await rowOf()).findByRole('button', { name: 'コメント(1)' })).toBeInTheDocument()
   })
 })

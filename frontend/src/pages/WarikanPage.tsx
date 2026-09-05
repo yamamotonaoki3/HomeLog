@@ -5,6 +5,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account } from '../api/kakeiboTypes'
 import type { ExpenseSplit, SplitStatus } from '../api/warikanTypes'
 import { Toast } from '../components/Toast'
+import { ExpenseSplitCommentsModal } from '../components/warikan/ExpenseSplitCommentsModal'
 import { SettlementAccountModal } from '../components/warikan/SettlementAccountModal'
 
 const STATUS_LABEL: Record<SplitStatus, string> = {
@@ -52,6 +53,7 @@ export function WarikanPage() {
   const [loading, setLoading] = useState(true)
   const [settlement, setSettlement] = useState<{ kind: SettlementKind; split: ExpenseSplit } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ExpenseSplit | null>(null)
+  const [commentsTarget, setCommentsTarget] = useState<ExpenseSplit | null>(null)
   const [working, setWorking] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
@@ -248,6 +250,9 @@ export function WarikanPage() {
                         )}
                       </>
                     )}
+                    <button type="button" className="btn btn-tiny" onClick={() => setCommentsTarget(split)}>
+                      コメント{split.commentCount > 0 ? `(${split.commentCount})` : ''}
+                    </button>
                   </td>
                 </tr>
               ))
@@ -285,6 +290,14 @@ export function WarikanPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {commentsTarget && (
+        <ExpenseSplitCommentsModal
+          split={commentsTarget}
+          onClose={() => setCommentsTarget(null)}
+          onPosted={() => void refresh()}
+        />
       )}
 
       <Toast message={toast.message} showKey={toast.showKey} />
