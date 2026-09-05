@@ -147,15 +147,19 @@ expenseSplitsRoute.get('/', async (c) => {
     .bind(householdId, userId, userId)
     .all<SplitRow>()
 
-  // コメント件数バッジ用。N+1を避けるため対象split群をまとめて1クエリでCOUNTする。
+  // コメント件数バッジ用。件数分のプレースホルダをbindするとD1の100パラメータ上限を超えうるため、
+  // 対象split群を上と同じWHERE条件のサブクエリで絞り込み、bind数を3個で固定する。
   const commentCounts = new Map<number, number>()
   if (results.length > 0) {
-    const placeholders = results.map(() => '?').join(', ')
     const { results: countRows } = await c.env.DB.prepare(
       `SELECT expense_split_id, COUNT(*) AS cnt FROM expense_split_comments
-       WHERE expense_split_id IN (${placeholders}) GROUP BY expense_split_id`,
+       WHERE expense_split_id IN (
+         SELECT s.id FROM expense_splits s JOIN expenses e ON e.id = s.expense_id
+          WHERE e.household_id = ? AND (e.payer_user_id = ? OR s.debtor_user_id = ?)
+       )
+       GROUP BY expense_split_id`,
     )
-      .bind(...results.map((row) => row.id))
+      .bind(householdId, userId, userId)
       .all<{ expense_split_id: number; cnt: number }>()
     for (const row of countRows) commentCounts.set(row.expense_split_id, row.cnt)
   }
