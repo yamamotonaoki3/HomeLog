@@ -5,6 +5,7 @@ import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_split_comments'),
     env.DB.prepare('DELETE FROM expense_splits'),
     env.DB.prepare('DELETE FROM external_persons'),
     env.DB.prepare('DELETE FROM incomes'),
@@ -393,4 +394,152 @@ describe('状態遷移(改訂フロー)', () => {
     const list = await (await app.request('/api/expense-splits', { headers: owner.headers }, env)).json<{ id: number }[]>()
     return { splitId: list[0].id }
   }
+})
+
+describe('GET/POST /api/expense-splits/:id/comments', () => {
+  interface Comment {
+    id: number
+    authorUserId: number
+    authorLabel: string
+    authorRole: 'payer' | 'debtor'
+    body: string
+    createdAt: string
+  }
+
+  async function setup() {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const member = await createUserWithoutHousehold('hanako@example.com', 'テスト花子')
+    await joinHousehold(member.headers, owner.headers)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }], { amount: 1000 })
+    const splitId = await firstSplitId(owner.headers)
+    return { owner, member, splitId }
+  }
+
+  const getComments = (id: number, headers: Record<string, string>) => app.request(`/api/expense-splits/${id}/comments`, { headers }, env)
+
+  const postComment = (id: number, headers: Record<string, string>, body: unknown) =>
+    app.request(
+      `/api/expense-splits/${id}/comments`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) },
+      env,
+    )
+
+  it('立替者はコメントを投稿・閲覧できる', async () => {
+    const { owner, splitId } = await setup()
+    const postRes = await postComment(splitId, owner.headers, { body: '来週まで待ってください' })
+    expect(postRes.status).toBe(201)
+    const posted = await postRes.json<Comment>()
+    expect(posted.authorRole).toBe('payer')
+    expect(posted.authorLabel).toBe('テスト太郎')
+    expect(posted.body).toBe('来週まで待ってください')
+
+    const listRes = await getComments(splitId, owner.headers)
+    expect(listRes.status).toBe(200)
+    const list = await listRes.json<Comment[]>()
+    expect(list).toHaveLength(1)
+    expect(list[0].body).toBe('来週まで待ってください')
+  })
+
+  it('負担者もコメントを投稿・閲覧でき、相手のコメントも見える', async () => {
+    const { owner, member, splitId } = await setup()
+    await postComment(splitId, owner.headers, { body: '請求します' })
+    const debtorPost = await postComment(splitId, member.headers, { body: '少し待ってください' })
+    expect(debtorPost.status).toBe(201)
+    const posted = await debtorPost.json<Comment>()
+    expect(posted.authorRole).toBe('debtor')
+    expect(posted.authorLabel).toBe('テスト花子')
+
+    const list = await (await getComments(splitId, member.headers)).json<Comment[]>()
+    expect(list).toHaveLength(2)
+    expect(list.map((c) => c.body)).toEqual(['請求します', '少し待ってください'])
+  })
+
+  it('settled後もコメントは残る(statusによる絞り込みは無い)', async () => {
+    const { owner, member, splitId } = await setup()
+    await postComment(splitId, member.headers, { body: '保留します' })
+    const patch = (path: string, headers: Record<string, string>, body?: unknown) =>
+      app.request(
+        `/api/expense-splits/${splitId}/${path}`,
+        { method: 'PATCH', headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) },
+        env,
+      )
+    await patch('request', owner.headers)
+    await patch('mark-paid', member.headers)
+    await patch('confirm-receipt', owner.headers)
+
+    const list = await (await getComments(splitId, owner.headers)).json<Comment[]>()
+    expect(list).toHaveLength(1)
+    expect(list[0].body).toBe('保留します')
+  })
+
+  it('第三者(その内訳の当事者ではない世帯メンバー)は404', async () => {
+    const { owner, splitId } = await setup()
+    const third = await createUserWithoutHousehold('third@example.com', 'サード')
+    await joinHousehold(third.headers, owner.headers)
+    expect((await getComments(splitId, third.headers)).status).toBe(404)
+    expect((await postComment(splitId, third.headers, { body: 'x' })).status).toBe(404)
+  })
+
+  it('別世帯のユーザーは404', async () => {
+    const { splitId } = await setup()
+    const outsider = await createUserWithHousehold('outsider@example.com')
+    expect((await getComments(splitId, outsider.headers)).status).toBe(404)
+    expect((await postComment(splitId, outsider.headers, { body: 'x' })).status).toBe(404)
+  })
+
+  it('存在しないsplitIdは404', async () => {
+    const { owner } = await setup()
+    expect((await getComments(999999, owner.headers)).status).toBe(404)
+    expect((await postComment(999999, owner.headers, { body: 'x' })).status).toBe(404)
+  })
+
+  it('空文字・空白のみのbodyは400', async () => {
+    const { owner, splitId } = await setup()
+    expect((await postComment(splitId, owner.headers, { body: '' })).status).toBe(400)
+    expect((await postComment(splitId, owner.headers, { body: '   ' })).status).toBe(400)
+  })
+
+  it('501文字以上のbodyは400', async () => {
+    const { owner, splitId } = await setup()
+    expect((await postComment(splitId, owner.headers, { body: 'あ'.repeat(501) })).status).toBe(400)
+  })
+
+  it('bodyが無い場合は400', async () => {
+    const { owner, splitId } = await setup()
+    expect((await postComment(splitId, owner.headers, {})).status).toBe(400)
+  })
+})
+
+describe('GET /api/expense-splits のcommentCount', () => {
+  it('コメント件数が正しく集計され、他の内訳の件数と混同しない', async () => {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const member = await createUserWithoutHousehold('hanako@example.com', 'テスト花子')
+    await joinHousehold(member.headers, owner.headers)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }], { amount: 1000, splitInputType: 'ratio' })
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser Q', ratio: 50 }], { amount: 2000, splitInputType: 'ratio' })
+
+    const list = await (
+      await app.request('/api/expense-splits', { headers: owner.headers }, env)
+    ).json<{ id: number; commentCount: number; debtorLabel: string }[]>()
+    expect(list.every((s) => s.commentCount === 0)).toBe(true)
+
+    // memberが負担者側の内訳を対象にする(memberが投稿できるのはこちらのみ)。
+    const target = list.find((s) => s.debtorLabel === 'テスト花子')!
+    await app.request(
+      `/api/expense-splits/${target.id}/comments`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...owner.headers }, body: JSON.stringify({ body: '1件目' }) },
+      env,
+    )
+    await app.request(
+      `/api/expense-splits/${target.id}/comments`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...member.headers }, body: JSON.stringify({ body: '2件目' }) },
+      env,
+    )
+
+    const updated = await (await app.request('/api/expense-splits', { headers: owner.headers }, env)).json<{ id: number; commentCount: number }[]>()
+    const updatedTarget = updated.find((s) => s.id === target.id)!
+    const other = updated.find((s) => s.id !== target.id)!
+    expect(updatedTarget.commentCount).toBe(2)
+    expect(other.commentCount).toBe(0)
+  })
 })

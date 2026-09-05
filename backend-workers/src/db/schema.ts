@@ -348,6 +348,22 @@ export const expenseSplits = sqliteTable('expense_splits', {
     .default(sql`(current_timestamp)`),
 })
 
+// F-04 割り勘内訳ごとのコメントスレッド。status を問わず立替者・負担者どちらも閲覧・投稿できる。
+export const expenseSplitComments = sqliteTable('expense_split_comments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  expenseSplitId: integer('expense_split_id')
+    .notNull()
+    .references(() => expenseSplits.id, { onDelete: 'cascade' }),
+  // 常にアプリ利用者(その内訳の立替者 or 負担者)。世帯外の負担者はログインできず投稿不可。
+  authorUserId: integer('author_user_id')
+    .notNull()
+    .references(() => users.id),
+  body: text('body').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(current_timestamp)`),
+})
+
 // F-05 §6-3 固定費の割り勘設定。毎月の自動計上時に expense_splits の雛形として使う。世帯内メンバーのみ。
 export const fixedCostSplits = sqliteTable('fixed_cost_splits', {
   id: integer('id').primaryKey({ autoIncrement: true }),

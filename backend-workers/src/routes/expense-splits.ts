@@ -26,6 +26,10 @@ const NON_SETTLED_STATUSES = ['unpaid', 'requested', 'payment_reported', 'pendin
 // accountId は任意。ボディ無しでも呼べる。
 const accountBodySchema = z.object({ accountId: z.number().int().positive().nullish() })
 
+const commentBodySchema = z.object({
+  body: z.string().trim().min(1, '本文を入力してください').max(500, '本文は500文字以内で入力してください'),
+})
+
 async function parseJsonBody(c: Context): Promise<unknown> {
   try {
     return (await c.req.json()) ?? {}
@@ -83,6 +87,23 @@ async function accountOwnedBy(db: D1Database, accountId: number, ownerUserId: nu
   return row != null
 }
 
+// コメント投稿者は必ずその内訳の立替者 or 負担者(世帯外の負担者はログインできず投稿不可)なので、
+// 追加JOINせずに SplitRow が既に持つ payer_name / debtor_user_name から解決できる。
+function authorLabelFor(split: SplitRow, authorUserId: number): string {
+  return authorUserId === split.payer_user_id ? split.payer_name : (split.debtor_user_name ?? '(不明)')
+}
+
+function toCommentResponse(split: SplitRow, row: { id: number; author_user_id: number; body: string; created_at: string }) {
+  return {
+    id: row.id,
+    authorUserId: row.author_user_id,
+    authorLabel: authorLabelFor(split, row.author_user_id),
+    authorRole: row.author_user_id === split.payer_user_id ? 'payer' : 'debtor',
+    body: row.body,
+    createdAt: row.created_at,
+  }
+}
+
 function toResponse(row: SplitRow, userId: number) {
   const role: 'payer' | 'debtor' = row.payer_user_id === userId ? 'payer' : 'debtor'
   return {
@@ -126,7 +147,20 @@ expenseSplitsRoute.get('/', async (c) => {
     .bind(householdId, userId, userId)
     .all<SplitRow>()
 
-  return c.json(results.map((row) => toResponse(row, userId)))
+  // コメント件数バッジ用。N+1を避けるため対象split群をまとめて1クエリでCOUNTする。
+  const commentCounts = new Map<number, number>()
+  if (results.length > 0) {
+    const placeholders = results.map(() => '?').join(', ')
+    const { results: countRows } = await c.env.DB.prepare(
+      `SELECT expense_split_id, COUNT(*) AS cnt FROM expense_split_comments
+       WHERE expense_split_id IN (${placeholders}) GROUP BY expense_split_id`,
+    )
+      .bind(...results.map((row) => row.id))
+      .all<{ expense_split_id: number; cnt: number }>()
+    for (const row of countRows) commentCounts.set(row.expense_split_id, row.cnt)
+  }
+
+  return c.json(results.map((row) => ({ ...toResponse(row, userId), commentCount: commentCounts.get(row.id) ?? 0 })))
 })
 
 // ---- ロール・status の共通チェック ----
@@ -167,6 +201,67 @@ async function resolveActorContext(
   }
   return { split, splitId, householdId, userId }
 }
+
+// ---- コメント用: 立替者 or 負担者どちらでもよい権限チェック ----
+// resolveActorContext は単一ロール固定+status制限付きなので、コメントには使えない
+// (statusを問わず、立替者・負担者どちらも閲覧・投稿可能にするため)。
+type ParticipantContext =
+  | { error: Response }
+  | { error?: undefined; split: SplitRow; splitId: number; userId: number }
+
+async function loadSplitForParticipant(c: Context<AppEnv>): Promise<ParticipantContext> {
+  const splitId = Number(c.req.param('id'))
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return { error: c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404) }
+  }
+  const split = await loadSplit(c.env.DB, householdId, splitId)
+  if (!split) {
+    return { error: c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404) }
+  }
+  const isPayer = split.payer_user_id === userId
+  const isDebtor = split.debtor_user_id != null && split.debtor_user_id === userId
+  if (!isPayer && !isDebtor) {
+    // 第三者には存在しないIDと同じ404を返す(common-notes.md 10章、IDOR対策)。
+    return { error: c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404) }
+  }
+  return { split, splitId, userId }
+}
+
+expenseSplitsRoute.get('/:id/comments', async (c) => {
+  const ctx = await loadSplitForParticipant(c)
+  if (ctx.error) return ctx.error
+  const { split, splitId } = ctx
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, author_user_id, body, created_at FROM expense_split_comments WHERE expense_split_id = ? ORDER BY id ASC',
+  )
+    .bind(splitId)
+    .all<{ id: number; author_user_id: number; body: string; created_at: string }>()
+
+  return c.json(results.map((row) => toCommentResponse(split, row)))
+})
+
+expenseSplitsRoute.post('/:id/comments', async (c) => {
+  const parsed = commentBodySchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? '入力内容を確認してください'), 400)
+  }
+  const ctx = await loadSplitForParticipant(c)
+  if (ctx.error) return ctx.error
+  const { split, splitId, userId } = ctx
+
+  const insertResult = await c.env.DB.prepare('INSERT INTO expense_split_comments (expense_split_id, author_user_id, body) VALUES (?, ?, ?)')
+    .bind(splitId, userId, parsed.data.body)
+    .run()
+  const row = await c.env.DB.prepare('SELECT id, author_user_id, body, created_at FROM expense_split_comments WHERE id = ?')
+    .bind(insertResult.meta.last_row_id)
+    .first<{ id: number; author_user_id: number; body: string; created_at: string }>()
+
+  return c.json(toCommentResponse(split, row!), 201)
+})
 
 // ---- ボディ不要の単純遷移(請求・保留) ----
 function simpleTransition(path: string, actor: Actor, allowedFrom: string[], setClause: string) {
