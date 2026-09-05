@@ -14,11 +14,25 @@ export interface SplitFieldsResult {
   errorMessage: string
 }
 
+export interface InitialSplit {
+  debtorUserId: number
+  ratio?: number
+  amountDue?: number
+}
+
 interface Props {
-  // 対象支出の金額(負担額の計算・検証に使う)。未入力・不正なら 0。
+  // 対象の金額(支出金額 or 固定費金額。負担額の計算・検証に使う)。未入力・不正なら 0。
   amount: number
   members: HouseholdMember[]
   onChange: (result: SplitFieldsResult) => void
+  // false のとき「世帯外の人」を選べなくする(固定費の割り勘は世帯内メンバーのみ)。
+  allowExternal?: boolean
+  // 親側の世帯メンバー取得が完了しているか。false の間は「退出済みメンバー」判定を保留する
+  // (取得前の空配列を「相手がいない」と誤判定しないため)。未指定なら取得済みとみなす。
+  membersLoaded?: boolean
+  // 編集時の初期値。指定があれば割り勘を有効にした状態で開く。
+  initialSplits?: InitialSplit[]
+  initialSplitInputType?: 'ratio' | 'amount'
 }
 
 type RowKind = 'member' | 'external'
@@ -44,16 +58,33 @@ function evenRatios(otherCount: number): number[] {
   return Array.from({ length: otherCount }, () => per)
 }
 
-export function SplitFields({ amount, members, onChange }: Props) {
-  const [enabled, setEnabled] = useState(false)
-  const [inputType, setInputType] = useState<'ratio' | 'amount'>('ratio')
-  const [rows, setRows] = useState<Row[]>([])
+export function SplitFields({
+  amount,
+  members,
+  onChange,
+  allowExternal = true,
+  membersLoaded = true,
+  initialSplits,
+  initialSplitInputType,
+}: Props) {
+  const hasInitial = (initialSplits?.length ?? 0) > 0
+  const [enabled, setEnabled] = useState(hasInitial)
+  const [inputType, setInputType] = useState<'ratio' | 'amount'>(initialSplitInputType ?? 'ratio')
+  const [rows, setRows] = useState<Row[]>(() =>
+    (initialSplits ?? []).map((s) => ({
+      key: rowKeySeq++,
+      kind: 'member' as RowKind,
+      memberId: String(s.debtorUserId),
+      externalName: '',
+      value: String((initialSplitInputType ?? 'ratio') === 'ratio' ? (s.ratio ?? '') : (s.amountDue ?? '')),
+    })),
+  )
 
   const addRow = () => {
     setRows((prev) => {
       const next: Row[] = [
         ...prev,
-        { key: rowKeySeq++, kind: members.length > 0 ? 'member' : 'external', memberId: '', externalName: '', value: '' },
+        { key: rowKeySeq++, kind: allowExternal && members.length === 0 ? 'external' : 'member', memberId: '', externalName: '', value: '' },
       ]
       if (inputType === 'ratio') {
         const ratios = evenRatios(next.length)
@@ -106,6 +137,9 @@ export function SplitFields({ amount, members, onChange }: Props) {
       if (row.kind === 'member') {
         if (row.memberId === '') {
           invalid = '割り勘の相手(世帯メンバー)を選択してください'
+        } else if (membersLoaded && !members.some((m) => String(m.userId) === row.memberId)) {
+          // 編集時の初期値に、その後世帯を退出したメンバーが含まれていた場合。選び直しを促す。
+          invalid = '世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください'
         } else {
           splits.push(
             inputType === 'ratio'
@@ -147,7 +181,7 @@ export function SplitFields({ amount, members, onChange }: Props) {
       if (othersTotal > 100.01) invalid = `負担割合の合計が100%を超えています(相手の合計 ${round2(othersTotal)}%)`
       myShare = `あなたの負担: ${round2(Math.max(0, 100 - othersTotal))}%`
     } else {
-      if (amount > 0 && othersTotal > amount) invalid = `負担額の合計が支出金額を超えています(相手の合計 ${othersTotal}円)`
+      if (amount > 0 && othersTotal > amount) invalid = `負担額の合計が金額を超えています(相手の合計 ${othersTotal}円)`
       myShare = amount > 0 ? `あなたの負担: ${Math.max(0, amount - othersTotal)}円` : ''
     }
 
@@ -161,7 +195,7 @@ export function SplitFields({ amount, members, onChange }: Props) {
       } as SplitFieldsResult,
       myShareLabel: myShare,
     }
-  }, [enabled, inputType, rows, amount])
+  }, [enabled, inputType, rows, amount, members, membersLoaded])
 
   useEffect(() => {
     onChange(result)
@@ -173,7 +207,7 @@ export function SplitFields({ amount, members, onChange }: Props) {
       setRows([
         {
           key: rowKeySeq++,
-          kind: members.length > 0 ? 'member' : 'external',
+          kind: allowExternal && members.length === 0 ? 'external' : 'member',
           memberId: '',
           externalName: '',
           value: inputType === 'ratio' ? '50' : '',
@@ -230,14 +264,16 @@ export function SplitFields({ amount, members, onChange }: Props) {
           <ul className="split-rows">
             {rows.map((row) => (
               <li key={row.key} className="split-row">
-                <select
-                  aria-label="割り勘の相手の種別"
-                  value={row.kind}
-                  onChange={(e) => updateRow(row.key, { kind: e.target.value as RowKind })}
-                >
-                  <option value="member">世帯メンバー</option>
-                  <option value="external">世帯外の人</option>
-                </select>
+                {allowExternal && (
+                  <select
+                    aria-label="割り勘の相手の種別"
+                    value={row.kind}
+                    onChange={(e) => updateRow(row.key, { kind: e.target.value as RowKind })}
+                  >
+                    <option value="member">世帯メンバー</option>
+                    <option value="external">世帯外の人</option>
+                  </select>
+                )}
                 {row.kind === 'member' ? (
                   <select
                     aria-label="世帯メンバー"

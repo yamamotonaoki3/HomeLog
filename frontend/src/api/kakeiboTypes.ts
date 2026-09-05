@@ -58,6 +58,15 @@ export interface FixedCost {
   editable: boolean
   accountId: number | null
   cardId: number | null
+  // 割り勘設定（F05_kakeibo_fixedcost.md §6-3）。登録者本人にのみ返る（他メンバーには null / 空配列）。
+  splitInputType: 'ratio' | 'amount' | null
+  splits: FixedCostSplit[]
+}
+
+export interface FixedCostSplit {
+  debtorUserId: number
+  splitRatio: number
+  amountDue: number
 }
 
 // GET /api/accounts/:id/transactions（S-15 口座の取引履歴、F11_kakeibo_account.md §4）。

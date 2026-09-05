@@ -3,12 +3,20 @@ import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, FixedCost } from '../api/kakeiboTypes'
+import { getCurrentUserId } from '../api/tokenStorage'
 import { Toast } from '../components/Toast'
 import { FixedCostModal } from '../components/kakeibo/FixedCostModal'
+import type { HouseholdMember } from '../components/kakeibo/SplitFields'
+
+interface HouseholdMe {
+  members: HouseholdMember[]
+}
 
 export function FixedCostsPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [members, setMembers] = useState<HouseholdMember[]>([])
+  const [membersLoaded, setMembersLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modalTarget, setModalTarget] = useState<FixedCost | null | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<FixedCost | null>(null)
@@ -56,6 +64,21 @@ export function FixedCostsPage() {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
+    apiClient
+      .get<HouseholdMe>('/households/me')
+      .then((response) => {
+        // 割り勘の相手候補は「自分以外」の世帯メンバー。
+        const myId = getCurrentUserId()
+        if (cancelled) return
+        setMembers(response.data.members.filter((member) => member.userId !== myId))
+        // 取得成功時のみ「取得済み」とする。失敗時に空配列を「相手が全員退出」と誤判定しないため。
+        setMembersLoaded(true)
+      })
+      .catch(() => {
+        // 相手候補が取れないだけなので致命的ではない。
+      })
+
     return () => {
       cancelled = true
     }
@@ -139,7 +162,7 @@ export function FixedCostsPage() {
                   <td>{fixedCost.personal ? '個人' : '世帯共有'}</td>
                   <td>{fixedCost.includeInHouseholdTotal ? '○' : ''}</td>
                   <td>{paymentSourceName(fixedCost)}</td>
-                  <td></td>
+                  <td>{fixedCost.splits.length > 0 ? `${fixedCost.splits.length}人と割り勘` : ''}</td>
                   <td>
                     {fixedCost.editable && (
                       <>
@@ -162,6 +185,8 @@ export function FixedCostsPage() {
         <FixedCostModal
           fixedCost={modalTarget}
           accounts={accounts}
+          members={members}
+          membersLoaded={membersLoaded}
           onClose={() => setModalTarget(undefined)}
           onSaved={handleSaved}
         />
