@@ -33,6 +33,66 @@ const favoriteSchema = z.object({
   isFavorite: z.boolean(),
 })
 
+// WEBレシピ引用登録(POST /from-url)専用のリクエストボディの形。
+const fromUrlSchema = z.object({
+  url: z.string().max(2048),
+  memo: z.string().max(255).nullish(),
+})
+
+// WEBレシピ(source_type='web')の編集専用のリクエストボディの形。memoしか変更できない。
+const webRecipeUpdateSchema = z.object({
+  memo: z.string().max(255).nullish(),
+})
+
+const FROM_URL_VALIDATION_MESSAGE = 'URLの形式を確認してください'
+const FETCH_FAILED_MESSAGE = 'URLの取得に失敗しました。URLを確認してください'
+// HTMLRewriterでのOGP抽出中、レスポンスボディを丸ごとメモリに載せないための上限(2MB)。
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+// プライベートIP帯・ループバックアドレスへのアクセスを弾く(SSRF対策の多層防御)。
+// Cloudflare WorkersのfetchはすでにIPアドレスへの直接アクセス等をある程度制限しているが、
+// hostnameの文字列だけでも判定できる範囲は明示的にブロックしておく。
+function isBlockedHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase()
+  if (lower === 'localhost' || lower === '127.0.0.1' || lower === '0.0.0.0' || lower === '::1') {
+    return true
+  }
+  if (/^10\./.test(lower)) return true
+  if (/^192\.168\./.test(lower)) return true
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(lower)) return true
+  return false
+}
+
+// HTMLRewriterで<meta property="og:title">/<meta property="og:image">/<title>を
+// ストリーミング抽出するためのハンドラ。ボディ全体を.text()で読み込まず、
+// タグを見つけた時点で値を保持していく。
+class MetaCollector {
+  ogTitle: string | null = null
+  ogImage: string | null = null
+  titleTagText = ''
+  private inTitleTag = false
+
+  element(element: Element) {
+    if (element.tagName === 'meta') {
+      const property = element.getAttribute('property')
+      const content = element.getAttribute('content')
+      if (property === 'og:title' && content) this.ogTitle = content
+      if (property === 'og:image' && content) this.ogImage = content
+    } else if (element.tagName === 'title') {
+      this.inTitleTag = true
+      element.onEndTag(() => {
+        this.inTitleTag = false
+      })
+    }
+  }
+
+  text(chunk: Text) {
+    if (this.inTitleTag) {
+      this.titleTagText += chunk.text
+    }
+  }
+}
+
 // リクエストボディのJSONを安全に読み取るための共通関数。
 // ボディが空、あるいはJSONとして壊れている場合に例外で落ちないよう、catchでnullを返す。
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -53,6 +113,9 @@ function toResponse(recipe: typeof recipes.$inferSelect) {
     ingredients: recipe.ingredients,
     steps: recipe.steps,
     sourceType: recipe.sourceType,
+    url: recipe.url,
+    thumbnailUrl: recipe.thumbnailUrl,
+    memo: recipe.memo,
     isFavorite: recipe.isFavorite,
   }
 }
@@ -124,12 +187,98 @@ recipesRoute.post('/', async (c) => {
   return c.json(toResponse(inserted), 201)
 })
 
-// PATCH /api/recipes/:id: 既存レシピのタイトル・材料・手順を編集する。
-recipesRoute.patch('/:id', async (c) => {
-  const parsed = recipeSchema.safeParse(await parseJsonBody(c))
+// POST /api/recipes/from-url: WEBレシピを引用登録する。
+// 材料・手順は保持せず、元ページへの参照(url/thumbnailUrl)とタイトル・メモだけを保存する。
+recipesRoute.post('/from-url', async (c) => {
+  const parsed = fromUrlSchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {
-    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+    return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
   }
+  const { url, memo } = parsed.data
+
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
+  }
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
+  }
+  if (isBlockedHostname(parsedUrl.hostname)) {
+    return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
+  }
+
+  let response: Response
+  try {
+    response = await fetch(parsedUrl.toString(), {
+      headers: { 'User-Agent': 'HomeLogBot/1.0 (+recipe-clip)' },
+      signal: AbortSignal.timeout(5000),
+    })
+  } catch {
+    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+  }
+  if (!response.ok) {
+    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+  }
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('text/html') || !response.body) {
+    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+  }
+
+  const collector = new MetaCollector()
+  const rewriter = new HTMLRewriter().on('meta', collector).on('title', collector)
+
+  let byteCount = 0
+  const countingSink = new WritableStream<Uint8Array>({
+    write(chunk) {
+      byteCount += chunk.byteLength
+      if (byteCount > MAX_RESPONSE_BYTES) {
+        throw new Error('response too large')
+      }
+    },
+  })
+
+  try {
+    await rewriter.transform(response).body?.pipeTo(countingSink)
+  } catch {
+    // 2MB超過時などはここに到達するが、その時点までに取得できたメタ情報で処理を続行する。
+  }
+
+  const title = collector.ogTitle ?? (collector.titleTagText.trim() || null) ?? parsedUrl.toString()
+  const thumbnailUrl = collector.ogImage ?? null
+
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const inserted = await db
+    .insert(recipes)
+    .values({
+      householdId,
+      createdByUserId: userId,
+      title,
+      ingredients: null,
+      steps: null,
+      sourceType: 'web',
+      url: parsedUrl.toString(),
+      thumbnailUrl,
+      memo: memo ?? null,
+      isFavorite: false,
+    })
+    .returning()
+    .get()
+
+  return c.json(toResponse(inserted), 201)
+})
+
+// PATCH /api/recipes/:id: 既存レシピを編集する。
+// sourceType='web'のレシピはブックマークに近い性質のため、memoしか編集できない
+// (title/ingredients/steps/urlは元ページの情報のまま変更不可)。manual/ocrは従来通り。
+recipesRoute.patch('/:id', async (c) => {
   // URLの:id部分(例: /api/recipes/5 の "5")は文字列として渡ってくるため、Number()で数値に変換する。
   const recipeId = Number(c.req.param('id'))
 
@@ -152,6 +301,20 @@ recipesRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
+  if (recipe.sourceType === 'web') {
+    const parsed = webRecipeUpdateSchema.safeParse(await parseJsonBody(c))
+    if (!parsed.success) {
+      return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+    }
+    const memo = parsed.data.memo ?? null
+    await db.update(recipes).set({ memo }).where(eq(recipes.id, recipeId))
+    return c.json(toResponse({ ...recipe, memo }))
+  }
+
+  const parsed = recipeSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
   const { title, ingredients, steps } = parsed.data
   // db.update(recipes).set({...}).where(...)は「UPDATE recipes SET ... WHERE ...」に相当する。
   await db

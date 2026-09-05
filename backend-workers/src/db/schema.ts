@@ -250,9 +250,9 @@ export const recipes = sqliteTable('recipes', {
   // .notNull()が付いていないため、この2列はNULLを許容する(材料・手順は任意入力のため)。
   ingredients: text('ingredients'),
   steps: text('steps'),
-  // 'manual'/'ocr'/'web'。今回は'manual'のみ使用する。
+  // 'manual'/'ocr'/'web'。
   sourceType: text('source_type').notNull().default('manual'),
-  // 将来のWEBレシピ登録拡張用の列。現時点のAPIでは常にNULL。
+  // WEBレシピ登録(POST /api/recipes/from-url)で使用。manual/ocrレシピではNULL。
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
   memo: text('memo'),

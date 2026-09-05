@@ -78,7 +78,20 @@ flowchart TD
 
 [data-model.md](../data-model.md) の `recipes` テーブルを参照。
 
+### WEBレシピのタイトル・サムネイル自動取得方式（実装済み）
+
+`POST /api/recipes/from-url` に登録先URLを渡すと、サーバー側でそのURLをfetchし、
+`HTMLRewriter` で `<meta property="og:title">` / `<meta property="og:image">` / `<title>` を
+ストリーミング抽出する（レスポンスボディを丸ごとメモリに読み込まない）。
+
+- タイトルは `og:title` → `<title>` → URL文字列 の優先順で必ず何か確定する
+- サムネイルは `og:image` が無ければ保存しない（NULL）
+- `http:`/`https:` 以外のスキーム、`localhost`/ループバック/プライベートIP帯を指定したURL、
+  非HTMLレスポンス、fetch失敗（タイムアウト・DNS失敗・非2xx）は400エラーとする（SSRF対策）
+- 取得したタイトル・サムネイル・元URL・任意メモを `source_type='web'` で保存する
+  （材料・手順は保持しない）。以降の編集はメモのみ可能
+
 ## 6. 今後の検討事項
 
 - 手書きレシピ画像解析に使用する外部AI/OCRサービスの選定
-- WEBレシピのタイトル・サムネイル自動取得方式（著作権・利用規約の確認含む）
+- 共有ボタン連携（PWA・Web Share Target）：フロントエンド実装Issueで対応予定
