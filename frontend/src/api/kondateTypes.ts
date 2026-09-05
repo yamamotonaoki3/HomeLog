@@ -11,6 +11,10 @@ export interface Recipe {
   // 本来は 'manual' | 'ocr' | 'web' の3値だが、バックエンドのレスポンス型と合わせて
   // 単純にstringとして受け取っている(現時点ではAPIが'manual'しか返さないため)。
   sourceType: string
+  // WEBレシピ登録(sourceType='web')の場合のみ設定される。手動・OCR登録では常にnull。
+  url: string | null
+  thumbnailUrl: string | null
+  memo: string | null
   isFavorite: boolean
 }
 

@@ -41,6 +41,7 @@ function App() {
                 <Route path="/categories" element={<KakeiboCategoriesPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/recipes" element={<RecipesPage />} />
+                <Route path="/recipes/share" element={<RecipesPage />} />
                 <Route path="/menu" element={<MenuPage />} />
                 <Route path="/events" element={<EventsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />

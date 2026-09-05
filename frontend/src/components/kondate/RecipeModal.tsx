@@ -15,36 +15,43 @@ interface Props {
   onClose: () => void
   // 保存成功時に呼ぶ関数。一覧の再取得(非同期処理)を行うためPromise<void>を返す型にしている。
   onSaved: () => Promise<void>
+  // 共有ボタン連携(/recipes/share)から遷移してきた場合、WEBタブのURL欄に自動入力する初期値。
+  initialUrl?: string
 }
+
+type RegisterTab = 'manual' | 'web'
 
 // `{ recipe, onClose, onSaved }`はProps型のオブジェクトから各プロパティを直接取り出す書き方
 // (分割代入)。`props.recipe`と書く代わりに`recipe`とだけ書けるようになる。
-export function RecipeModal({ recipe, onClose, onSaved }: Props) {
+export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
   // recipeがnullでなければ「編集モード」、nullなら「新規登録モード」。
   const isEdit = recipe !== null
+  // WEBレシピ(sourceType='web')の編集は、タイトル等が読み取り専用・メモだけ編集可能な
+  // 専用フォームになるため、通常の編集/新規登録と区別するフラグを別途持つ。
+  const isWebEdit = isEdit && recipe.sourceType === 'web'
+  // 新規登録時のみ「手動」「WEB」タブを切り替えられる(編集時はタブを出さない)。
+  // initialUrlが渡されている場合(共有ボタン連携)は最初からWEBタブを選択した状態で開く。
+  const [tab, setTab] = useState<RegisterTab>(initialUrl ? 'web' : 'manual')
   // useState(初期値)は [現在の値, 値を更新する関数] のペアを返す。
   // 編集モードならレシピの既存値を初期値にし、新規登録なら空文字にする。
   // `?? ''`は「recipe?.titleがnull/undefinedなら空文字を使う」という意味(null合体演算子)。
   const [title, setTitle] = useState(recipe?.title ?? '')
   const [ingredients, setIngredients] = useState(recipe?.ingredients ?? '')
   const [steps, setSteps] = useState(recipe?.steps ?? '')
+  const [url, setUrl] = useState(initialUrl ?? '')
+  const [memo, setMemo] = useState(recipe?.memo ?? '')
   const [error, setError] = useState('')
   // フォーム送信中は二重送信を防ぐためボタンを無効化するためのフラグ。
   const [submitting, setSubmitting] = useState(false)
 
-  // フォームが送信された(登録・更新ボタンが押された)ときに呼ばれる処理。
-  // `async`が付いた関数の中では`await`(後述)が使える。
-  const handleSubmit = async (e: FormEvent) => {
-    // ブラウザ標準のフォーム送信(ページ遷移)を止め、この関数内の処理だけを行う。
-    e.preventDefault()
+  // 手動登録・手動/OCR編集の送信処理(既存のPOST /recipes・PATCH /recipes/:id)。
+  const submitManual = async () => {
     const trimmedTitle = title.trim()
     // クライアント側(ブラウザ側)での簡易バリデーション。サーバーに送る前にここで弾く。
     if (trimmedTitle.length < 1 || trimmedTitle.length > 100) {
       setError('タイトルは1〜100文字で入力してください')
-      return
+      return false
     }
-    setError('')
-    setSubmitting(true)
     // サーバーに送るデータをまとめる。材料・手順が空文字の場合はnullとして送る
     // (「未入力」と「空文字」を区別せず、どちらもnull=未設定として扱うため)。
     const payload = {
@@ -52,13 +59,53 @@ export function RecipeModal({ recipe, onClose, onSaved }: Props) {
       ingredients: ingredients.trim() === '' ? null : ingredients,
       steps: steps.trim() === '' ? null : steps,
     }
+    if (isEdit) {
+      await apiClient.patch(`/recipes/${recipe.id}`, payload)
+    } else {
+      await apiClient.post('/recipes', payload)
+    }
+    return true
+  }
+
+  // WEBレシピの新規登録(POST /recipes/from-url)。
+  const submitFromUrl = async () => {
+    const trimmedUrl = url.trim()
+    if (trimmedUrl.length < 1) {
+      setError('URLを入力してください')
+      return false
+    }
+    await apiClient.post('/recipes/from-url', { url: trimmedUrl, memo: memo.trim() === '' ? null : memo })
+    return true
+  }
+
+  // WEBレシピの編集(PATCH /recipes/:id、memoのみ)。
+  const submitWebEdit = async () => {
+    if (!recipe) return false
+    await apiClient.patch(`/recipes/${recipe.id}`, { memo: memo.trim() === '' ? null : memo })
+    return true
+  }
+
+  // フォームが送信された(登録・更新ボタンが押された)ときに呼ばれる処理。
+  // `async`が付いた関数の中では`await`(後述)が使える。
+  const handleSubmit = async (e: FormEvent) => {
+    // ブラウザ標準のフォーム送信(ページ遷移)を止め、この関数内の処理だけを行う。
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
     try {
       // `await`は「非同期処理(通信など時間のかかる処理)の完了を待ってから次の行に進む」という意味。
-      // 編集か新規登録かでAPIのメソッド(PATCH/POST)を切り替える。
-      if (isEdit) {
-        await apiClient.patch(`/recipes/${recipe.id}`, payload)
+      // 編集か新規登録か、手動かWEBかでAPI呼び出しを切り替える。
+      let ok: boolean
+      if (isWebEdit) {
+        ok = await submitWebEdit()
+      } else if (!isEdit && tab === 'web') {
+        ok = await submitFromUrl()
       } else {
-        await apiClient.post('/recipes', payload)
+        ok = await submitManual()
+      }
+      if (!ok) {
+        setSubmitting(false)
+        return
       }
     } catch (err) {
       // 通信エラー時はエラーメッセージを画面に表示し、以降の処理(モーダルを閉じる等)は行わない。
@@ -79,22 +126,91 @@ export function RecipeModal({ recipe, onClose, onSaved }: Props) {
     }
   }
 
+  // WEBレシピの編集時：タイトル・サムネイル・元URLは読み取り専用表示、メモだけ編集可能。
+  if (isWebEdit) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal">
+          <h2>WEBレシピを編集</h2>
+          <form onSubmit={handleSubmit} noValidate>
+            <p>
+              <strong>{recipe.title}</strong>
+            </p>
+            {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" style={{ maxWidth: '160px' }} />}
+            {recipe.url && (
+              <p>
+                <a href={recipe.url} target="_blank" rel="noopener noreferrer">
+                  元ページを開く
+                </a>
+              </p>
+            )}
+            <label htmlFor="recipe-memo">メモ</label>
+            <textarea id="recipe-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
+            <p className="error">{error}</p>
+            <div className="modal-actions">
+              <button type="submit" className="btn btn-primary" disabled={submitting}>
+                更新
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+                キャンセル
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   // 画面に表示する内容(JSX。HTMLに似た構文でReactの画面を組み立てる)。
   return (
     <div className="modal-overlay">
       <div className="modal">
         {/* isEditの値によって見出しの文言を切り替える(三項演算子)。 */}
         <h2>{isEdit ? 'レシピを編集' : 'レシピを登録'}</h2>
+        {/* 新規登録時のみ「手動」「WEB」タブを表示する(編集時は元のsourceTypeのフォームのまま)。 */}
+        {!isEdit && (
+          <div className="tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'manual'}
+              className={tab === 'manual' ? 'btn btn-primary' : 'btn btn-secondary'}
+              onClick={() => setTab('manual')}
+            >
+              手動
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'web'}
+              className={tab === 'web' ? 'btn btn-primary' : 'btn btn-secondary'}
+              onClick={() => setTab('web')}
+            >
+              WEB
+            </button>
+          </div>
+        )}
         {/* onSubmit={handleSubmit}で、送信ボタンが押されたら上のhandleSubmitを実行する。 */}
         <form onSubmit={handleSubmit} noValidate>
-          <label htmlFor="recipe-title">タイトル</label>
-          {/* value={title}で入力欄の表示内容をuseStateの値と連動させ、
-              onChangeで入力される度にsetTitleを呼んで状態を更新する(制御されたコンポーネント)。 */}
-          <input id="recipe-title" type="text" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
-          <label htmlFor="recipe-ingredients">材料</label>
-          <textarea id="recipe-ingredients" value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
-          <label htmlFor="recipe-steps">手順</label>
-          <textarea id="recipe-steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
+          {!isEdit && tab === 'web' ? (
+            <>
+              <label htmlFor="recipe-url">レシピURL</label>
+              <input id="recipe-url" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />
+              <label htmlFor="recipe-memo">メモ</label>
+              <textarea id="recipe-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
+            </>
+          ) : (
+            <>
+              <label htmlFor="recipe-title">タイトル</label>
+              {/* value={title}で入力欄の表示内容をuseStateの値と連動させ、
+                  onChangeで入力される度にsetTitleを呼んで状態を更新する(制御されたコンポーネント)。 */}
+              <input id="recipe-title" type="text" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
+              <label htmlFor="recipe-ingredients">材料</label>
+              <textarea id="recipe-ingredients" value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
+              <label htmlFor="recipe-steps">手順</label>
+              <textarea id="recipe-steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
+            </>
+          )}
           <p className="error">{error}</p>
           <div className="modal-actions">
             {/* submitting中はボタンを押せなくする(disabled)。 */}
