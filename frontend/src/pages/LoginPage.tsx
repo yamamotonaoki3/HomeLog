@@ -6,7 +6,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import { PasswordField } from '../components/PasswordField'
 
 interface LocationState {
-  from?: { pathname?: string }
+  from?: string
 }
 
 export function LoginPage() {
@@ -24,7 +24,7 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email.trim(), password)
-      const from = (location.state as LocationState | null)?.from?.pathname
+      const from = (location.state as LocationState | null)?.from
       navigate(from ?? '/', { replace: true })
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 401) {
