@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
 
@@ -232,5 +232,224 @@ describe('PATCH /api/recipes/:id/favorite', () => {
     )
 
     expect(res.status).toBe(404)
+  })
+})
+
+describe('POST /api/recipes/from-url', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubFetch(response: Response) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+  }
+
+  function htmlResponse(html: string, contentType = 'text/html; charset=utf-8') {
+    return new Response(html, { status: 200, headers: { 'content-type': contentType } })
+  }
+
+  it('og:titleとog:imageを抽出して201で保存できる', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    stubFetch(
+      htmlResponse(
+        '<html><head><meta property="og:title" content="肉じゃがレシピ"><meta property="og:image" content="https://cdn.example.com/img.png"><title>フォールバック</title></head></html>',
+      ),
+    )
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/123', memo: '来週作る' }) },
+      env,
+    )
+
+    expect(res.status).toBe(201)
+    const body = await res.json<{ title: string; thumbnailUrl: string | null; memo: string | null; sourceType: string; url: string | null; ingredients: string | null; steps: string | null }>()
+    expect(body.title).toBe('肉じゃがレシピ')
+    expect(body.thumbnailUrl).toBe('https://cdn.example.com/img.png')
+    expect(body.memo).toBe('来週作る')
+    expect(body.sourceType).toBe('web')
+    expect(body.url).toBe('https://recipe.example.com/123')
+    expect(body.ingredients).toBeNull()
+    expect(body.steps).toBeNull()
+  })
+
+  it('og:titleが無ければ<title>にフォールバックする', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    stubFetch(htmlResponse('<html><head><title>タイトルタグのみ</title></head></html>'))
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/456' }) },
+      env,
+    )
+
+    expect(res.status).toBe(201)
+    const body = await res.json<{ title: string; thumbnailUrl: string | null }>()
+    expect(body.title).toBe('タイトルタグのみ')
+    expect(body.thumbnailUrl).toBeNull()
+  })
+
+  it('og:titleも<title>も無ければURL文字列にフォールバックする', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    stubFetch(htmlResponse('<html><head></head><body>本文のみ</body></html>'))
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/789' }) },
+      env,
+    )
+
+    expect(res.status).toBe(201)
+    const body = await res.json<{ title: string }>()
+    expect(body.title).toBe('https://recipe.example.com/789')
+  })
+
+  it('http/https以外のスキームは400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'ftp://recipe.example.com/1' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('不正なURL形式は400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'not-a-url' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it.each([
+    'http://localhost/x',
+    'http://127.0.0.1/x',
+    'http://127.255.255.254/x',
+    'http://10.0.0.5/x',
+    'http://192.168.1.1/x',
+    'http://172.16.0.1/x',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://[::]/x',
+    'http://[::1]/x',
+    'http://[fc00::1]/x',
+    'http://[fdff:ffff::1]/x',
+    'http://[fe80::1]/x',
+    'http://[febf:ffff::1]/x',
+    'http://[::ffff:127.0.0.1]/x',
+    'http://[::ffff:169.254.169.254]/x',
+  ])(
+    'プライベートIP/localhost指定(%s)は400を返す',
+    async (url) => {
+      const { headers } = await createUserWithHousehold('taro@example.com')
+
+      const res = await app.request(
+        '/api/recipes/from-url',
+        { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url }) },
+        env,
+      )
+
+      expect(res.status).toBe(400)
+    },
+  )
+
+  it('fetch失敗時は400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/1' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('非2xxレスポンスは400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    stubFetch(new Response('not found', { status: 404, headers: { 'content-type': 'text/html' } }))
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/1' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('HTML以外のcontent-typeは400を返す', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    stubFetch(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/1' }) },
+      env,
+    )
+
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('PATCH /api/recipes/:id (web種別)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  async function createWebRecipe(headers: Record<string, string>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html><head><meta property="og:title" content="元タイトル"></head></html>', { status: 200, headers: { 'content-type': 'text/html' } })),
+    )
+    const res = await app.request(
+      '/api/recipes/from-url',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/1' }) },
+      env,
+    )
+    vi.unstubAllGlobals()
+    return res.json<{ id: number; title: string }>()
+  }
+
+  it('web種別はmemoのみ更新でき、titleは変更されない', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const recipe = await createWebRecipe(headers)
+
+    const res = await app.request(
+      `/api/recipes/${recipe.id}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ memo: '更新後メモ' }) },
+      env,
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{ title: string; memo: string | null }>()
+    expect(body.title).toBe('元タイトル')
+    expect(body.memo).toBe('更新後メモ')
+  })
+
+  it('manual種別は従来通りtitle等を更新できる', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const createRes = await app.request(
+      '/api/recipes',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ title: '肉じゃが' }) },
+      env,
+    )
+    const recipe = await createRes.json<{ id: number }>()
+
+    const res = await app.request(
+      `/api/recipes/${recipe.id}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ title: '肉じゃが(改)', ingredients: '牛肉', steps: '煮る' }) },
+      env,
+    )
+
+    expect(res.status).toBe(200)
+    expect((await res.json<{ title: string }>()).title).toBe('肉じゃが(改)')
   })
 })
