@@ -249,13 +249,17 @@ expenseSplitsRoute.get('/:id/comments', async (c) => {
 })
 
 expenseSplitsRoute.post('/:id/comments', async (c) => {
+  // 権限チェック(第三者・存在しないsplitは404)を先に行う。バリデーションを先にすると、
+  // 権限の無い相手に対しても「不正な入力だから400」という情報を返してしまい、
+  // 「第三者には常に404」という不変条件が崩れる。
+  const ctx = await loadSplitForParticipant(c)
+  if (ctx.error) return ctx.error
+  const { split, splitId, userId } = ctx
+
   const parsed = commentBodySchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? '入力内容を確認してください'), 400)
   }
-  const ctx = await loadSplitForParticipant(c)
-  if (ctx.error) return ctx.error
-  const { split, splitId, userId } = ctx
 
   const insertResult = await c.env.DB.prepare('INSERT INTO expense_split_comments (expense_split_id, author_user_id, body) VALUES (?, ?, ?)')
     .bind(splitId, userId, parsed.data.body)

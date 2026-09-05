@@ -493,6 +493,14 @@ describe('GET/POST /api/expense-splits/:id/comments', () => {
     expect((await postComment(999999, owner.headers, { body: 'x' })).status).toBe(404)
   })
 
+  it('第三者が不正なbodyでPOSTしても404(400にならない)', async () => {
+    const { owner, splitId } = await setup()
+    const third = await createUserWithoutHousehold('third2@example.com', 'サード2')
+    await joinHousehold(third.headers, owner.headers)
+    expect((await postComment(splitId, third.headers, {})).status).toBe(404)
+    expect((await postComment(splitId, third.headers, { body: '' })).status).toBe(404)
+  })
+
   it('空文字・空白のみのbodyは400', async () => {
     const { owner, splitId } = await setup()
     expect((await postComment(splitId, owner.headers, { body: '' })).status).toBe(400)
