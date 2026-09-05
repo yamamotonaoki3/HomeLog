@@ -50,6 +50,8 @@ export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
     try {
       const response = await apiClient.post<ExpenseSplitComment>(`/expense-splits/${split.id}/comments`, { body })
       setComments((prev) => [...(prev ?? []), response.data])
+      // 初回取得(GET)が失敗していても投稿には成功しうる。エラー表示のまま一覧が隠れ続けないよう解除する。
+      setError('')
       setDraft('')
       onPosted()
     } catch (err) {
@@ -90,7 +92,12 @@ export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
         {postError && <p className="error">{postError}</p>}
 
         <div className="modal-actions">
-          <button type="button" className="btn btn-primary" disabled={posting || draft.trim() === ''} onClick={() => void handleSubmit()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={posting || loading || draft.trim() === ''}
+            onClick={() => void handleSubmit()}
+          >
             投稿
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>

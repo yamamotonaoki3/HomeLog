@@ -64,6 +64,28 @@ describe('ExpenseSplitCommentsModal', () => {
     expect(await screen.findByText('失敗')).toBeInTheDocument()
   })
 
+  it('取得に失敗しても投稿に成功すればエラー表示が消え投稿内容が見える', async () => {
+    server.use(
+      http.get('/api/expense-splits/:id/comments', () => HttpResponse.json({ message: '取得失敗' }, { status: 500 })),
+      http.post('/api/expense-splits/:id/comments', async ({ request }) => {
+        const body = (await request.json()) as { body: string }
+        return HttpResponse.json(
+          { id: 5, authorUserId: 1, authorLabel: 'テスト太郎', authorRole: 'payer', body: body.body, createdAt: '2026-01-03 00:00:00' },
+          { status: 201 },
+        )
+      }),
+    )
+    render(<ExpenseSplitCommentsModal split={split} onClose={vi.fn()} onPosted={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('取得失敗')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('コメントを投稿'), 'エラー後の投稿')
+    await user.click(screen.getByRole('button', { name: '投稿' }))
+
+    await waitFor(() => expect(screen.getByText('エラー後の投稿')).toBeInTheDocument())
+    expect(screen.queryByText('取得失敗')).not.toBeInTheDocument()
+  })
+
   it('投稿すると一覧に追加され、入力欄がクリアされ、onPostedが呼ばれる', async () => {
     const { onPosted } = renderModal([])
     await waitFor(() => expect(screen.getByText('コメントはまだありません')).toBeInTheDocument())
