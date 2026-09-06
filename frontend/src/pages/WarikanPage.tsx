@@ -47,8 +47,12 @@ function purposeText(split: ExpenseSplit) {
   return split.expensePurpose.trim() === '' ? '（用途なし）' : split.expensePurpose
 }
 
+// 相手が世帯内メンバーか世帯外の非アプリ利用者かで一覧を絞り込むタブ(S-07)。
+type WorldFilter = 'internal' | 'external'
+
 export function WarikanPage() {
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
+  const [worldFilter, setWorldFilter] = useState<WorldFilter>('internal')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [settlement, setSettlement] = useState<{ kind: SettlementKind; split: ExpenseSplit } | null>(null)
@@ -136,6 +140,8 @@ export function WarikanPage() {
     return <p>読み込み中...</p>
   }
 
+  const visibleSplits = splits.filter((split) => (worldFilter === 'external' ? split.isExternal : !split.isExternal))
+
   return (
     <div className="page">
       <div className="panel" data-testid="warikan-panel">
@@ -144,6 +150,26 @@ export function WarikanPage() {
           <Link to="/kakeibo" className="btn btn-secondary">
             家計簿に戻る
           </Link>
+        </div>
+        <div className="tabs" role="tablist" aria-label="相手の絞り込み">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={worldFilter === 'internal'}
+            className={worldFilter === 'internal' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setWorldFilter('internal')}
+          >
+            世帯内
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={worldFilter === 'external'}
+            className={worldFilter === 'external' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setWorldFilter('external')}
+          >
+            世帯外
+          </button>
         </div>
         <table className="table">
           <thead>
@@ -157,12 +183,12 @@ export function WarikanPage() {
             </tr>
           </thead>
           <tbody>
-            {splits.length === 0 ? (
+            {visibleSplits.length === 0 ? (
               <tr>
                 <td colSpan={6}>割り勘の内訳はありません</td>
               </tr>
             ) : (
-              splits.map((split) => (
+              visibleSplits.map((split) => (
                 <tr key={split.id}>
                   <td>{split.expenseDate}</td>
                   <td>{purposeText(split)}</td>
