@@ -91,7 +91,14 @@ flowchart TD
 - 取得したタイトル・サムネイル・元URL・任意メモを `source_type='web'` で保存する
   （材料・手順は保持しない）。以降の編集はメモのみ可能
 
+### 共有ボタン連携（PWA、実装済み）
+
+インストール済みPWA（主にAndroid Chrome）から、他アプリの共有メニュー経由でレシピURLを
+HomeLogへ渡せる（Web Share Target）。共有すると `/recipes/share?url=...` に遷移し、
+WEBタブが選択された状態でレシピ登録モーダルが自動的に開く。`url`パラメータが無い場合は
+`text`パラメータからURLらしき文字列を正規表現で抽出してフォールバックする。
+iOS SafariはWeb Share Target非対応のため、従来通りURLコピペで登録する。
+
 ## 6. 今後の検討事項
 
 - 手書きレシピ画像解析に使用する外部AI/OCRサービスの選定
-- 共有ボタン連携（PWA・Web Share Target）：フロントエンド実装Issueで対応予定

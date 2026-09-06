@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { AuthProvider } from '../../context/AuthContext'
 import { LoginPage } from '../../pages/LoginPage'
@@ -16,12 +16,19 @@ function renderLoginPage(initialEntries: (string | { pathname: string; state?: u
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<div>ダッシュボード</div>} />
           <Route path="/zaiko" element={<div>在庫画面</div>} />
+          <Route path="/recipes/share" element={<SharePage />} />
           <Route path="/register" element={<div>登録画面</div>} />
           <Route path="/password-reset" element={<div>リセット画面</div>} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
   )
+}
+
+function SharePage() {
+  const location = useLocation()
+
+  return <div>共有画面: {`${location.search}${location.hash}`}</div>
 }
 
 describe('LoginPage', () => {
@@ -53,13 +60,34 @@ describe('LoginPage', () => {
       ),
     )
     const user = userEvent.setup()
-    renderLoginPage([{ pathname: '/login', state: { from: { pathname: '/zaiko' } } }])
+    renderLoginPage([{ pathname: '/login', state: { from: '/zaiko' } }])
 
     await user.type(screen.getByLabelText('メールアドレス'), 'taro@example.com')
     await user.type(screen.getByLabelText('パスワード'), 'Passw0rd')
     await user.click(screen.getByRole('button', { name: 'ログイン' }))
 
     await waitFor(() => expect(screen.getByText('在庫画面')).toBeInTheDocument())
+  })
+
+  it('クエリパラメータとハッシュを含む元のURLへログイン後に戻る', async () => {
+    server.use(
+      http.post('/api/auth/login', () =>
+        HttpResponse.json({ accessToken: 'access-token', refreshToken: 'refresh-token', expiresIn: 900 }),
+      ),
+    )
+    const user = userEvent.setup()
+    const from = '/recipes/share?url=https%3A%2F%2Fexample.com%2Frecipe%3Fid%3D1#details'
+    renderLoginPage([{ pathname: '/login', state: { from } }])
+
+    await user.type(screen.getByLabelText('メールアドレス'), 'taro@example.com')
+    await user.type(screen.getByLabelText('パスワード'), 'Passw0rd')
+    await user.click(screen.getByRole('button', { name: 'ログイン' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('共有画面: ?url=https%3A%2F%2Fexample.com%2Frecipe%3Fid%3D1#details'),
+      ).toBeInTheDocument(),
+    )
   })
 
   it('401エラー時はエラーメッセージを表示する', async () => {

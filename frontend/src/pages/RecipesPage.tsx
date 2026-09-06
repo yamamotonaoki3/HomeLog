@@ -2,14 +2,24 @@
 // - useCallback: 関数を「作り直さない」ようにするための仕組み(パフォーマンス最適化・無限ループ防止用)。
 // - useEffect: 「画面が表示された後に1回だけ行いたい処理(APIからのデータ取得など)」を書く場所。
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Recipe } from '../api/kondateTypes'
 import { Toast } from '../components/Toast'
 import { RecipeModal } from '../components/kondate/RecipeModal'
 
-// この画面(ページ)全体を表すコンポーネント。App.tsxで`/recipes`にルーティングされている。
+// 本文中のURLらしき文字列を1つ抽出する(Web Share Targetの`text`パラメータ用のフォールバック)。
+const URL_PATTERN = /https?:\/\/\S+/
+
+// この画面(ページ)全体を表すコンポーネント。App.tsxで`/recipes`と`/recipes/share`の
+// 両方にルーティングされている。
 export function RecipesPage() {
+  const [searchParams] = useSearchParams()
+  // 共有ボタン連携(`/recipes/share?url=...&text=...`)で渡されたURL。
+  // `url`が無ければ`text`からURLらしき文字列を正規表現で抽出する(アプリによっては
+  // urlパラメータを使わずtextにURLを含めて共有してくることがあるため)。
+  const sharedUrl = searchParams.get('url') ?? searchParams.get('text')?.match(URL_PATTERN)?.[0] ?? null
   // レシピの一覧データ。`useState<Recipe[]>([])`は「Recipe型の配列を持つ状態、初期値は空配列」の意味。
   const [recipes, setRecipes] = useState<Recipe[]>([])
   // 初回のデータ取得中かどうか(trueの間は「読み込み中...」を表示する)。
@@ -18,7 +28,7 @@ export function RecipesPage() {
   // - undefined: モーダルを閉じている
   // - null: 新規登録モーダルを開いている
   // - Recipeオブジェクト: そのレシピの編集モーダルを開いている
-  const [modalTarget, setModalTarget] = useState<Recipe | null | undefined>(undefined)
+  const [modalTarget, setModalTarget] = useState<Recipe | null | undefined>(sharedUrl ? null : undefined)
   // 削除確認ダイアログの対象(nullなら非表示)。
   const [deleteTarget, setDeleteTarget] = useState<Recipe | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -150,10 +160,24 @@ export function RecipesPage() {
               // key={recipe.id}はReactが各行を正しく区別・更新するために必須の指定。
               recipes.map((recipe) => (
                 <tr key={recipe.id}>
-                  <td>{recipe.title}</td>
-                  {/* ingredients/stepsはnullの可能性があるため、nullなら空文字を表示する。 */}
-                  <td>{recipe.ingredients ?? ''}</td>
-                  <td>{recipe.steps ?? ''}</td>
+                  <td>
+                    {/* WEBレシピはサムネイル(あれば)と元ページへの外部リンクを併記する。 */}
+                    {recipe.thumbnailUrl && (
+                      <img src={recipe.thumbnailUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', marginRight: '6px', verticalAlign: 'middle' }} />
+                    )}
+                    {recipe.title}
+                    {recipe.sourceType === 'web' && recipe.url && (
+                      <>
+                        {' '}
+                        <a href={recipe.url} target="_blank" rel="noopener noreferrer">
+                          元ページを開く
+                        </a>
+                      </>
+                    )}
+                  </td>
+                  {/* WEBレシピは材料・手順を保持しないため「-」を表示する。それ以外はnullなら空文字。 */}
+                  <td>{recipe.sourceType === 'web' ? '-' : recipe.ingredients ?? ''}</td>
+                  <td>{recipe.sourceType === 'web' ? '-' : recipe.steps ?? ''}</td>
                   <td>
                     <button
                       type="button"
@@ -181,7 +205,12 @@ export function RecipesPage() {
       </div>
       {/* modalTargetがundefinedでない(=登録 or 編集モーダルを開くべき)ときだけモーダルを描画する。 */}
       {modalTarget !== undefined && (
-        <RecipeModal recipe={modalTarget} onClose={() => setModalTarget(undefined)} onSaved={handleSaved} />
+        <RecipeModal
+          recipe={modalTarget}
+          onClose={() => setModalTarget(undefined)}
+          onSaved={handleSaved}
+          initialUrl={modalTarget === null ? (sharedUrl ?? undefined) : undefined}
+        />
       )}
       {/* deleteTargetが設定されている(nullでない)ときだけ削除確認ダイアログを描画する。 */}
       {deleteTarget && (

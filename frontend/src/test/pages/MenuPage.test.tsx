@@ -122,7 +122,7 @@ describe('MenuPage', () => {
 
   it('レシピを選択して確定登録できる', async () => {
     const monday = getMondayOf(new Date())
-    const { calls } = setupApi({ recipes: [{ id: 10, title: '肉じゃが', ingredients: null, steps: null, sourceType: 'manual', isFavorite: false }] })
+    const { calls } = setupApi({ recipes: [{ id: 10, title: '肉じゃが', ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false }] })
     const user = userEvent.setup()
     renderMenuPage()
     await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
@@ -153,7 +153,7 @@ describe('MenuPage', () => {
   })
 
   it('レシピ未選択のまま追加しようとするとクライアント側でエラー表示しAPIを呼ばない', async () => {
-    const { calls } = setupApi({ recipes: [{ id: 10, title: '肉じゃが', ingredients: null, steps: null, sourceType: 'manual', isFavorite: false }] })
+    const { calls } = setupApi({ recipes: [{ id: 10, title: '肉じゃが', ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false }] })
     const user = userEvent.setup()
     renderMenuPage()
     await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
@@ -182,8 +182,8 @@ describe('MenuPage', () => {
   it('お気に入りのレシピがプルダウンの先頭に表示される', async () => {
     setupApi({
       recipes: [
-        { id: 1, title: '通常レシピ', ingredients: null, steps: null, sourceType: 'manual', isFavorite: false },
-        { id: 2, title: 'お気に入りレシピ', ingredients: null, steps: null, sourceType: 'manual', isFavorite: true },
+        { id: 1, title: '通常レシピ', ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false },
+        { id: 2, title: 'お気に入りレシピ', ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: true },
       ],
     })
     renderMenuPage()
