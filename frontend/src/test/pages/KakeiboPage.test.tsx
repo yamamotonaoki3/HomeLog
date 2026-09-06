@@ -370,6 +370,56 @@ describe('KakeiboPage', () => {
       categoryId: 1,
       includeInHouseholdTotal: false,
     })
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/api/expenses')).toHaveLength(2)
+  })
+
+  it('支出登録後の全件取得が遅れてもカテゴリー絞り込みを上書きせず、全件集計は更新する', async () => {
+    const currentMonthExpense: Expense = {
+      ...suppliesExpense,
+      expenseDate: dateInMonth(0, 1),
+    }
+    const { state } = setupApi({ expenses: [currentMonthExpense] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('洗剤')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    let unfilteredRefreshCount = 0
+    server.use(
+      http.get('/api/expenses', async ({ request }) => {
+        const categoryId = new URL(request.url).searchParams.get('categoryId')
+        if (categoryId !== null) {
+          return HttpResponse.json(state.expenses.filter((expense) => expense.categoryId === Number(categoryId)))
+        }
+
+        unfilteredRefreshCount += 1
+        const snapshot = [...state.expenses]
+        await refreshGate
+        return HttpResponse.json(snapshot)
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    const modal = screen.getByTestId('transaction-modal')
+    await user.clear(within(modal).getByLabelText('金額'))
+    await user.type(within(modal).getByLabelText('金額'), '1500')
+    await user.type(within(modal).getByLabelText('使用用途（任意）'), '保存後の支出')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(unfilteredRefreshCount).toBe(1))
+
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(screen.getByText('保存後の支出')).toBeInTheDocument())
+    expect(screen.queryByText('洗剤')).not.toBeInTheDocument()
+
+    releaseRefresh?.()
+
+    await waitFor(() => expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument())
+    expect(screen.queryByText('洗剤')).not.toBeInTheDocument()
+    expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月支出：2300円')
   })
 
   it('収入を登録すると一覧に反映されモーダルが閉じ、リクエストに世帯合計フラグを含めない', async () => {
@@ -394,6 +444,7 @@ describe('KakeiboPage', () => {
       categoryId: 11,
     })
     expect(postCall?.body).not.toHaveProperty('includeInHouseholdTotal')
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/api/incomes')).toHaveLength(2)
   })
 
   it('金額0以下はクライアント側でエラー表示しAPIを呼ばない', async () => {
@@ -649,6 +700,36 @@ describe('KakeiboPage 今月支出/今月収入/世帯合計対象額サマリ�
     await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月支出：2000円'))
     expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月収入：300000円')
     expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：45300円')
+  })
+
+  it('カテゴリー絞り込み中も今月支出・今月収入は全カテゴリーの合計を表示する', async () => {
+    setupApi({
+      expenses: [
+        { ...lunchExpense, expenseDate: dateInMonth(0, 1), amount: 1200 },
+        { ...suppliesExpense, expenseDate: dateInMonth(0, 2), amount: 800 },
+      ],
+      incomes: [
+        { ...salaryIncome, incomeDate: dateInMonth(0, 3), amount: 300000 },
+        { ...bonusIncome, incomeDate: dateInMonth(0, 4), amount: 500000 },
+      ],
+    })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    const summary = await screen.findByTestId('monthly-summary')
+    await waitFor(() => expect(summary).toHaveTextContent('今月支出：2000円'))
+    expect(summary).toHaveTextContent('今月収入：800000円')
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
+    expect(summary).toHaveTextContent('今月支出：2000円')
+    expect(summary).toHaveTextContent('今月収入：800000円')
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '給与')
+    await waitFor(() => expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument())
+    expect(summary).toHaveTextContent('今月支出：2000円')
+    expect(summary).toHaveTextContent('今月収入：800000円')
   })
 })
 
