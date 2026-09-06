@@ -1,8 +1,10 @@
+import { isAxiosError } from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getCurrentUserId } from '../api/tokenStorage'
-import type { Event } from '../api/eventTypes'
+import type { DashboardSummary } from '../api/dashboardTypes'
+import type { Event, SummaryPeriod } from '../api/eventTypes'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Account, Expense, FixedCost, Income, IncomeCategory, KakeiboCategory } from '../api/kakeiboTypes'
 import type { ExpenseSplit } from '../api/warikanTypes'
@@ -17,16 +19,30 @@ interface HouseholdMe {
 
 type TypeFilter = 'all' | 'expense' | 'income'
 
+// イベント別支出1件分の集計状態。EventsPage.tsxと同じ考え方で、
+// show_on_dashboard=falseによる404(意図した集計対象外)と、通信断・認証切れ・
+// サーバーエラー等の予期しない失敗を区別する。
+type EventSummaryState = { status: 'ok'; total: number } | { status: 'excluded' } | { status: 'error' }
+
+// "YYYY-MM-DD"形式の日付文字列が指定した年月(ブラウザローカル時刻基準)に含まれるかどうか。
+// week.tsと同様、このアプリのフロント側では既存踏襲でJST厳密変換は行わない。
+function isInMonth(dateStr: string, year: number, month: number): boolean {
+  const [y, m] = dateStr.split('-').map(Number)
+  return y === year && m === month
+}
+
 export function KakeiboPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [allExpenses, setAllExpenses] = useState<Expense[]>([])
   const [categoryFilter, setCategoryFilter] = useState('')
   const latestExpenseRequestId = useRef(0)
 
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategory[]>([])
   const [incomes, setIncomes] = useState<Income[]>([])
+  const [allIncomes, setAllIncomes] = useState<Income[]>([])
   const [incomeCategoryFilter, setIncomeCategoryFilter] = useState('')
   const latestIncomeRequestId = useRef(0)
 
@@ -35,6 +51,9 @@ export function KakeiboPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [members, setMembers] = useState<HouseholdMember[]>([])
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null)
+  const [eventPeriod, setEventPeriod] = useState<SummaryPeriod>('year')
+  const [eventSummaries, setEventSummaries] = useState<Record<number, EventSummaryState>>({})
 
   const fetchSplits = useCallback(async () => {
     const response = await apiClient.get<ExpenseSplit[]>('/expense-splits')
@@ -56,6 +75,9 @@ export function KakeiboPage() {
     const response = await apiClient.get<Expense[]>('/expenses', {
       params: categoryIdFilter === '' ? {} : { categoryId: categoryIdFilter },
     })
+    if (categoryIdFilter === '') {
+      setAllExpenses(response.data)
+    }
     if (requestId === latestExpenseRequestId.current) {
       setExpenses(response.data)
       return true
@@ -63,16 +85,69 @@ export function KakeiboPage() {
     return false
   }, [])
 
+  const fetchAllExpenses = useCallback(async () => {
+    const response = await apiClient.get<Expense[]>('/expenses')
+    setAllExpenses(response.data)
+    return response.data
+  }, [])
+
+  // イベント別支出の集計取得。EventsPage.tsxと同じ「対象期間を素早く切り替えたときに
+  // 古いレスポンスで新しい画面を上書きしない」ためのrequestIdガード付き。
+  const eventSummaryRequestIdRef = useRef(0)
+  const fetchEventSummaries = useCallback(
+    async (targetEvents: Event[], targetPeriod: SummaryPeriod) => {
+      const requestId = ++eventSummaryRequestIdRef.current
+      const dashboardEvents = targetEvents.filter((event) => event.showOnDashboard)
+      let hadUnexpectedError = false
+      const entries = await Promise.all(
+        dashboardEvents.map(async (event) => {
+          try {
+            const response = await apiClient.get<{ total: number }>(`/events/${event.id}/summary`, {
+              params: { period: targetPeriod },
+            })
+            return [event.id, { status: 'ok', total: response.data.total } as EventSummaryState] as const
+          } catch (err) {
+            if (isAxiosError(err) && err.response?.status === 404) {
+              return [event.id, { status: 'excluded' } as EventSummaryState] as const
+            }
+            hadUnexpectedError = true
+            return [event.id, { status: 'error' } as EventSummaryState] as const
+          }
+        }),
+      )
+      if (eventSummaryRequestIdRef.current !== requestId) return
+      setEventSummaries(Object.fromEntries(entries))
+      if (hadUnexpectedError) {
+        showToast('一部のイベントの集計取得に失敗しました。時間をおいて再度お試しください')
+      }
+    },
+    [showToast],
+  )
+
+  const fetchDashboardSummary = useCallback(async () => {
+    const response = await apiClient.get<DashboardSummary>('/dashboard/summary')
+    setDashboardSummary(response.data)
+  }, [])
+
   const fetchIncomes = useCallback(async (categoryIdFilter: string) => {
     const requestId = ++latestIncomeRequestId.current
     const response = await apiClient.get<Income[]>('/incomes', {
       params: categoryIdFilter === '' ? {} : { categoryId: categoryIdFilter },
     })
+    if (categoryIdFilter === '') {
+      setAllIncomes(response.data)
+    }
     if (requestId === latestIncomeRequestId.current) {
       setIncomes(response.data)
       return true
     }
     return false
+  }, [])
+
+  const fetchAllIncomes = useCallback(async () => {
+    const response = await apiClient.get<Income[]>('/incomes')
+    setAllIncomes(response.data)
+    return response.data
   }, [])
 
   useEffect(() => {
@@ -98,20 +173,18 @@ export function KakeiboPage() {
           )
         }
 
-        if (
-          expensesResult.status === 'fulfilled' &&
-          expenseRequestId === latestExpenseRequestId.current
-        ) {
-          setExpenses(expensesResult.value.data)
-        } else {
-          if (expensesResult.status === 'rejected') {
-            showToast(
-              getApiErrorMessage(
-                expensesResult.reason,
-                '支出の取得に失敗しました。時間をおいて再度お試しください',
-              ),
-            )
+        if (expensesResult.status === 'fulfilled') {
+          setAllExpenses(expensesResult.value.data)
+          if (expenseRequestId === latestExpenseRequestId.current) {
+            setExpenses(expensesResult.value.data)
           }
+        } else {
+          showToast(
+            getApiErrorMessage(
+              expensesResult.reason,
+              '支出の取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
         }
       })
       .finally(() => {
@@ -136,20 +209,18 @@ export function KakeiboPage() {
           )
         }
 
-        if (
-          incomesResult.status === 'fulfilled' &&
-          incomeRequestId === latestIncomeRequestId.current
-        ) {
-          setIncomes(incomesResult.value.data)
-        } else {
-          if (incomesResult.status === 'rejected') {
-            showToast(
-              getApiErrorMessage(
-                incomesResult.reason,
-                '収入の取得に失敗しました。時間をおいて再度お試しください',
-              ),
-            )
+        if (incomesResult.status === 'fulfilled') {
+          setAllIncomes(incomesResult.value.data)
+          if (incomeRequestId === latestIncomeRequestId.current) {
+            setIncomes(incomesResult.value.data)
           }
+        } else {
+          showToast(
+            getApiErrorMessage(
+              incomesResult.reason,
+              '収入の取得に失敗しました。時間をおいて再度お試しください',
+            ),
+          )
         }
       })
       .finally(() => {
@@ -189,6 +260,12 @@ export function KakeiboPage() {
         }
       })
 
+    fetchDashboardSummary().catch((err: unknown) => {
+      if (!cancelled) {
+        showToast(getApiErrorMessage(err, '世帯合計対象額の取得に失敗しました。時間をおいて再度お試しください'))
+      }
+    })
+
     apiClient
       .get<HouseholdMe>('/households/me')
       .then((response) => {
@@ -214,7 +291,13 @@ export function KakeiboPage() {
     return () => {
       cancelled = true
     }
-  }, [showToast])
+  }, [fetchDashboardSummary, showToast])
+
+  // イベント一覧が取得できた後、または期間セレクトが切り替えられたときに集計を取り直す。
+  useEffect(() => {
+    if (events.length === 0) return
+    fetchEventSummaries(events, eventPeriod)
+  }, [events, eventPeriod, fetchEventSummaries])
 
   const handleTypeFilterChange = async (nextTypeFilter: TypeFilter) => {
     setTypeFilter(nextTypeFilter)
@@ -259,19 +342,32 @@ export function KakeiboPage() {
   const handleSaved = async (kind: 'expense' | 'income') => {
     if (kind === 'expense') {
       try {
-        await fetchExpenses(categoryFilter)
+        // 未絞り込み時は1回のレスポンスで表示一覧と月次集計用の全件データを更新する。
+        // 絞り込み中だけ、表示用と全件集計用に異なるリクエストが必要になる。
+        if (categoryFilter === '') {
+          await fetchExpenses('')
+        } else {
+          await Promise.all([fetchExpenses(categoryFilter), fetchAllExpenses()])
+        }
       } catch (err) {
         showToast(getApiErrorMessage(err, '支出の取得に失敗しました'))
         throw err
       }
-      // 割り勘付きで登録された可能性があるためサマリーも更新する(失敗しても支出登録自体は成功扱い)。
+      // 割り勘付き・世帯合計対象・イベント紐付きで登録された可能性があるため各サマリーも
+      // 更新する(失敗しても支出登録自体は成功扱いとし、ここでは投げ直さない)。
       fetchSplits().catch(() => undefined)
+      fetchDashboardSummary().catch(() => undefined)
+      fetchEventSummaries(events, eventPeriod).catch(() => undefined)
       setModalOpen(false)
       showToast('支出を登録しました')
       return
     }
     try {
-      await fetchIncomes(incomeCategoryFilter)
+      if (incomeCategoryFilter === '') {
+        await fetchIncomes('')
+      } else {
+        await Promise.all([fetchIncomes(incomeCategoryFilter), fetchAllIncomes()])
+      }
     } catch (err) {
       showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
       throw err
@@ -298,8 +394,50 @@ export function KakeiboPage() {
   const owedToMe = unsettledSplits.filter((split) => split.role === 'payer')
   const sumAmount = (list: ExpenseSplit[]) => list.reduce((sum, split) => sum + split.amountDue, 0)
 
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+  const monthlyExpenseTotal = allExpenses
+    .filter((expense) => isInMonth(expense.expenseDate, currentYear, currentMonth))
+    .reduce((sum, expense) => sum + expense.amount, 0)
+  const monthlyIncomeTotal = allIncomes
+    .filter((income) => isInMonth(income.incomeDate, currentYear, currentMonth))
+    .reduce((sum, income) => sum + income.amount, 0)
+  const dashboardEvents = events.filter((event) => event.showOnDashboard)
+
   return (
     <div className="page">
+      <div className="panel" data-testid="monthly-summary">
+        <p>
+          今月支出：{monthlyExpenseTotal}円　今月収入：{monthlyIncomeTotal}円　世帯合計対象額：
+          {dashboardSummary?.householdExpenseTotal ?? 0}円
+        </p>
+      </div>
+      <div className="panel" data-testid="event-summary">
+        <label htmlFor="kakeibo-event-period">イベント支出（対象期間）</label>
+        <select
+          id="kakeibo-event-period"
+          value={eventPeriod}
+          onChange={(e) => setEventPeriod(e.target.value as SummaryPeriod)}
+        >
+          <option value="year">今年</option>
+          <option value="month">今月</option>
+        </select>
+        {dashboardEvents.length === 0 ? (
+          <p>ダッシュボード表示対象のイベントはありません</p>
+        ) : (
+          <ul>
+            {dashboardEvents.map((event) => {
+              const summary = eventSummaries[event.id]
+              return (
+                <li key={event.id}>
+                  {event.name}：{summary?.status === 'ok' ? `${summary.total}円` : summary?.status === 'error' ? '取得失敗' : '集計中...'}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
       <div className="panel" data-testid="fixed-cost-summary">
         <p>今月の固定費予定額：{fixedCostTotal}円</p>
       </div>

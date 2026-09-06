@@ -150,6 +150,7 @@ describe('WarikanPage(改訂フロー)', () => {
     const { calls } = setupApi([split({ status: 'requested', isExternal: true, debtorLabel: 'E2EUser A' })])
     renderPage()
     const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: '世帯外' }))
 
     await user.click(within(await rowOf()).getByRole('button', { name: '精算済みにする' }))
     const modal = await screen.findByTestId('settlement-account-modal')
@@ -214,5 +215,45 @@ describe('WarikanPage コメント', () => {
 
     await user.click(within(modal).getByRole('button', { name: '閉じる' }))
     expect(await within(await rowOf()).findByRole('button', { name: 'コメント(1)' })).toBeInTheDocument()
+  })
+})
+
+describe('WarikanPage 世帯内/世帯外タブ', () => {
+  it('デフォルトでは世帯内タブが選択され世帯内の内訳のみ表示される', async () => {
+    setupApi([
+      split({ id: 1, expensePurpose: '世帯内の支出', isExternal: false }),
+      split({ id: 2, expensePurpose: '世帯外の支出', isExternal: true, debtorLabel: 'E2EUser A' }),
+    ])
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
+    expect(screen.queryByText('世帯外の支出')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '世帯内', selected: true })).toBeInTheDocument()
+  })
+
+  it('世帯外タブに切り替えると世帯外の内訳のみ表示される', async () => {
+    setupApi([
+      split({ id: 1, expensePurpose: '世帯内の支出', isExternal: false }),
+      split({ id: 2, expensePurpose: '世帯外の支出', isExternal: true, debtorLabel: 'E2EUser A' }),
+    ])
+    renderPage()
+    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('tab', { name: '世帯外' }))
+
+    expect(screen.getByText('世帯外の支出')).toBeInTheDocument()
+    expect(screen.queryByText('世帯内の支出')).not.toBeInTheDocument()
+  })
+
+  it('絞り込んだ結果が0件のときはプレースホルダーを表示する', async () => {
+    setupApi([split({ id: 1, expensePurpose: '世帯内の支出', isExternal: false })])
+    renderPage()
+    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('tab', { name: '世帯外' }))
+
+    expect(await screen.findByText('割り勘の内訳はありません')).toBeInTheDocument()
   })
 })

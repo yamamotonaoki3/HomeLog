@@ -26,6 +26,10 @@ interface MockState {
   events: Event[]
   members?: { userId: number; displayName: string }[]
   splits?: import('../../api/warikanTypes').ExpenseSplit[]
+  dashboardSummary?: { shoppingListCount: number; lowStockCount: number; householdExpenseTotal: number }
+  // イベントID => {year: 今年の集計, month: 今月の集計}。エントリが無いイベントは
+  // (show_on_dashboard=falseと同じ)404を返す=集計対象外として扱われる。
+  eventSummaries?: Record<number, { year: number; month: number }>
 }
 
 /** 家計簿API一式を状態ベースでモックし、リクエスト記録と状態を返す */
@@ -95,6 +99,18 @@ function setupApi(initial: Partial<MockState> = {}) {
     http.get('/api/events', () => HttpResponse.json(state.events)),
     http.get('/api/households/me', () => HttpResponse.json({ members: initial.members ?? [] })),
     http.get('/api/expense-splits', () => HttpResponse.json(initial.splits ?? [])),
+    http.get('/api/dashboard/summary', () =>
+      HttpResponse.json(initial.dashboardSummary ?? { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }),
+    ),
+    http.get('/api/events/:id/summary', ({ request, params }) => {
+      const period = new URL(request.url).searchParams.get('period') as 'year' | 'month'
+      calls.push({ method: 'GET', url: `/api/events/${params.id}/summary?period=${period}` })
+      const entry = initial.eventSummaries?.[Number(params.id)]
+      if (entry === undefined) {
+        return HttpResponse.json({ code: 'RESOURCE_NOT_FOUND', message: '集計対象外のイベントです' }, { status: 404 })
+      }
+      return HttpResponse.json({ total: entry[period] })
+    }),
   )
 
   return { state, calls }
@@ -354,6 +370,56 @@ describe('KakeiboPage', () => {
       categoryId: 1,
       includeInHouseholdTotal: false,
     })
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/api/expenses')).toHaveLength(2)
+  })
+
+  it('支出登録後の全件取得が遅れてもカテゴリー絞り込みを上書きせず、全件集計は更新する', async () => {
+    const currentMonthExpense: Expense = {
+      ...suppliesExpense,
+      expenseDate: dateInMonth(0, 1),
+    }
+    const { state } = setupApi({ expenses: [currentMonthExpense] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('洗剤')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    let unfilteredRefreshCount = 0
+    server.use(
+      http.get('/api/expenses', async ({ request }) => {
+        const categoryId = new URL(request.url).searchParams.get('categoryId')
+        if (categoryId !== null) {
+          return HttpResponse.json(state.expenses.filter((expense) => expense.categoryId === Number(categoryId)))
+        }
+
+        unfilteredRefreshCount += 1
+        const snapshot = [...state.expenses]
+        await refreshGate
+        return HttpResponse.json(snapshot)
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    const modal = screen.getByTestId('transaction-modal')
+    await user.clear(within(modal).getByLabelText('金額'))
+    await user.type(within(modal).getByLabelText('金額'), '1500')
+    await user.type(within(modal).getByLabelText('使用用途（任意）'), '保存後の支出')
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(unfilteredRefreshCount).toBe(1))
+
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(screen.getByText('保存後の支出')).toBeInTheDocument())
+    expect(screen.queryByText('洗剤')).not.toBeInTheDocument()
+
+    releaseRefresh?.()
+
+    await waitFor(() => expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument())
+    expect(screen.queryByText('洗剤')).not.toBeInTheDocument()
+    expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月支出：2300円')
   })
 
   it('収入を登録すると一覧に反映されモーダルが閉じ、リクエストに世帯合計フラグを含めない', async () => {
@@ -378,6 +444,7 @@ describe('KakeiboPage', () => {
       categoryId: 11,
     })
     expect(postCall?.body).not.toHaveProperty('includeInHouseholdTotal')
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/api/incomes')).toHaveLength(2)
   })
 
   it('金額0以下はクライアント側でエラー表示しAPIを呼ばない', async () => {
@@ -598,5 +665,147 @@ describe('KakeiboPage', () => {
     await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
 
     expect(within(modal).getByLabelText('金額')).toHaveValue(3000)
+  })
+})
+
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0')
+}
+
+// テスト実行日に依存せず「今月」「前月」の日付文字列を動的に算出する
+// (MenuPage.test.tsxのgetMondayOf(new Date())と同じ考え方)。
+function dateInMonth(monthsAgo: number, day: number): string {
+  const base = new Date()
+  base.setDate(1)
+  base.setMonth(base.getMonth() - monthsAgo)
+  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(day)}`
+}
+
+describe('KakeiboPage 今月支出/今月収入/世帯合計対象額サマリー', () => {
+  it('当月の支出・収入のみ合算して表示し、世帯合計対象額はdashboard/summaryの値をそのまま表示する', async () => {
+    setupApi({
+      expenses: [
+        { ...lunchExpense, id: 1, expenseDate: dateInMonth(0, 1), amount: 1200 },
+        { ...suppliesExpense, id: 2, expenseDate: dateInMonth(0, 2), amount: 800 },
+        { ...lunchExpense, id: 3, expenseDate: dateInMonth(1, 15), amount: 9999 },
+      ],
+      incomes: [
+        { ...salaryIncome, id: 1, incomeDate: dateInMonth(0, 25), amount: 300000 },
+        { ...bonusIncome, id: 2, incomeDate: dateInMonth(1, 10), amount: 999999 },
+      ],
+      dashboardSummary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 45300 },
+    })
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月支出：2000円'))
+    expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月収入：300000円')
+    expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：45300円')
+  })
+
+  it('カテゴリー絞り込み中も今月支出・今月収入は全カテゴリーの合計を表示する', async () => {
+    setupApi({
+      expenses: [
+        { ...lunchExpense, expenseDate: dateInMonth(0, 1), amount: 1200 },
+        { ...suppliesExpense, expenseDate: dateInMonth(0, 2), amount: 800 },
+      ],
+      incomes: [
+        { ...salaryIncome, incomeDate: dateInMonth(0, 3), amount: 300000 },
+        { ...bonusIncome, incomeDate: dateInMonth(0, 4), amount: 500000 },
+      ],
+    })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    const summary = await screen.findByTestId('monthly-summary')
+    await waitFor(() => expect(summary).toHaveTextContent('今月支出：2000円'))
+    expect(summary).toHaveTextContent('今月収入：800000円')
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '支出')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '食費')
+    await waitFor(() => expect(screen.queryByText('洗剤')).not.toBeInTheDocument())
+    expect(summary).toHaveTextContent('今月支出：2000円')
+    expect(summary).toHaveTextContent('今月収入：800000円')
+
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '給与')
+    await waitFor(() => expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument())
+    expect(summary).toHaveTextContent('今月支出：2000円')
+    expect(summary).toHaveTextContent('今月収入：800000円')
+  })
+})
+
+describe('KakeiboPage 世帯合計対象額の再取得', () => {
+  it('世帯合計対象で支出を登録すると世帯合計対象額が再取得され更新される', async () => {
+    let householdExpenseTotal = 0
+    setupApi()
+    // setupApiが登録するデフォルトの/api/dashboard/summaryハンドラを、
+    // 動的に値を返すこちらのハンドラで上書きする(server.useは後から登録した方が優先される)。
+    server.use(
+      http.get('/api/dashboard/summary', () =>
+        HttpResponse.json({ shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal }),
+      ),
+    )
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：0円'))
+
+    householdExpenseTotal = 3000
+    const user = await openModal()
+    const modal = screen.getByTestId('transaction-modal')
+    await user.clear(within(modal).getByLabelText('金額'))
+    await user.type(within(modal).getByLabelText('金額'), '3000')
+    await user.click(within(modal).getByLabelText('世帯合計に含める'))
+    await user.click(within(modal).getByRole('button', { name: '登録' }))
+
+    await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：3000円'))
+  })
+})
+
+describe('KakeiboPage イベント別支出サマリー', () => {
+  const dashboardEvent: Event = {
+    id: 1,
+    name: '旅行',
+    eventDate: '2026-09-20',
+    isAllDay: true,
+    startTime: null,
+    endTime: null,
+    recurrenceType: 'none',
+    notifyEnabled: false,
+    defaultAmount: null,
+    showOnDashboard: true,
+    personal: false,
+    editable: true,
+  }
+  const hiddenEvent: Event = { ...dashboardEvent, id: 2, name: '非表示イベント', showOnDashboard: false }
+
+  it('showOnDashboard=trueのイベントのみ表示され、デフォルトは今年の集計を取得する', async () => {
+    const { calls } = setupApi({
+      events: [dashboardEvent, hiddenEvent],
+      eventSummaries: { 1: { year: 15000, month: 3000 } },
+    })
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByText('旅行：15000円')).toBeInTheDocument())
+    expect(screen.queryByText('非表示イベント')).not.toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/events/1/summary?period=year')).toBe(true)
+  })
+
+  it('期間セレクトを今月に切り替えると今月の集計に更新される', async () => {
+    setupApi({
+      events: [dashboardEvent],
+      eventSummaries: { 1: { year: 15000, month: 3000 } },
+    })
+    renderKakeiboPage()
+    await waitFor(() => expect(screen.getByText('旅行：15000円')).toBeInTheDocument())
+    const user = userEvent.setup()
+
+    await user.selectOptions(screen.getByLabelText('イベント支出（対象期間）'), '今月')
+
+    await waitFor(() => expect(screen.getByText('旅行：3000円')).toBeInTheDocument())
+  })
+
+  it('対象イベントが無いときは案内文を表示する', async () => {
+    setupApi({ events: [] })
+    renderKakeiboPage()
+
+    await waitFor(() => expect(screen.getByText('ダッシュボード表示対象のイベントはありません')).toBeInTheDocument())
   })
 })
