@@ -258,6 +258,7 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | GET | `/api/dashboard/summary` | ダッシュボード用の集計（在庫・家計簿・今日の状況）を取得 |
+| GET | `/api/dashboard/calendar?month=YYYY-MM` | 指定月のカレンダー表示用集計と当日通知件数を取得 |
 
 レスポンス（200 OK）:
 ```json
@@ -275,6 +276,25 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
   ]
 }
 ```
+
+`GET /api/dashboard/calendar` のレスポンス（200 OK）:
+```json
+{
+  "days": [
+    {
+      "date": "2026-02-28",
+      "fixedCosts": ["家賃"],
+      "events": [{ "name": "毎週の予定", "isRecurring": true }],
+      "balance": -1200
+    }
+  ],
+  "notificationCount": 1
+}
+```
+
+- `month` は実在する `YYYY-MM` 形式で必須。不正時は400を返す。
+- `fixedCosts` と `events` は世帯共有またはログインユーザー本人の個人データだけを含む。固定費の支払日は月末を超える場合、その月の末日に補正する。
+- `balance` はログインユーザー本人の当日の収入合計から支出合計を引いた値。`notificationCount` はJST当日に発生する通知有効イベント数。
 
 ---
 
