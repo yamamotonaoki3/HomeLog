@@ -4,9 +4,10 @@ import { addTransaction, setupUserWithHousehold } from './support/flows'
 test.describe('S-04 ダッシュボード集計API', () => {
   test('本人の収支・今週の献立・当日イベントを実プロセス経由で返す', async ({ page }) => {
     await setupUserWithHousehold(page, 'dashboard_api')
+    const jstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
     await page.goto('/kakeibo')
-    await addTransaction(page, '支出', 1200, '[E2E_TEST] ダッシュボード支出')
+    await addTransaction(page, '支出', 1200, '[E2E_TEST] ダッシュボード支出', { date: jstToday })
 
     await page.goto('/recipes')
     await page.getByRole('button', { name: 'レシピを登録' }).click()
@@ -19,7 +20,7 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await page.goto('/events')
     await page.getByRole('button', { name: 'イベントを登録' }).click()
     await page.getByLabel('イベント名').fill('[E2E_TEST] ダッシュボードイベント')
-    await page.getByLabel('日付').fill(new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+    await page.getByLabel('日付').fill(jstToday)
     await page.getByRole('button', { name: '登録', exact: true }).click()
 
     const accessToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
