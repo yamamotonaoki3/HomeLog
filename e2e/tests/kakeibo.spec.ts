@@ -1,15 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { setupUserWithHousehold } from './support/flows'
-
-async function addTransaction(page: Page, kind: '支出' | '収入', amount: number, text: string) {
-  await page.getByRole('button', { name: '登録', exact: true }).first().click()
-  const modal = page.getByTestId('transaction-modal')
-  await modal.getByRole('tab', { name: kind }).click()
-  await modal.getByLabel('金額').fill(String(amount))
-  await modal.getByLabel(kind === '支出' ? '使用用途（任意）' : '収入内容').fill(text)
-  await modal.getByRole('button', { name: '登録', exact: true }).click()
-  await expect(modal).toBeHidden()
-}
+import { expect, test } from '@playwright/test'
+import { addTransaction, setupUserWithHousehold } from './support/flows'
 
 test.describe('F-03/F-13 家計簿', () => {
   test('支出・収入を登録すると一覧と今月サマリーに反映される', async ({ page }) => {
