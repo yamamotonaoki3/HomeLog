@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { register, setupUserWithHousehold } from './support/flows'
+import { getInviteCode, joinHousehold, register, setupUserWithHousehold } from './support/flows'
 import { newUser } from './support/test-data'
 
 test.describe('F-02 世帯', () => {
@@ -10,15 +10,11 @@ test.describe('F-02 世帯', () => {
     const pageB = await contextB.newPage()
 
     const userA = await setupUserWithHousehold(pageA, 'owner')
-    await pageA.goto('/household/settings')
-    const inviteCode = (await pageA.locator('p', { hasText: '招待コード' }).locator('strong').textContent())?.trim()
-    expect(inviteCode).toBeTruthy()
+    const inviteCode = await getInviteCode(pageA)
 
     const userB = newUser('member')
     await register(pageB, userB)
-    await pageB.getByLabel('招待コード').fill(inviteCode!)
-    await pageB.getByRole('button', { name: '参加する' }).click()
-    await expect(pageB).toHaveURL(/\/$/)
+    await joinHousehold(pageB, inviteCode)
 
     // 双方の世帯設定にメンバーとして表示される
     await pageB.goto('/household/settings')

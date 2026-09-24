@@ -24,7 +24,7 @@ npm test
 Playwright の引数はそのまま渡せる。
 
 ```bash
-npm test -- --project=chromium
+npm test -- tests/zaiko.spec.ts
 ```
 
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
@@ -45,3 +45,9 @@ npm test -- --project=chromium
 | 1 | `auth.spec.ts` | 登録（確認欄不一致）・ログイン/ログアウト・未ログインリダイレクト |
 | 1 | `household.spec.ts` | 世帯作成 → 別ユーザーが招待コードで参加 |
 | 1 | `kakeibo.spec.ts` | 支出・収入登録 → 一覧・今月サマリー反映 |
+| 2 | `warikan.spec.ts` | A 割り勘登録 → B 支払報告 → A 受領確認で精算済み |
+| 2 | `fixed-costs.spec.ts` | 固定費の登録・一覧表示・削除 |
+| 2 | `zaiko.spec.ts` | 閾値以下の在庫が買い物リストに載る → 購入で在庫反映・リストから消える |
+| 3 | `kondate.spec.ts` | レシピ手動登録 → 献立にレシピ・自由メモを追加 |
+| 3 | `events.spec.ts` | イベント登録 → 一覧表示 |
+| 3 | `accounts.spec.ts` | 口座登録 → 口座指定の支出が残高・取引履歴に反映 |
