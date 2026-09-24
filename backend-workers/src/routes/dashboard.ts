@@ -1,8 +1,8 @@
 import { and, eq, isNull, or } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono } from 'hono'
-import { events, menuEntries, recipes } from '../db/schema'
-import { currentMonthRange, currentWeekStart, formatJstToday, getJstToday } from '../lib/date'
+import { events, fixedCosts, menuEntries, recipes } from '../db/schema'
+import { currentMonthRange, currentWeekStart, formatJstToday, getJstToday, isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveOccurrences, type RecurrenceType } from '../lib/event-recurrence'
 import { resolveHouseholdId } from '../lib/household-context'
@@ -94,4 +94,85 @@ dashboardRoute.get('/summary', async (c) => {
     weeklyMenuEntries,
     todayEvents,
   })
+})
+
+dashboardRoute.get('/calendar', async (c) => {
+  const month = c.req.query('month')
+  if (!month || !/^\d{4}-\d{2}$/.test(month) || !isValidCalendarDate(`${month}-01`)) {
+    return c.json(errorResponse('VALIDATION_ERROR', 'monthは実在するYYYY-MM形式で指定してください'), 400)
+  }
+
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const [year, monthNumber] = month.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()
+  const monthStart = `${month}-01`
+  const nextMonthStart = `${year + (monthNumber === 12 ? 1 : 0)}-${(monthNumber === 12 ? 1 : monthNumber + 1).toString().padStart(2, '0')}-01`
+  const days = Array.from({ length: lastDay }, (_, index) => ({
+    date: `${month}-${(index + 1).toString().padStart(2, '0')}`,
+    fixedCosts: [] as string[],
+    events: [] as { name: string; isRecurring: boolean }[],
+    balance: 0,
+  }))
+  const daysByDate = new Map(days.map((day) => [day.date, day]))
+
+  const [incomeRows, expenseRows, visibleFixedCosts, visibleEvents] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT income_date AS date, COALESCE(SUM(amount), 0) AS total FROM incomes
+       WHERE household_id = ? AND earner_user_id = ? AND income_date >= ? AND income_date < ? GROUP BY income_date`,
+    )
+      .bind(householdId, userId, monthStart, nextMonthStart)
+      .all<{ date: string; total: number }>(),
+    c.env.DB.prepare(
+      `SELECT expense_date AS date, COALESCE(SUM(amount), 0) AS total FROM expenses
+       WHERE household_id = ? AND payer_user_id = ? AND expense_date >= ? AND expense_date < ? GROUP BY expense_date`,
+    )
+      .bind(householdId, userId, monthStart, nextMonthStart)
+      .all<{ date: string; total: number }>(),
+    db
+      .select({ name: fixedCosts.name, paymentDay: fixedCosts.paymentDay })
+      .from(fixedCosts)
+      .where(and(eq(fixedCosts.householdId, householdId), or(isNull(fixedCosts.ownerUserId), eq(fixedCosts.ownerUserId, userId))))
+      .orderBy(fixedCosts.id)
+      .all(),
+    db
+      .select({ name: events.name, eventDate: events.eventDate, recurrenceType: events.recurrenceType, notifyEnabled: events.notifyEnabled })
+      .from(events)
+      .where(and(eq(events.householdId, householdId), or(isNull(events.ownerUserId), eq(events.ownerUserId, userId))))
+      .orderBy(events.id)
+      .all(),
+  ])
+
+  for (const row of incomeRows.results) {
+    const day = daysByDate.get(row.date)
+    if (day) day.balance += row.total
+  }
+  for (const row of expenseRows.results) {
+    const day = daysByDate.get(row.date)
+    if (day) day.balance -= row.total
+  }
+  for (const fixedCost of visibleFixedCosts) {
+    const date = `${month}-${Math.min(fixedCost.paymentDay, lastDay).toString().padStart(2, '0')}`
+    daysByDate.get(date)?.fixedCosts.push(fixedCost.name)
+  }
+  for (const event of visibleEvents) {
+    const recurrenceType = event.recurrenceType as RecurrenceType
+    for (const date of resolveOccurrences({ eventDate: event.eventDate, recurrenceType }, monthStart, `${month}-${lastDay}`)) {
+      daysByDate.get(date)?.events.push({ name: event.name, isRecurring: recurrenceType !== 'none' })
+    }
+  }
+
+  const today = formatJstToday()
+  const notificationCount = visibleEvents.filter(
+    (event) =>
+      event.notifyEnabled &&
+      resolveOccurrences({ eventDate: event.eventDate, recurrenceType: event.recurrenceType as RecurrenceType }, today, today).length > 0,
+  ).length
+
+  return c.json({ days, notificationCount })
 })

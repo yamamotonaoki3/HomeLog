@@ -102,6 +102,46 @@ async function createIncome(params: { householdId: number; userId: number; amoun
     .run()
 }
 
+async function createEvent(params: {
+  householdId: number
+  ownerUserId: number | null
+  createdByUserId: number
+  name: string
+  eventDate: string
+  recurrenceType: string
+  notifyEnabled?: boolean
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type, notify_enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      params.householdId,
+      params.ownerUserId,
+      params.createdByUserId,
+      params.name,
+      params.eventDate,
+      params.recurrenceType,
+      params.notifyEnabled ? 1 : 0,
+    )
+    .run()
+}
+
+async function createCalendarFixedCost(params: {
+  householdId: number
+  ownerUserId: number | null
+  createdByUserId: number
+  name: string
+  paymentDay: number
+}): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO fixed_costs (household_id, owner_user_id, created_by_user_id, name, amount, payment_day)
+     VALUES (?, ?, ?, ?, 1000, ?)`,
+  )
+    .bind(params.householdId, params.ownerUserId, params.createdByUserId, params.name, params.paymentDay)
+    .run()
+}
+
 function formatDate(date: Date): string {
   return `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}-${date.getUTCDate().toString().padStart(2, '0')}`
 }
@@ -297,5 +337,99 @@ describe('GET /api/dashboard/summary', () => {
       { name: '共有の習慣', recurrenceType: 'daily' },
       { name: '自分の予定', recurrenceType: 'none' },
     ])
+  })
+})
+
+describe('GET /api/dashboard/calendar', () => {
+  it('monthが実在するYYYY-MM形式でない場合は400を返す', async () => {
+    const { headers } = await createUserWithHousehold('calendar-invalid@example.com')
+
+    for (const month of ['', '2026-2', '2026-13', '2026-00', 'invalid']) {
+      const res = await app.request(`/api/dashboard/calendar?month=${month}`, { headers }, env)
+      expect(res.status).toBe(400)
+    }
+  })
+
+  it('月末補正した固定費、繰り返しイベント、本人の日別収支を返す', async () => {
+    const owner = await createUserWithHousehold('calendar-owner@example.com')
+    await createCalendarFixedCost({
+      householdId: owner.householdId,
+      ownerUserId: null,
+      createdByUserId: owner.userId,
+      name: '月末の家賃',
+      paymentDay: 31,
+    })
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: null,
+      createdByUserId: owner.userId,
+      name: '毎週の予定',
+      eventDate: '2026-01-02',
+      recurrenceType: 'weekly',
+    })
+    await createIncome({ householdId: owner.householdId, userId: owner.userId, amount: 5000, incomeDate: '2026-02-06' })
+    await createExpense({ householdId: owner.householdId, userId: owner.userId, amount: 1200, expenseDate: '2026-02-06', includeInHouseholdTotal: false })
+
+    const res = await app.request('/api/dashboard/calendar?month=2026-02', { headers: owner.headers }, env)
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{
+      days: { date: string; fixedCosts: string[]; events: { name: string; isRecurring: boolean }[]; balance: number }[]
+      notificationCount: number
+    }>()
+    expect(body.days).toHaveLength(28)
+    expect(body.days.find((day) => day.date === '2026-02-28')).toMatchObject({ fixedCosts: ['月末の家賃'] })
+    expect(body.days.find((day) => day.date === '2026-02-06')).toMatchObject({
+      events: [{ name: '毎週の予定', isRecurring: true }],
+      balance: 3800,
+    })
+  })
+
+  it('他人の個人データを除外し、当日の通知有効イベント発生件数を返す', async () => {
+    const owner = await createUserWithHousehold('calendar-visibility@example.com')
+    const member = await env.DB.prepare(
+      'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id',
+    )
+      .bind('calendar-member@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+    await createCalendarFixedCost({
+      householdId: owner.householdId,
+      ownerUserId: member.id,
+      createdByUserId: member.id,
+      name: '他人の個人固定費',
+      paymentDay: 1,
+    })
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: member.id,
+      createdByUserId: member.id,
+      name: '他人の個人予定',
+      eventDate: '2026-02-01',
+      recurrenceType: 'none',
+    })
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: null,
+      createdByUserId: owner.userId,
+      name: '共有の毎日通知',
+      eventDate: '2000-01-01',
+      recurrenceType: 'daily',
+      notifyEnabled: true,
+    })
+
+    const today = formatJstToday()
+    const month = today.slice(0, 7)
+    const res = await app.request(`/api/dashboard/calendar?month=${month}`, { headers: owner.headers }, env)
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{
+      days: { fixedCosts: string[]; events: { name: string }[] }[]
+      notificationCount: number
+    }>()
+    expect(body.days.flatMap((day) => day.fixedCosts)).not.toContain('他人の個人固定費')
+    expect(body.days.flatMap((day) => day.events.map((event) => event.name))).not.toContain('他人の個人予定')
+    expect(body.notificationCount).toBe(1)
   })
 })
