@@ -1,17 +1,22 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { getJstToday } from '../../lib/date'
+import { formatJstToday, getJstToday } from '../../lib/date'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM menu_entries'),
+    env.DB.prepare('DELETE FROM recipes'),
+    env.DB.prepare('DELETE FROM incomes'),
     env.DB.prepare('DELETE FROM expenses'),
+    env.DB.prepare('DELETE FROM events'),
     env.DB.prepare('DELETE FROM fixed_costs'),
     env.DB.prepare('DELETE FROM shopping_list_items'),
     env.DB.prepare('DELETE FROM inventory_items'),
     env.DB.prepare('DELETE FROM zaiko_categories'),
     env.DB.prepare('DELETE FROM kakeibo_categories'),
+    env.DB.prepare('DELETE FROM income_categories'),
     env.DB.prepare('DELETE FROM household_members'),
     env.DB.prepare('DELETE FROM households'),
     env.DB.prepare('DELETE FROM users'),
@@ -80,6 +85,32 @@ async function createFixedCost(params: { householdId: number; userId: number; am
   )
     .bind(params.householdId, params.userId, params.amount, params.includeInHouseholdTotal ? 1 : 0)
     .run()
+}
+
+async function createIncome(params: { householdId: number; userId: number; amount: number; incomeDate: string }): Promise<void> {
+  const category = await env.DB.prepare(
+    "INSERT INTO income_categories (household_id, name, is_default) VALUES (?, 'テスト収入カテゴリー', 0) RETURNING id",
+  )
+    .bind(params.householdId)
+    .first<{ id: number }>()
+  if (!category) throw new Error('test setup error')
+  await env.DB.prepare(
+    `INSERT INTO incomes (household_id, earner_user_id, category_id, amount, content, income_date)
+     VALUES (?, ?, ?, ?, 'テスト収入', ?)`,
+  )
+    .bind(params.householdId, params.userId, category.id, params.amount, params.incomeDate)
+    .run()
+}
+
+function formatDate(date: Date): string {
+  return `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}-${date.getUTCDate().toString().padStart(2, '0')}`
+}
+
+function currentWeekStart(): string {
+  const today = getJstToday()
+  const monday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  return formatDate(monday)
 }
 
 beforeEach(async () => {
@@ -186,5 +217,85 @@ describe('GET /api/dashboard/summary', () => {
 
     const body = await res.json<{ householdExpenseTotal: number }>()
     expect(body.householdExpenseTotal).toBe(0)
+  })
+
+  it('本人の当日収入から当日支出を引いた収支を返し、他ユーザー・別日分を含めない', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await env.DB.prepare(
+      'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id',
+    )
+      .bind('hanako@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+
+    const today = formatJstToday()
+    await createIncome({ householdId: owner.householdId, userId: owner.userId, amount: 3000, incomeDate: today })
+    await createExpense({ householdId: owner.householdId, userId: owner.userId, amount: 1200, expenseDate: today, includeInHouseholdTotal: false })
+    await createIncome({ householdId: owner.householdId, userId: member.id, amount: 9000, incomeDate: today })
+    await createExpense({ householdId: owner.householdId, userId: owner.userId, amount: 500, expenseDate: '2000-01-01', includeInHouseholdTotal: false })
+
+    const res = await app.request('/api/dashboard/summary', { headers: owner.headers }, env)
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{ todayBalance: number }>()
+    expect(body.todayBalance).toBe(1800)
+  })
+
+  it('今週の献立は同じ世帯のレシピ名と自由メモだけを返す', async () => {
+    const { householdId, userId, headers } = await createUserWithHousehold('taro@example.com')
+    const recipe = await env.DB.prepare('INSERT INTO recipes (household_id, created_by_user_id, title) VALUES (?, ?, ?) RETURNING id')
+      .bind(householdId, userId, '肉じゃが')
+      .first<{ id: number }>()
+    if (!recipe) throw new Error('test setup error')
+    const weekStartDate = currentWeekStart()
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, recipe_id, week_start_date) VALUES (?, ?, ?)').bind(householdId, recipe.id, weekStartDate).run()
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, free_text_memo, week_start_date) VALUES (?, ?, ?)')
+      .bind(householdId, '外食', weekStartDate)
+      .run()
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, free_text_memo, week_start_date) VALUES (?, ?, ?)')
+      .bind(householdId, '先週の献立', '2000-01-03')
+      .run()
+
+    const res = await app.request('/api/dashboard/summary', { headers }, env)
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{ weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[] }>()
+    expect(body.weeklyMenuEntries).toEqual([
+      { recipeTitle: '肉じゃが', freeTextMemo: null },
+      { recipeTitle: null, freeTextMemo: '外食' },
+    ])
+  })
+
+  it('当日発生する閲覧可能な繰り返しイベントだけを返す', async () => {
+    const owner = await createUserWithHousehold('taro@example.com')
+    const member = await env.DB.prepare(
+      'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id',
+    )
+      .bind('hanako@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+
+    const today = formatJstToday()
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type) VALUES (?, NULL, ?, ?, ?, ?)')
+        .bind(owner.householdId, owner.userId, '共有の習慣', today, 'daily'),
+      env.DB.prepare('INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(owner.householdId, owner.userId, owner.userId, '自分の予定', today, 'none'),
+      env.DB.prepare('INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(owner.householdId, member.id, member.id, '他人の非公開予定', today, 'daily'),
+      env.DB.prepare('INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type) VALUES (?, NULL, ?, ?, ?, ?)')
+        .bind(owner.householdId, owner.userId, '過去の単発予定', '2000-01-01', 'none'),
+    ])
+
+    const res = await app.request('/api/dashboard/summary', { headers: owner.headers }, env)
+
+    expect(res.status).toBe(200)
+    const body = await res.json<{ todayEvents: { name: string; recurrenceType: string }[] }>()
+    expect(body.todayEvents).toEqual([
+      { name: '共有の習慣', recurrenceType: 'daily' },
+      { name: '自分の予定', recurrenceType: 'none' },
+    ])
   })
 })

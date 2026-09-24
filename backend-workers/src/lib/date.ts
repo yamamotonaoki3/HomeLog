@@ -37,6 +37,13 @@ export function currentMonthRange(jstToday: Date): { monthStart: string; nextMon
   return { monthStart, nextMonthStart }
 }
 
+/** JST基準の指定日を含む週の月曜日を "YYYY-MM-DD" 形式で返す。 */
+export function currentWeekStart(jstToday: Date): string {
+  const monday = new Date(Date.UTC(jstToday.getUTCFullYear(), jstToday.getUTCMonth(), jstToday.getUTCDate()))
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  return monday.toISOString().slice(0, 10)
+}
+
 // YYYY-MM-DD形式の文字列が、形式だけでなく実在するカレンダー日付かどうかを検証する。
 // 例えば"2024-02-31"は正規表現の形式チェックだけでは通ってしまうため、実際に
 // Dateとして構築し、年月日が元の入力と一致するか(2/31が3/2に繰り上がっていないか)を確認する。
