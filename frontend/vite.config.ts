@@ -36,7 +36,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // 既定はJava版(8080)。backend-workersに向ける場合(E2E・実機確認)は
+        // VITE_API_PROXY_TARGET=http://localhost:8787 のように環境変数で上書きする。
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
       },
     },
