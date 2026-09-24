@@ -257,11 +257,23 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
-| GET | `/api/dashboard/summary` | 買い物リスト件数・在庫不足件数等を取得 |
+| GET | `/api/dashboard/summary` | ダッシュボード用の集計（在庫・家計簿・今日の状況）を取得 |
 
 レスポンス（200 OK）:
 ```json
-{ "shoppingListCount": 3, "lowStockCount": 2 }
+{
+  "shoppingListCount": 3,
+  "lowStockCount": 2,
+  "householdExpenseTotal": 45300,
+  "todayBalance": -500,
+  "weeklyMenuEntries": [
+    { "recipeTitle": "カレー", "freeTextMemo": null },
+    { "recipeTitle": null, "freeTextMemo": "外食" }
+  ],
+  "todayEvents": [
+    { "name": "学習", "recurrenceType": "daily" }
+  ]
+}
 ```
 
 ---
