@@ -2,14 +2,8 @@ name: Backend Workers CI
 
 on:
   pull_request:
-    paths:
-      - "backend-workers/**"
-      - ".github/workflows/backend-workers-ci.yml"
   push:
     branches: [main]
-    paths:
-      - "backend-workers/**"
-      - ".github/workflows/backend-workers-ci.yml"
 
 defaults:
   run:
