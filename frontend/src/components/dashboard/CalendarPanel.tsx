@@ -24,7 +24,7 @@ function addMonths(month: string, amount: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-export function CalendarPanel({ onSelectDate }: { onSelectDate: (day: CalendarDay) => void }) {
+export function CalendarPanel({ onSelectDate, showEvents = true, showBalance = true }: { onSelectDate: (day: CalendarDay) => void; showEvents?: boolean; showBalance?: boolean }) {
   const [month, setMonth] = useState(currentMonth)
   const [data, setData] = useState<CalendarResponse>({ days: [], notificationCount: 0 })
 
@@ -49,9 +49,9 @@ export function CalendarPanel({ onSelectDate }: { onSelectDate: (day: CalendarDa
     <div className="calendar-grid">
       {data.days.map((day) => <button type="button" className="calendar-day" key={day.date} aria-label={day.date} onClick={() => onSelectDate(day)}>
         <strong>{Number(day.date.slice(-2))}</strong>
-        {day.events.map((event) => <span key={`event-${event.name}`}>{event.isRecurring ? '📌' : ''}{event.name}</span>)}
+        {showEvents && day.events.map((event) => <span key={`event-${event.name}`}>{event.isRecurring ? '📌' : ''}{event.name}</span>)}
         {day.fixedCosts.map((fixedCost) => <span key={`fixed-${fixedCost}`}>●{fixedCost}</span>)}
-        <span>{day.balance >= 0 ? '+' : ''}{day.balance}円</span>
+        {showBalance && <span>{day.balance >= 0 ? '+' : ''}{day.balance}円</span>}
       </button>)}
     </div>
   </section>
