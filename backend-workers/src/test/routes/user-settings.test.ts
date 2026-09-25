@@ -1,0 +1,8 @@
+import { env } from 'cloudflare:test'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { signAccessToken } from '../../lib/jwt'
+import app from '../../index'
+
+beforeEach(async () => { await env.DB.batch([env.DB.prepare('DELETE FROM user_settings'), env.DB.prepare('DELETE FROM users')]) })
+async function headers() { const user = await env.DB.prepare('INSERT INTO users (email,password_hash,display_name) VALUES (?,?,?) RETURNING id').bind('settings@example.com','hash','設定者').first<{id:number}>(); return { Authorization: `Bearer ${await signAccessToken(user!.id, env.JWT_SECRET, 900)}` } }
+describe('user settings', () => { it('未登録時に全trueのデフォルトを返す', async () => { const res = await app.request('/api/user-settings', { headers: await headers() }, env); expect(res.status).toBe(200); expect((await res.json<{cards:{today:boolean}}>()).cards.today).toBe(true) }); it('保存後に再取得でき、不正値は400', async () => { const auth = await headers(); const settings = { cards:{today:false,money:true,finance:true,stock:true,calendar:true}, items:{today:{balance:true,menu:true,events:true},money:{personal:true,householdTotal:true,unsettled:true,eventSummary:true},stock:{shoppingCount:true,lowStock:true,commonItems:true},calendar:{events:true,balance:true}} }; expect((await app.request('/api/user-settings',{method:'PUT',headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify(settings)},env)).status).toBe(200); expect((await (await app.request('/api/user-settings',{headers:auth},env)).json<{cards:{today:boolean}}>()).cards.today).toBe(false); expect((await app.request('/api/user-settings',{method:'PUT',headers:{...auth,'Content-Type':'application/json'},body:'{}'},env)).status).toBe(400) }) })
