@@ -11,6 +11,7 @@ defaults:
 
 jobs:
   quality:
+    name: frontend-quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
