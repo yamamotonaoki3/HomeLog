@@ -30,6 +30,10 @@ function setupApi(options: {
   summaryError?: boolean
   accountsError?: boolean
   summaryRequestUrls?: string[]
+  calendar?: {
+    days: { date: string; fixedCosts: string[]; events: { name: string; isRecurring: boolean }[]; balance: number }[]
+    notificationCount: number
+  }
 } = {}) {
   server.use(
     http.get('/api/dashboard/summary', ({ request }) => {
@@ -52,6 +56,7 @@ function setupApi(options: {
       })
     }),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
+    http.get('/api/dashboard/calendar', () => HttpResponse.json(options.calendar ?? { days: [], notificationCount: 0 })),
     http.get('/api/accounts', () => {
       if (options.accountsError) {
         return HttpResponse.json({ code: 'INTERNAL_ERROR', message: '口座情報の取得に失敗しました' }, { status: 500 })
@@ -233,5 +238,22 @@ describe('DashboardPage', () => {
     fireEvent.change(periodSelect, { target: { value: 'month' } })
 
     await waitFor(() => expect(summaryRequestUrls.some((url) => url.endsWith('eventPeriod=month'))).toBe(true))
+  })
+
+  it('月間カレンダーにイベント・固定費・日次収支と通知件数を表示する', async () => {
+    setupApi({
+      summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 },
+      calendar: {
+        days: [{ date: '2026-09-25', fixedCosts: ['家賃'], events: [{ name: '通院', isRecurring: true }], balance: -1200 }],
+        notificationCount: 2,
+      },
+    })
+    renderDashboardPage()
+
+    expect(await screen.findByRole('heading', { name: '月間カレンダー' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('通知: 2件')).toBeInTheDocument())
+    expect(screen.getByText(/通院/)).toBeInTheDocument()
+    expect(screen.getByText(/家賃/)).toBeInTheDocument()
+    expect(screen.getByText(/-1200円/)).toBeInTheDocument()
   })
 })
