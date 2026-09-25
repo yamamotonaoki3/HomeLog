@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
@@ -7,7 +7,18 @@ import { DashboardPage } from '../../pages/DashboardPage'
 import type { InventoryItem } from '../../api/zaikoTypes'
 
 function setupApi(options: {
-  summary?: { shoppingListCount: number; lowStockCount: number; householdExpenseTotal: number }
+  summary?: {
+    shoppingListCount: number
+    lowStockCount: number
+    householdExpenseTotal: number
+    todayBalance?: number
+    weeklyMenuEntries?: { recipeTitle: string | null; freeTextMemo: string | null }[]
+    todayEvents?: { name: string; recurrenceType: string }[]
+    monthlyPersonalExpense?: number
+    unsettledReceivable?: { count: number; total: number }
+    unsettledPayable?: { count: number; total: number }
+    eventExpenseSummaries?: { eventId: number; name: string; total: number }[]
+  }
   inventory?: InventoryItem[]
   accounts?: {
     id: number
@@ -18,13 +29,27 @@ function setupApi(options: {
   }[]
   summaryError?: boolean
   accountsError?: boolean
+  summaryRequestUrls?: string[]
 } = {}) {
   server.use(
-    http.get('/api/dashboard/summary', () => {
+    http.get('/api/dashboard/summary', ({ request }) => {
+      options.summaryRequestUrls?.push(request.url)
       if (options.summaryError) {
         return HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'サマリーの取得に失敗しました' }, { status: 500 })
       }
-      return HttpResponse.json(options.summary ?? { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 })
+      return HttpResponse.json({
+        shoppingListCount: 0,
+        lowStockCount: 0,
+        householdExpenseTotal: 0,
+        todayBalance: 0,
+        weeklyMenuEntries: [],
+        todayEvents: [],
+        monthlyPersonalExpense: 0,
+        unsettledReceivable: { count: 0, total: 0 },
+        unsettledPayable: { count: 0, total: 0 },
+        eventExpenseSummaries: [],
+        ...options.summary,
+      })
     }),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
     http.get('/api/accounts', () => {
@@ -124,12 +149,12 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: '口座・カード管理を見る' })).toHaveAttribute('href', '/accounts')
   })
 
-  it('「今月のお金」カードに世帯合計支出額を表示する', async () => {
+  it('「今月のお金」カードに世帯合計対象額を表示する', async () => {
     setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 45000 } })
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('今月のお金')).toBeInTheDocument())
-    expect(screen.getByText(/世帯合計支出額\(今月\): 45000円/)).toBeInTheDocument()
+    expect(screen.getByText(/世帯合計対象額: 45000円/)).toBeInTheDocument()
   })
 
   it('チャージ型カードの残高も口座残高合計に含める', async () => {
@@ -150,5 +175,63 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText(/口座残高合計: 10000円/)).toBeInTheDocument())
+  })
+
+  it('今日の状況と今月のお金の集計値・導線を表示する', async () => {
+    setupApi({
+      summary: {
+        shoppingListCount: 0,
+        lowStockCount: 0,
+        householdExpenseTotal: 45300,
+        todayBalance: -500,
+        weeklyMenuEntries: [
+          { recipeTitle: 'カレー', freeTextMemo: null },
+          { recipeTitle: null, freeTextMemo: '外食' },
+        ],
+        todayEvents: [{ name: '学習', recurrenceType: 'daily' }],
+        monthlyPersonalExpense: 32000,
+        unsettledReceivable: { count: 1, total: 4000 },
+        unsettledPayable: { count: 1, total: 4500 },
+        eventExpenseSummaries: [{ eventId: 1, name: '旅行', total: 30000 }],
+      },
+    })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
+    expect(screen.getByText(/収支: -500円/)).toBeInTheDocument()
+    expect(screen.getByText(/今週の献立: カレー・外食/)).toBeInTheDocument()
+    expect(screen.getByText(/イベント: 学習/)).toBeInTheDocument()
+    expect(screen.getByText(/個人支出: 32000円/)).toBeInTheDocument()
+    expect(screen.getByText(/世帯合計対象額: 45300円/)).toBeInTheDocument()
+    expect(screen.getByText(/受取予定: 1件・4000円/)).toBeInTheDocument()
+    expect(screen.getByText(/支払予定: 1件・4500円/)).toBeInTheDocument()
+    expect(screen.getByText(/旅行: 30000円/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '精算一覧を見る' })).toHaveAttribute('href', '/warikan')
+    expect(screen.getByRole('link', { name: 'イベント一覧を見る' })).toHaveAttribute('href', '/events')
+  })
+
+  it('今日の状況とイベント別支出は0件でも「なし」を表示する', async () => {
+    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 } })
+    renderDashboardPage()
+
+    await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
+    expect(screen.getByText(/今週の献立: なし/)).toBeInTheDocument()
+    expect(screen.getByText(/イベント: なし/)).toBeInTheDocument()
+    expect(screen.getByText('イベント別支出: なし')).toBeInTheDocument()
+  })
+
+  it('イベント別支出は期間を今年から今月へ切り替えられる', async () => {
+    const summaryRequestUrls: string[] = []
+    setupApi({
+      summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 },
+      summaryRequestUrls,
+    })
+    renderDashboardPage()
+
+    const periodSelect = await screen.findByLabelText('イベント別支出（対象期間）')
+    expect(periodSelect).toHaveValue('year')
+    fireEvent.change(periodSelect, { target: { value: 'month' } })
+
+    await waitFor(() => expect(summaryRequestUrls.some((url) => url.endsWith('eventPeriod=month'))).toBe(true))
   })
 })
