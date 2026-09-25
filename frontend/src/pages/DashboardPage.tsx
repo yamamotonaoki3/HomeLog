@@ -12,6 +12,7 @@ import type { CalendarDay } from '../components/dashboard/CalendarPanel'
 
 const COMMON_ITEMS_COUNT = 3
 type EventSummaryPeriod = 'year' | 'month'
+type DisplaySettings = { cards: Record<'today'|'money'|'finance'|'stock'|'calendar', boolean>; items: { today: Record<'balance'|'menu'|'events',boolean>; money: Record<'personal'|'householdTotal'|'unsettled'|'eventSummary',boolean>; stock: Record<'shoppingCount'|'lowStock'|'commonItems',boolean>; calendar: Record<'events'|'balance',boolean> } }
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
@@ -21,6 +22,8 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
+  const [displaySettings, setDisplaySettings] = useState<DisplaySettings | null>(null)
+  useEffect(() => { apiClient.get<DisplaySettings>('/user-settings').then((response) => setDisplaySettings(response.data)).catch(() => undefined) }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -102,13 +105,10 @@ export function DashboardPage() {
     <div className="page">
       <div className="dashboard-layout">
       <div className="dashboard-sidebar">
-        <div className="card">
+        {displaySettings?.cards.today !== false && <div className="card">
           <h2>今日の状況</h2>
-          <p>収支: {summary?.todayBalance ?? 0}円</p>
-          <p>今週の献立: {summary?.weeklyMenuEntries.map((entry) => entry.recipeTitle ?? entry.freeTextMemo).filter(Boolean).join('・') || 'なし'}</p>
-          <p>イベント: {summary?.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>
-        </div>
-        <div className="card">
+          {displaySettings?.items.today.balance !== false && <p>収支: {summary?.todayBalance ?? 0}円</p>}{displaySettings?.items.today.menu !== false && <p>今週の献立: {summary?.weeklyMenuEntries.map((entry) => entry.recipeTitle ?? entry.freeTextMemo).filter(Boolean).join('・') || 'なし'}</p>}{displaySettings?.items.today.events !== false && <p>イベント: {summary?.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}</div>}
+        {displaySettings?.cards.stock !== false && <div className="card">
           <h2>買い物・在庫</h2>
           {summary && (
             <>
@@ -119,14 +119,14 @@ export function DashboardPage() {
             </>
           )}
           <p>よく使う品目: {commonItems || 'なし'}</p>
-        </div>
-        <div className="card">
+        </div>}
+        {displaySettings?.cards.finance !== false && <div className="card">
           <h2>個人の財政</h2>
           <p>
             口座残高合計: {accountBalanceTotal}円　<Link to="/accounts">口座・カード管理を見る</Link>
           </p>
-        </div>
-        <div className="card">
+        </div>}
+        {displaySettings?.cards.money !== false && <div className="card">
           <h2>今月のお金</h2>
           {/* 移行完了までの間はJava版バックエンドがhouseholdExpenseTotalを返さないため、
               未定義時は0円表示にフォールバックする(Phase 6での接続先切り替え後は常に値が入る)。 */}
@@ -145,9 +145,9 @@ export function DashboardPage() {
           </select>
           {summary?.eventExpenseSummaries.length ? <><p>イベント別支出:</p>{summary.eventExpenseSummaries.map((event) => <p key={event.eventId}>{event.name}: {event.total}円</p>)}</> : <p>イベント別支出: なし</p>}
           <Link to="/events">イベント一覧を見る</Link>
-        </div>
+        </div>}
       </div>
-      <CalendarPanel onSelectDate={setSelectedDay} />
+      {displaySettings?.cards.calendar !== false && <CalendarPanel onSelectDate={setSelectedDay} showEvents={displaySettings?.items.calendar.events !== false} showBalance={displaySettings?.items.calendar.balance !== false} />}
       {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
       </div>
       <Toast message={toast.message} showKey={toast.showKey} />
