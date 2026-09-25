@@ -19,6 +19,7 @@ import { recipesRoute } from './routes/recipes'
 import { shoppingListItemsRoute } from './routes/shopping-list-items'
 import { storesRoute } from './routes/stores'
 import { zaikoCategoriesRoute } from './routes/zaiko-categories'
+import { userSettingsRoute } from './routes/user-settings'
 
 // wrangler.tomlのbindings定義から`wrangler types`で自動生成される
 // グローバルEnv型(worker-configuration.d.ts、gitignore対象)をそのまま使う。
@@ -56,6 +57,7 @@ app.route('/api/dashboard', dashboardRoute)
 app.route('/api/recipes', recipesRoute)
 app.route('/api/menu-entries', menuEntriesRoute)
 app.route('/api/events', eventsRoute)
+app.route('/api/user-settings', userSettingsRoute)
 
 // デフォルトエクスポートはHonoインスタンス自身のままにする(テストコードが
 // `app.request(...)`を直接呼び出しているため)。Cloudflare WorkersのCron Trigger用の
