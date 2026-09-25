@@ -16,6 +16,10 @@ export const dashboardRoute = new Hono<AppEnv>()
 dashboardRoute.use('*', requireAuth)
 
 dashboardRoute.get('/summary', async (c) => {
+  const eventPeriod = c.req.query('eventPeriod') ?? 'year'
+  if (eventPeriod !== 'year' && eventPeriod !== 'month') {
+    return c.json(errorResponse('VALIDATION_ERROR', 'eventPeriodはyearまたはmonthを指定してください'), 400)
+  }
   const db = drizzle(c.env.DB)
   const householdId = await resolveHouseholdId(db, c.get('userId'))
   if (householdId === null) {
@@ -77,7 +81,7 @@ dashboardRoute.get('/summary', async (c) => {
 
   // 世帯共有または本人所有のイベントだけを取得し、繰り返し規則から今日の発生分を判定する。
   const visibleEvents = await db
-    .select({ name: events.name, eventDate: events.eventDate, recurrenceType: events.recurrenceType })
+    .select({ id: events.id, name: events.name, eventDate: events.eventDate, recurrenceType: events.recurrenceType, showOnDashboard: events.showOnDashboard })
     .from(events)
     .where(and(eq(events.householdId, householdId), or(isNull(events.ownerUserId), eq(events.ownerUserId, c.get('userId')))))
     .orderBy(events.id)
@@ -86,6 +90,37 @@ dashboardRoute.get('/summary', async (c) => {
     .filter((event) => resolveOccurrences({ ...event, recurrenceType: event.recurrenceType as RecurrenceType }, today, today).length > 0)
     .map((event) => ({ name: event.name, recurrenceType: event.recurrenceType }))
 
+  const eventRange =
+    eventPeriod === 'month'
+      ? { rangeStart: monthStart, rangeEnd: nextMonthStart }
+      : { rangeStart: `${jstToday.getUTCFullYear()}-01-01`, rangeEnd: `${jstToday.getUTCFullYear() + 1}-01-01` }
+  const [monthlyPersonalExpenseRow, receivableRow, payableRow, eventExpenseRows] = await Promise.all([
+    c.env.DB.prepare(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE household_id = ? AND payer_user_id = ? AND expense_date >= ? AND expense_date < ?',
+    )
+      .bind(householdId, c.get('userId'), monthStart, nextMonthStart)
+      .first<{ total: number }>(),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS count, COALESCE(SUM(s.amount_due), 0) AS total FROM expense_splits s JOIN expenses e ON e.id = s.expense_id WHERE e.household_id = ? AND e.payer_user_id = ? AND s.status != 'settled'",
+    )
+      .bind(householdId, c.get('userId'))
+      .first<{ count: number; total: number }>(),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS count, COALESCE(SUM(s.amount_due), 0) AS total FROM expense_splits s JOIN expenses e ON e.id = s.expense_id WHERE e.household_id = ? AND s.debtor_user_id = ? AND s.status != 'settled'",
+    )
+      .bind(householdId, c.get('userId'))
+      .first<{ count: number; total: number }>(),
+    c.env.DB.prepare(
+      'SELECT event_id AS eventId, COALESCE(SUM(amount), 0) AS total FROM expenses WHERE household_id = ? AND payer_user_id = ? AND event_id IS NOT NULL AND expense_date >= ? AND expense_date < ? GROUP BY event_id',
+    )
+      .bind(householdId, c.get('userId'), eventRange.rangeStart, eventRange.rangeEnd)
+      .all<{ eventId: number; total: number }>(),
+  ])
+  const eventTotals = new Map(eventExpenseRows.results.map((row) => [row.eventId, row.total]))
+  const eventExpenseSummaries = visibleEvents
+    .filter((event) => event.showOnDashboard)
+    .map((event) => ({ eventId: event.id, name: event.name, total: eventTotals.get(event.id) ?? 0 }))
+
   return c.json({
     shoppingListCount: shoppingListCountRow?.count ?? 0,
     lowStockCount: lowStockCountRow?.count ?? 0,
@@ -93,6 +128,10 @@ dashboardRoute.get('/summary', async (c) => {
     todayBalance: (todayIncomeRow?.total ?? 0) - (todayExpenseRow?.total ?? 0),
     weeklyMenuEntries,
     todayEvents,
+    monthlyPersonalExpense: monthlyPersonalExpenseRow?.total ?? 0,
+    unsettledReceivable: { count: receivableRow?.count ?? 0, total: receivableRow?.total ?? 0 },
+    unsettledPayable: { count: payableRow?.count ?? 0, total: payableRow?.total ?? 0 },
+    eventExpenseSummaries,
   })
 })
 

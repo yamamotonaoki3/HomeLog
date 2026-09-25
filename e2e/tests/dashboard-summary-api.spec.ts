@@ -29,10 +29,12 @@ test.describe('S-04 ダッシュボード集計API', () => {
     expect(response.ok()).toBeTruthy()
     const body = await response.json<{
       todayBalance: number
+      monthlyPersonalExpense: number
       weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[]
       todayEvents: { name: string; recurrenceType: string }[]
     }>()
     expect(body.todayBalance).toBe(-1200)
+    expect(body.monthlyPersonalExpense).toBe(1200)
     expect(body.weeklyMenuEntries).toContainEqual({ recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null })
     expect(body.todayEvents).toContainEqual({ name: '[E2E_TEST] ダッシュボードイベント', recurrenceType: 'none' })
   })

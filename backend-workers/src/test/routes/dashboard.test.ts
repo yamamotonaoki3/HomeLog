@@ -6,6 +6,8 @@ import app from '../../index'
 
 async function resetDb() {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM expense_split_comments'),
+    env.DB.prepare('DELETE FROM expense_splits'),
     env.DB.prepare('DELETE FROM menu_entries'),
     env.DB.prepare('DELETE FROM recipes'),
     env.DB.prepare('DELETE FROM incomes'),
@@ -140,6 +142,47 @@ async function createCalendarFixedCost(params: {
   )
     .bind(params.householdId, params.ownerUserId, params.createdByUserId, params.name, params.paymentDay)
     .run()
+}
+
+async function createExpenseWithId(params: {
+  householdId: number
+  userId: number
+  amount: number
+  expenseDate: string
+  eventId?: number
+}): Promise<number> {
+  const category = await env.DB.prepare(
+    "INSERT INTO kakeibo_categories (household_id, name, is_default) VALUES (?, '集計テストカテゴリー', 0) RETURNING id",
+  )
+    .bind(params.householdId)
+    .first<{ id: number }>()
+  if (!category) throw new Error('test setup error')
+  const expense = await env.DB.prepare(
+    `INSERT INTO expenses (household_id, payer_user_id, category_id, event_id, amount, purpose, expense_date, include_in_household_total)
+     VALUES (?, ?, ?, ?, ?, '集計テスト支出', ?, 0) RETURNING id`,
+  )
+    .bind(params.householdId, params.userId, category.id, params.eventId ?? null, params.amount, params.expenseDate)
+    .first<{ id: number }>()
+  if (!expense) throw new Error('test setup error')
+  return expense.id
+}
+
+async function createDashboardEvent(params: {
+  householdId: number
+  ownerUserId: number | null
+  createdByUserId: number
+  name: string
+  eventDate: string
+  showOnDashboard?: boolean
+}): Promise<number> {
+  const event = await env.DB.prepare(
+    `INSERT INTO events (household_id, owner_user_id, created_by_user_id, name, event_date, recurrence_type, show_on_dashboard)
+     VALUES (?, ?, ?, ?, ?, 'none', ?) RETURNING id`,
+  )
+    .bind(params.householdId, params.ownerUserId, params.createdByUserId, params.name, params.eventDate, params.showOnDashboard ?? true ? 1 : 0)
+    .first<{ id: number }>()
+  if (!event) throw new Error('test setup error')
+  return event.id
 }
 
 function formatDate(date: Date): string {
@@ -337,6 +380,54 @@ describe('GET /api/dashboard/summary', () => {
       { name: '共有の習慣', recurrenceType: 'daily' },
       { name: '自分の予定', recurrenceType: 'none' },
     ])
+  })
+  it('月間の本人支出、未精算の方向別集計、表示対象イベント別支出を返す', async () => {
+    const owner = await createUserWithHousehold('summary-money-owner@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('summary-money-member@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+    const today = getJstToday()
+    const year = today.getUTCFullYear()
+    const month = String(today.getUTCMonth() + 1).padStart(2, '0')
+    const date = `${year}-${month}-15`
+    const ownExpenseId = await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 1200, expenseDate: date })
+    const memberExpenseId = await createExpenseWithId({ householdId: owner.householdId, userId: member.id, amount: 9000, expenseDate: date })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 800, expenseDate: `${year - 1}-12-31` })
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO expense_splits (expense_id, debtor_user_id, split_input_type, split_ratio, amount_due, status) VALUES (?, ?, 'amount', 0, 300, 'unpaid')").bind(ownExpenseId, member.id),
+      env.DB.prepare("INSERT INTO expense_splits (expense_id, debtor_user_id, split_input_type, split_ratio, amount_due, status) VALUES (?, ?, 'amount', 0, 200, 'requested')").bind(memberExpenseId, owner.userId),
+      env.DB.prepare("INSERT INTO expense_splits (expense_id, debtor_user_id, split_input_type, split_ratio, amount_due, status) VALUES (?, ?, 'amount', 0, 400, 'settled')").bind(ownExpenseId, member.id),
+    ])
+    const visibleEventId = await createDashboardEvent({ householdId: owner.householdId, ownerUserId: null, createdByUserId: owner.userId, name: '表示対象イベント', eventDate: date })
+    await createDashboardEvent({ householdId: owner.householdId, ownerUserId: null, createdByUserId: owner.userId, name: '非表示イベント', eventDate: date, showOnDashboard: false })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 500, expenseDate: date, eventId: visibleEventId })
+
+    const res = await app.request('/api/dashboard/summary', { headers: owner.headers }, env)
+    expect(res.status).toBe(200)
+    const body = await res.json<{ monthlyPersonalExpense: number; unsettledReceivable: { count: number; total: number }; unsettledPayable: { count: number; total: number }; eventExpenseSummaries: { eventId: number; name: string; total: number }[] }>()
+    expect(body.monthlyPersonalExpense).toBe(1700)
+    expect(body.unsettledReceivable).toEqual({ count: 1, total: 300 })
+    expect(body.unsettledPayable).toEqual({ count: 1, total: 200 })
+    expect(body.eventExpenseSummaries).toEqual([{ eventId: visibleEventId, name: '表示対象イベント', total: 500 }])
+  })
+
+  it('eventPeriodはyear/monthだけを受け付け、monthでは当月分だけを集計する', async () => {
+    const owner = await createUserWithHousehold('summary-period-owner@example.com')
+    const today = getJstToday()
+    const year = today.getUTCFullYear()
+    const month = String(today.getUTCMonth() + 1).padStart(2, '0')
+    const eventId = await createDashboardEvent({ householdId: owner.householdId, ownerUserId: owner.userId, createdByUserId: owner.userId, name: '期間別イベント', eventDate: `${year}-01-01` })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 100, expenseDate: `${year}-${month}-01`, eventId })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 200, expenseDate: `${year}-01-01`, eventId })
+
+    const monthRes = await app.request('/api/dashboard/summary?eventPeriod=month', { headers: owner.headers }, env)
+    expect(monthRes.status).toBe(200)
+    expect((await monthRes.json<{ eventExpenseSummaries: { eventId: number; name: string; total: number }[] }>()).eventExpenseSummaries).toEqual([
+      { eventId, name: '期間別イベント', total: 100 },
+    ])
+    expect((await app.request('/api/dashboard/summary?eventPeriod=week', { headers: owner.headers }, env)).status).toBe(400)
   })
 })
 
