@@ -43,5 +43,14 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
       balance: -1200,
     })
     expect(body.notificationCount).toBe(1)
+
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
+    await expect(page.getByText('通知: 1件')).toBeVisible()
+    await page.getByRole('button', { name: jstToday }).click()
+    await expect(page.getByRole('dialog', { name: '日次詳細' })).toBeVisible()
+    await expect(page.getByRole('link', { name: '支出を登録' })).toHaveAttribute('href', '/kakeibo')
+    await expect(page.getByRole('link', { name: 'イベントを追加' })).toHaveAttribute('href', '/events')
+    await expect(page.getByRole('link', { name: 'この週の献立を編集' })).toHaveAttribute('href', /\/menu\?week=/)
   })
 })

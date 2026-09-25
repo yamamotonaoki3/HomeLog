@@ -6,6 +6,9 @@ import type { DashboardSummary } from '../api/dashboardTypes'
 import type { Account } from '../api/kakeiboTypes'
 import type { InventoryItem } from '../api/zaikoTypes'
 import { Toast } from '../components/Toast'
+import { CalendarPanel } from '../components/dashboard/CalendarPanel'
+import { DayDetailModal } from '../components/dashboard/DayDetailModal'
+import type { CalendarDay } from '../components/dashboard/CalendarPanel'
 
 const COMMON_ITEMS_COUNT = 3
 type EventSummaryPeriod = 'year' | 'month'
@@ -17,6 +20,7 @@ export function DashboardPage() {
   const [accountBalanceTotal, setAccountBalanceTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
+  const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -96,6 +100,7 @@ export function DashboardPage() {
 
   return (
     <div className="page">
+      <div className="dashboard-layout">
       <div className="dashboard-sidebar">
         <div className="card">
           <h2>今日の状況</h2>
@@ -141,6 +146,9 @@ export function DashboardPage() {
           {summary?.eventExpenseSummaries.length ? <><p>イベント別支出:</p>{summary.eventExpenseSummaries.map((event) => <p key={event.eventId}>{event.name}: {event.total}円</p>)}</> : <p>イベント別支出: なし</p>}
           <Link to="/events">イベント一覧を見る</Link>
         </div>
+      </div>
+      <CalendarPanel onSelectDate={setSelectedDay} />
+      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
       </div>
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
