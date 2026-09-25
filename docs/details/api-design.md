@@ -273,9 +273,18 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
   ],
   "todayEvents": [
     { "name": "学習", "recurrenceType": "daily" }
+  ],
+  "monthlyPersonalExpense": 32000,
+  "unsettledReceivable": { "count": 1, "total": 4000 },
+  "unsettledPayable": { "count": 1, "total": 4500 },
+  "eventExpenseSummaries": [
+    { "eventId": 1, "name": "旅行", "total": 30000 }
   ]
 }
 ```
+
+- `eventPeriod=year|month` でイベント別支出の集計期間を指定する。未指定時は `year`、不正値は400。
+- `monthlyPersonalExpense` はJST当月の本人支出、未精算サマリーは精算済みを除いた本人の受取予定／支払予定。イベント別支出は表示対象かつ閲覧可能なイベントを0円を含めて返す。
 
 `GET /api/dashboard/calendar` のレスポンス（200 OK）:
 ```json
