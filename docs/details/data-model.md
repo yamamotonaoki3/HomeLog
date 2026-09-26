@@ -2,7 +2,7 @@
 
 [← 要件定義書に戻る](../requirements.md)
 
-要件定義段階のER図であり、実装時のテーブル名・カラム名は変更されうる（MyBatis Mapper実装時に確定させる）。
+要件定義段階のER図であり、実装時のテーブル名・カラム名は変更されうる（MyBatis Mapper実装時に確定させる）。Issue #160で追加した管理者・例外アクセス・退会関連のエンティティと列は要件上必要な論理モデルであり、物理スキーマ・マイグレーションは対応する実装Issueで確定する。
 
 ---
 
@@ -15,7 +15,51 @@ erDiagram
         varchar email
         varchar password_hash
         varchar display_name
+        timestamp deletion_requested_at
+        timestamp deletion_scheduled_at
         timestamp created_at
+    }
+    application_admin_memberships {
+        bigint user_id PK
+        bigint granted_by_user_id FK
+        varchar granted_by_display_snapshot
+        timestamp granted_at
+        bigint revoked_by_user_id FK
+        varchar revoked_by_display_snapshot
+        timestamp revoked_at
+    }
+    exception_access_requests {
+        bigserial id PK
+        bigint requester_user_id FK
+        varchar requester_display_snapshot
+        bigint approver_user_id FK
+        varchar approver_display_snapshot
+        bigint subject_user_id FK
+        varchar subject_display_snapshot
+        varchar data_scope
+        varchar allowed_actions
+        varchar purpose
+        varchar status
+        timestamp starts_at
+        timestamp expires_at
+    }
+    privileged_access_audit_logs {
+        bigserial id PK
+        bigint actor_user_id FK
+        varchar actor_display_snapshot
+        varchar action
+        varchar target_scope
+        varchar purpose
+        timestamp occurred_at
+    }
+    account_deletion_requests {
+        bigserial id PK
+        bigint user_id FK
+        varchar cancellation_token_hash
+        timestamp requested_at
+        timestamp scheduled_at
+        timestamp cancelled_at
+        timestamp completed_at
     }
     refresh_tokens {
         bigserial id PK
@@ -47,6 +91,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint user_id FK
+        varchar role
         timestamp joined_at
     }
     external_persons {
@@ -88,6 +133,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint payer_user_id FK
+        varchar payer_display_snapshot
         bigint category_id FK
         bigint event_id FK
         bigint account_id FK
@@ -104,6 +150,7 @@ erDiagram
         bigserial id PK
         bigint expense_id FK
         bigint debtor_user_id FK
+        varchar debtor_display_snapshot
         bigint debtor_external_id FK
         bigint debtor_account_id FK
         varchar split_input_type
@@ -117,6 +164,7 @@ erDiagram
         bigserial id PK
         bigint expense_split_id FK
         bigint author_user_id FK
+        varchar author_display_snapshot
         text body
         timestamp created_at
     }
@@ -124,6 +172,7 @@ erDiagram
         bigserial id PK
         bigint fixed_cost_id FK
         bigint debtor_user_id FK
+        varchar debtor_display_snapshot
         varchar split_input_type
         numeric split_ratio
         numeric amount_due
@@ -133,6 +182,7 @@ erDiagram
         bigint household_id FK
         bigint owner_user_id FK
         bigint created_by_user_id FK
+        varchar created_by_display_snapshot
         bigint account_id FK
         bigint card_id FK
         varchar name
@@ -206,6 +256,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint created_by_user_id FK
+        varchar created_by_display_snapshot
         varchar title
         text ingredients
         text steps
@@ -228,6 +279,10 @@ erDiagram
     users ||--o{ refresh_tokens : "発行される"
     users ||--o{ password_reset_tokens : "発行される"
     users ||--|| user_settings : "表示設定を持つ"
+    users ||--o| application_admin_memberships : "アプリ全体管理者"
+    users ||--o{ exception_access_requests : "申請/承認/対象"
+    users ||--o{ privileged_access_audit_logs : "特権操作"
+    users ||--o{ account_deletion_requests : "削除申請"
     users ||--o{ household_members : "所属する"
     households ||--o{ household_members : "持つ"
     households ||--o{ external_persons : "登録する"
@@ -291,7 +346,51 @@ erDiagram
 | email | VARCHAR(255) | ○ | UNIQUE。ログインに使用 |
 | password_hash | VARCHAR(255) | ○ | BCryptによるハッシュ |
 | display_name | VARCHAR(50) | ○ | 表示名 |
+| deletion_requested_at | TIMESTAMP | — | 削除申請日時。設定中は通常の認証済みAPIとトークン更新を拒否する |
+| deletion_scheduled_at | TIMESTAMP | — | 削除予定日時（申請から30日後） |
 | created_at | TIMESTAMP | ○ | 登録日時 |
+
+削除確定時は本人専用データを削除し、世帯に残す共有記録から利用者IDとの紐付けを解除した後にユーザー識別情報を削除する。共有記録に必要な表示名は「退会したユーザー」とし、ユーザーアカウントへの外部キーを残さない。具体的な対象列は下記共有データの項で示す。
+
+### application_admin_memberships（アプリ全体管理者）
+
+アプリ全体の管理者を世帯ロールと分離して保持する。複数人を許可し、付与/解除を行った既存管理者と日時を監査できるようにする。唯一のアプリ全体管理者は後任の付与と同時でなければ解除できない。削除された管理者の過去の付与/解除履歴が必要な場合は、ユーザーIDとの紐付けを解除し表示名を「退会したユーザー」とする。最初の管理者を設定する方法は運用設計で確定する。
+
+| 項目 | 要件レベルの定義 |
+| --- | --- |
+| 対象利用者 | `users.id`。有効な割当ては利用者ごとに最大1件 |
+| 付与/解除 | 付与者・解除者と日時を保存し、操作を監査ログへ記録 |
+| データ閲覧 | ロールだけではユーザーコンテンツを閲覧できない。例外アクセスの有効な許可が別途必要 |
+
+### exception_access_requests（例外アクセス）
+
+申請・承認・有効期間・対象・操作範囲・理由を記録する論理エンティティ。削除済み利用者に関わる過去の申請・承認履歴を保持する必要がある場合は、user IDとの紐付けを解除して表示名を「退会したユーザー」とする。物理スキーマや個別エンドポイントは実装Issueで確定する。
+
+| 項目 | 必須 | 備考 |
+| --- | --- | --- |
+| requester_user_id | ○ | 申請者 |
+| requester_display_snapshot | — | 履歴を保持する場合の表示名。退会後は「退会したユーザー」 |
+| approver_user_id | — | 承認者。申請者本人による自己承認は禁止 |
+| approver_display_snapshot | — | 履歴を保持する場合の表示名。退会後は「退会したユーザー」 |
+| subject_user_id / data_scope | ○ | 対象利用者と対象データ範囲。最小範囲に限定 |
+| subject_display_snapshot | — | 履歴を保持する場合の表示名。退会後は「退会したユーザー」 |
+| allowed_actions / purpose | ○ | 許可する操作と業務上の理由 |
+| status | ○ | 申請中/承認/拒否/失効/取消等の状態 |
+| starts_at / expires_at | ○ | 開始と有効期限。期限到来後はサーバー側で必ず拒否 |
+
+### privileged_access_audit_logs（特権操作監査ログ）
+
+アプリ全体管理者のロール変更、例外アクセスの申請・承認・利用・失効等を記録する。少なくとも実行者、操作、対象範囲、理由、日時、結果を保持する。認証情報や家計本文等の機微な内容はログへ複製しない。退会後も監査記録を保持する必要がある場合、actor_user_idはNULLにし、表示名は「退会したユーザー」とする。保持期間・閲覧者・改ざん対策は運用設計で確定する。
+
+### account_deletion_requests（アカウント削除申請）
+
+削除申請日時、30日後の削除予定日時、取消日時、処理完了日時を追跡する。申請中はユーザーの通常アクセスとトークン更新を拒否する。取消は通常APIとは別の専用手段とし、ワンタイムの取消資格情報を用いてハッシュ化して保管する。処理完了時はuser_idとの紐付けと取消資格情報を削除し、詳細な有効期限・再発行方式はメール送信基盤を含めて実装Issueで確定する。
+
+### 退会時に保持する共有記録の帰属
+
+本人専用の家計・口座等は削除する。世帯運営に必要な共有記録を保持する場合は、記録の主体を特定するusers.idの外部キーを必須にせず、削除確定時にNULLへ変更する。履歴表示に必要な場合だけ表示名スナップショットを保持し、その値を「退会したユーザー」に置換する。この扱いの対象には少なくとも世帯共有の固定費作成者、共有レシピ作成者、精算コメント投稿者、固定費/精算内訳の退会済み負担者、監査ログの退会済み実行者を含める。未精算の義務・共有履歴を削除または保持する条件は、削除完了前に解決し、具体的な保持対象を実装Issueで確定する。
+
+共有精算に使われた支出と内訳は個人専用の家計データとは分けて扱う。保持する場合は`expenses.payer_user_id`および`expense_splits.debtor_user_id`をNULLにし、表示名を「退会したユーザー」に置き換える。`account_id`、`card_id`、`debtor_account_id`など退会者の個人口座への参照も解除する。共有精算と無関係な本人専用の支出・収入・口座は削除対象とする。
 
 ### refresh_tokens（リフレッシュトークン）
 
@@ -349,6 +448,7 @@ erDiagram
 | households.invite_code | VARCHAR(16) | ○ | UNIQUE。世帯作成時に自動発行するランダム英数字コード（他ユーザーの参加に使用） |
 | household_members.household_id | BIGINT | ○ | FK → households.id |
 | household_members.user_id | BIGINT | ○ | FK → users.id |
+| household_members.role | VARCHAR(20) | ○ | `admin` / `member`。作成者を`admin`で登録。既存管理者のみが変更でき、変更者・日時を監査する。最後の管理者を単独で降格・解除できない |
 
 ### external_persons（世帯外の精算相手）
 
@@ -401,7 +501,8 @@ erDiagram
 | --- | --- | --- | --- |
 | expenses.id | BIGSERIAL | ○ | PK |
 | expenses.household_id | BIGINT | ○ | FK → households.id |
-| expenses.payer_user_id | BIGINT | ○ | FK → users.id（支払った人） |
+| expenses.payer_user_id | BIGINT | — | FK → users.id（支払った人）。個人用支出は退会時に削除し、共有精算記録として保持する行では退会確定時にNULLにする |
+| expenses.payer_display_snapshot | VARCHAR(50) | — | 共有精算記録の支払者表示。退会確定後は「退会したユーザー」 |
 | expenses.category_id | BIGINT | ○ | FK → kakeibo_categories.id |
 | expenses.event_id | BIGINT | — | FK → events.id（イベント紐付け、任意） |
 | expenses.account_id | BIGINT | — | FK → accounts.id（口座直接指定 または credit型カード選択時の親口座、任意） |
@@ -413,7 +514,8 @@ erDiagram
 | expenses.expense_date | DATE | ○ | 支出発生日 |
 | expenses.include_in_household_total | BOOLEAN | ○ | 世帯合計支出への算入対象か（[common-notes.md](common-notes.md) 8章参照） |
 | expense_splits.expense_id | BIGINT | ○ | FK → expenses.id |
-| expense_splits.debtor_user_id | BIGINT | — | FK → users.id（世帯内の負担者） |
+| expense_splits.debtor_user_id | BIGINT | — | FK → users.id（世帯内の負担者）。共有精算記録を残して退会者を削除する場合はNULLにする |
+| expense_splits.debtor_display_snapshot | VARCHAR(50) | — | 共有精算記録の負担者表示。退会確定後は「退会したユーザー」 |
 | expense_splits.debtor_external_id | BIGINT | — | FK → external_persons.id（世帯外の負担者） |
 | expense_splits.split_input_type | VARCHAR(10) | ○ | 入力モード。`ratio`（％入力）/`amount`（金額入力）。デフォルト`ratio`（[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 7章参照） |
 | expense_splits.split_ratio | NUMERIC(5,2) | ○ | 負担割合（%）。％入力時はユーザー入力値（デフォルト50.00）、金額入力時はamount_dueから逆算した参考値 |
@@ -430,7 +532,8 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | expense_split_id | BIGINT | ○ | FK → expense_splits.id |
-| author_user_id | BIGINT | ○ | FK → users.id（投稿者。常にその内訳の立替者 or 負担者。世帯外の負担者はログインできず投稿不可） |
+| author_user_id | BIGINT | — | FK → users.id（投稿者）。退会者を識別できない形で共有履歴を残す場合はNULLにする |
+| author_display_snapshot | VARCHAR(50) | — | 共有履歴表示用の投稿者名。削除完了後は「退会したユーザー」 |
 | body | VARCHAR(500) | ○ | コメント本文（最大500文字） |
 | created_at | TIMESTAMP | ○ | 投稿日時 |
 
@@ -467,7 +570,8 @@ erDiagram
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | owner_user_id | BIGINT | — | FK → users.id。NULL＝世帯共有（メンバー全員が閲覧可能）、設定時＝個人所有（本人のみ閲覧・編集可能）。登録時に選択する（[common-notes.md](common-notes.md) 2章） |
-| created_by_user_id | BIGINT | ○ | FK → users.id（登録者）。世帯共有固定費の自動計上時は`expenses.payer_user_id`として使用する。編集・削除も登録者本人のみ可能（世帯共有でも他メンバーは不可） |
+| created_by_user_id | BIGINT | — | FK → users.id（登録者）。共有記録を残して作成者を削除する場合はNULLにする。自動計上時の表示主体は別途確定する |
+| created_by_display_snapshot | VARCHAR(50) | — | 共有履歴表示用。作成者が退会した場合は「退会したユーザー」 |
 | account_id | BIGINT | — | FK → accounts.id（引き落とし元の口座直接指定 または credit型カード選択時の親口座、任意）。登録者本人が所有する口座に限る |
 | card_id | BIGINT | — | FK → cards.id（charge型カード選択時のみ設定。この場合account_idはNULL、カード自身の残高から減算）。登録者本人が所有するカードに限る |
 | name | VARCHAR(50) | ○ | 固定費名（家賃、水道代 等） |
@@ -481,7 +585,8 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | fixed_cost_id | BIGINT | ○ | FK → fixed_costs.id |
-| debtor_user_id | BIGINT | ○ | FK → users.id（負担者。登録者本人は含めない） |
+| debtor_user_id | BIGINT | — | FK → users.id（負担者。共有設定を残して負担者を削除する場合はNULL） |
+| debtor_display_snapshot | VARCHAR(50) | — | 共有の固定費設定で退会した負担者を示す場合は「退会したユーザー」 |
 | split_input_type | VARCHAR(10) | ○ | 入力モード。`ratio`（％入力）/`amount`（金額入力）。デフォルト`ratio` |
 | split_ratio | NUMERIC(5,2) | ○ | 負担割合（%） |
 | amount_due | NUMERIC | ○ | 負担額 |
@@ -546,7 +651,8 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
-| created_by_user_id | BIGINT | ○ | FK → users.id |
+| created_by_user_id | BIGINT | — | FK → users.id。共有レシピを残して作成者を削除する場合はNULLにする |
+| created_by_display_snapshot | VARCHAR(50) | — | 共有レシピ表示用。作成者が退会した場合は「退会したユーザー」 |
 | title | VARCHAR(100) | ○ | レシピ名 |
 | ingredients | TEXT | — | 材料（手動・画像解析登録の場合） |
 | steps | TEXT | — | 手順（手動・画像解析登録の場合） |
