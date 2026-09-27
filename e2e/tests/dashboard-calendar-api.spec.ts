@@ -44,7 +44,6 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
       balance: -1200,
     })
     expect(body.notificationCount).toBe(1)
-
     const notificationResponse = await page.request.get('/api/dashboard/notifications/today', {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -53,7 +52,8 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
-    await expect(page.getByText('通知: 1件')).toBeVisible()
+    await expect(page.getByRole('img', { name: '通知アラーム（1件）' })).toBeVisible()
+    await expect(page.getByText('通知: 1件')).not.toBeVisible()
     await page.getByRole('button', { name: jstToday }).click()
     await expect(page.getByRole('dialog', { name: '日次詳細' })).toBeVisible()
     await expect(page.getByRole('link', { name: '支出を登録' })).toHaveAttribute('href', '/kakeibo')
