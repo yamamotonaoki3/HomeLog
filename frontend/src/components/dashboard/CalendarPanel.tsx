@@ -10,7 +10,6 @@ export interface CalendarDay {
 
 interface CalendarResponse {
   days: CalendarDay[]
-  notificationCount: number
 }
 
 function currentMonth(): string {
@@ -26,14 +25,14 @@ function addMonths(month: string, amount: number): string {
 
 export function CalendarPanel({ onSelectDate, showEvents = true, showBalance = true }: { onSelectDate: (day: CalendarDay) => void; showEvents?: boolean; showBalance?: boolean }) {
   const [month, setMonth] = useState(currentMonth)
-  const [data, setData] = useState<CalendarResponse>({ days: [], notificationCount: 0 })
+  const [data, setData] = useState<CalendarResponse>({ days: [] })
 
   useEffect(() => {
     let cancelled = false
     apiClient.get<CalendarResponse>('/dashboard/calendar', { params: { month } }).then((response) => {
       if (!cancelled) setData(response.data)
     }).catch(() => {
-      if (!cancelled) setData({ days: [], notificationCount: 0 })
+      if (!cancelled) setData({ days: [] })
     })
     return () => { cancelled = true }
   }, [month])
@@ -44,7 +43,6 @@ export function CalendarPanel({ onSelectDate, showEvents = true, showBalance = t
       <h2>月間カレンダー</h2>
       <span>{month.replace('-', '年')}月</span>
       <button type="button" aria-label="次月" onClick={() => setMonth((value) => addMonths(value, 1))}>▶</button>
-      <span className="notification-badge">通知: {data.notificationCount}件</span>
     </div>
     <div className="calendar-grid">
       {data.days.map((day) => <button type="button" className="calendar-day" key={day.date} aria-label={day.date} onClick={() => onSelectDate(day)}>

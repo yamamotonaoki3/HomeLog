@@ -30,14 +30,26 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
   const primaryNavigation = page.getByRole('navigation', { name: '主要機能' })
+  const notificationAlarm = page.getByRole('img', { name: '通知アラーム（0件）' })
+  const settings = page.getByRole('link', { name: '設定を開く' })
+  const logout = page.getByRole('button', { name: 'ログアウト' })
+  await expect(notificationAlarm).toBeVisible()
   await cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).scrollIntoViewIfNeeded()
-  const [lastLinkBox, navBox] = await Promise.all([
+  const [lastLinkBox, navBox, alarmBox, settingsBox, logoutBox] = await Promise.all([
     cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).boundingBox(),
     primaryNavigation.boundingBox(),
+    notificationAlarm.boundingBox(),
+    settings.boundingBox(),
+    logout.boundingBox(),
   ])
   expect(lastLinkBox).not.toBeNull()
   expect(navBox).not.toBeNull()
+  expect(alarmBox).not.toBeNull()
+  expect(settingsBox).not.toBeNull()
+  expect(logoutBox).not.toBeNull()
   expect(lastLinkBox!.y + lastLinkBox!.height).toBeLessThanOrEqual(navBox!.y)
+  expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
+  expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(logoutBox!.x)
 })
 
 test('PCではカレンダーの下にサマリーカードを複数列で表示する', async ({ page, consoleGuard }) => {
@@ -47,17 +59,29 @@ test('PCではカレンダーの下にサマリーカードを複数列で表示
 
   const calendar = page.locator('.calendar-panel')
   const cards = page.locator('.dashboard-summary-grid .card')
+  const notificationAlarm = page.getByRole('img', { name: '通知アラーム（0件）' })
+  const settings = page.getByRole('link', { name: '設定を開く' })
+  const logout = page.getByRole('button', { name: 'ログアウト' })
   await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
   await expect(cards).toHaveCount(4)
+  await expect(notificationAlarm).toBeVisible()
 
-  const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
+  const [calendarBox, firstCardBox, secondCardBox, alarmBox, settingsBox, logoutBox] = await Promise.all([
     calendar.boundingBox(),
     cards.nth(0).boundingBox(),
     cards.nth(1).boundingBox(),
+    notificationAlarm.boundingBox(),
+    settings.boundingBox(),
+    logout.boundingBox(),
   ])
   expect(calendarBox).not.toBeNull()
   expect(firstCardBox).not.toBeNull()
   expect(secondCardBox).not.toBeNull()
+  expect(alarmBox).not.toBeNull()
+  expect(settingsBox).not.toBeNull()
+  expect(logoutBox).not.toBeNull()
   expect(calendarBox!.y).toBeLessThan(firstCardBox!.y)
   expect(secondCardBox!.y).toBe(firstCardBox!.y)
+  expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
+  expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(logoutBox!.x)
 })

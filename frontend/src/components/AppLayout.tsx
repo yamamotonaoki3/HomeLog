@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import { NotificationAlarm } from './NotificationAlarm'
 
 const kakeiboPaths = ['/kakeibo', '/warikan', '/accounts', '/events', '/fixed-costs', '/categories']
 const menuPaths = ['/menu', '/recipes']
@@ -36,6 +37,7 @@ export function AppLayout() {
             HomeLog
           </NavLink>
           <nav aria-label="設定" className="account-nav">
+            <NotificationAlarm />
             <NavLink to="/settings" className="settings-icon-link" aria-label="設定を開く" title="設定">
               <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3.2" />

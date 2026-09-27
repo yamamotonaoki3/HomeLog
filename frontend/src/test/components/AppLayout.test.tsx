@@ -40,6 +40,7 @@ describe('AppLayout', () => {
     const primaryNavigation = screen.getByRole('navigation', { name: '主要機能' })
 
     expect(screen.getByRole('link', { name: '設定を開く' })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('img', { name: '通知アラームを読み込み中' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '表示設定' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '世帯設定' })).not.toBeInTheDocument()
     expect(within(primaryNavigation).getByRole('link', { name: '在庫管理' })).toHaveAttribute('href', '/zaiko')
