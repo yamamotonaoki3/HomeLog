@@ -16,6 +16,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${FRONTEND_PORT}`,
     trace: 'on-first-retry',
+    // ダッシュボード・献立・通知はJSTで日付と週を判定するため、CIでもブラウザ時刻を統一する。
+    timezoneId: 'Asia/Tokyo',
   },
   webServer: [
     {
