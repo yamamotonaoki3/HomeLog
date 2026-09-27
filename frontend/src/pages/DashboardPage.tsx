@@ -104,7 +104,8 @@ export function DashboardPage() {
   return (
     <div className="page">
       <div className="dashboard-layout">
-      <div className="dashboard-sidebar">
+      {displaySettings?.cards.calendar !== false && <CalendarPanel onSelectDate={setSelectedDay} showEvents={displaySettings?.items.calendar.events !== false} showBalance={displaySettings?.items.calendar.balance !== false} />}
+      <div className="dashboard-summary-grid">
         {displaySettings?.cards.today !== false && <div className="card">
           <h2>今日の状況</h2>
           {displaySettings?.items.today.balance !== false && <p>収支: {summary?.todayBalance ?? 0}円</p>}{displaySettings?.items.today.menu !== false && <p>今週の献立: {summary?.weeklyMenuEntries.map((entry) => entry.recipeTitle ?? entry.freeTextMemo).filter(Boolean).join('・') || 'なし'}</p>}{displaySettings?.items.today.events !== false && <p>イベント: {summary?.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}</div>}
@@ -147,9 +148,8 @@ export function DashboardPage() {
           <Link to="/events">イベント一覧を見る</Link>
         </div>}
       </div>
-      {displaySettings?.cards.calendar !== false && <CalendarPanel onSelectDate={setSelectedDay} showEvents={displaySettings?.items.calendar.events !== false} showBalance={displaySettings?.items.calendar.balance !== false} />}
-      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
       </div>
+      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )
