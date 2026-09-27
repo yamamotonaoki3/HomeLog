@@ -135,6 +135,30 @@ dashboardRoute.get('/summary', async (c) => {
   })
 })
 
+dashboardRoute.get('/notifications/today', async (c) => {
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+
+  const today = formatJstToday()
+  const visibleEvents = await db
+    .select({ eventDate: events.eventDate, recurrenceType: events.recurrenceType, notifyEnabled: events.notifyEnabled })
+    .from(events)
+    .where(and(eq(events.householdId, householdId), or(isNull(events.ownerUserId), eq(events.ownerUserId, userId))))
+    .orderBy(events.id)
+    .all()
+  const notificationCount = visibleEvents.filter(
+    (event) =>
+      event.notifyEnabled &&
+      resolveOccurrences({ eventDate: event.eventDate, recurrenceType: event.recurrenceType as RecurrenceType }, today, today).length > 0,
+  ).length
+
+  return c.json({ notificationCount })
+})
+
 dashboardRoute.get('/calendar', async (c) => {
   const month = c.req.query('month')
   if (!month || !/^\d{4}-\d{2}$/.test(month) || !isValidCalendarDate(`${month}-01`)) {

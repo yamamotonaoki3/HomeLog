@@ -1,8 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './console-guard'
 import { addTransaction, setupUserWithHousehold } from './support/flows'
 
 test.describe('S-04 ダッシュボードカレンダーAPI', () => {
-  test('実UIで登録した当日の収支・固定費・通知イベントを返す', async ({ page }) => {
+  test('実UIで登録した当日の収支・固定費・通知イベントを返す', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     await setupUserWithHousehold(page, 'dashboard_calendar_api')
     const jstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const jstMonth = jstToday.slice(0, 7)
@@ -43,6 +44,12 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
       balance: -1200,
     })
     expect(body.notificationCount).toBe(1)
+
+    const notificationResponse = await page.request.get('/api/dashboard/notifications/today', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    expect(notificationResponse.ok()).toBeTruthy()
+    await expect(notificationResponse.json()).resolves.toEqual({ notificationCount: 1 })
 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
