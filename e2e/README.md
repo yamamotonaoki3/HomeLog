@@ -43,6 +43,7 @@ npm test -- tests/zaiko.spec.ts
 | Tier | ファイル | 内容 |
 |---|---|---|
 | 1 | `auth.spec.ts` | 登録（確認欄不一致）・ログイン/ログアウト・未ログインリダイレクト |
+| 1 | `navigation.spec.ts` | 主要3機能の下部ナビゲーション・家計簿/献立表の関連機能への遷移 |
 | 1 | `household.spec.ts` | 世帯作成 → 別ユーザーが招待コードで参加 |
 | 1 | `kakeibo.spec.ts` | 支出・収入登録 → 一覧・今月サマリー反映 |
 | 2 | `warikan.spec.ts` | A 割り勘登録 → B 支払報告 → A 受領確認で精算済み |
