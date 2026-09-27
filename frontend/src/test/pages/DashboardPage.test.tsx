@@ -256,4 +256,18 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/家賃/)).toBeInTheDocument()
     expect(screen.getByText(/-1200円/)).toBeInTheDocument()
   })
+
+  it('月間カレンダーをサマリーカード群より先に配置する', async () => {
+    setupApi()
+    const { container } = renderDashboardPage()
+
+    const calendarHeading = await screen.findByRole('heading', { name: '月間カレンダー' })
+    const layout = container.querySelector('.dashboard-layout')
+    const summaryCards = container.querySelector('.dashboard-summary-grid')
+
+    expect(layout).toBeInTheDocument()
+    expect(summaryCards).toBeInTheDocument()
+    expect(layout?.firstElementChild).toContainElement(calendarHeading)
+    expect(layout?.lastElementChild).toBe(summaryCards)
+  })
 })

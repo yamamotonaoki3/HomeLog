@@ -1,0 +1,63 @@
+import { expect, test } from './console-guard'
+import { setupUserWithHousehold } from './support/flows'
+
+test('モバイルではカレンダーを先頭にしてサマリーカードを1列で表示する', async ({ page, consoleGuard }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  consoleGuard.watch(page)
+  await setupUserWithHousehold(page, 'dashboard-layout')
+
+  const calendar = page.locator('.calendar-panel')
+  const summaryCards = page.locator('.dashboard-summary-grid')
+  const cards = summaryCards.locator('.card')
+
+  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
+  await expect(cards).toHaveCount(4)
+  await expect(cards.nth(0).getByRole('heading', { name: '今日の状況' })).toBeVisible()
+  await expect(cards.nth(1).getByRole('heading', { name: '買い物・在庫' })).toBeVisible()
+  await expect(cards.nth(2).getByRole('heading', { name: '個人の財政' })).toBeVisible()
+  await expect(cards.nth(3).getByRole('heading', { name: '今月のお金' })).toBeVisible()
+
+  const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
+    calendar.boundingBox(),
+    cards.nth(0).boundingBox(),
+    cards.nth(1).boundingBox(),
+  ])
+  expect(calendarBox).not.toBeNull()
+  expect(firstCardBox).not.toBeNull()
+  expect(secondCardBox).not.toBeNull()
+  expect(calendarBox!.y).toBeLessThan(firstCardBox!.y)
+  expect(secondCardBox!.y).toBeGreaterThan(firstCardBox!.y)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  const primaryNavigation = page.getByRole('navigation', { name: '主要機能' })
+  await cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).scrollIntoViewIfNeeded()
+  const [lastLinkBox, navBox] = await Promise.all([
+    cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).boundingBox(),
+    primaryNavigation.boundingBox(),
+  ])
+  expect(lastLinkBox).not.toBeNull()
+  expect(navBox).not.toBeNull()
+  expect(lastLinkBox!.y + lastLinkBox!.height).toBeLessThanOrEqual(navBox!.y)
+})
+
+test('PCではカレンダーの下にサマリーカードを複数列で表示する', async ({ page, consoleGuard }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  consoleGuard.watch(page)
+  await setupUserWithHousehold(page, 'dashboard-layout-desktop')
+
+  const calendar = page.locator('.calendar-panel')
+  const cards = page.locator('.dashboard-summary-grid .card')
+  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
+  await expect(cards).toHaveCount(4)
+
+  const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
+    calendar.boundingBox(),
+    cards.nth(0).boundingBox(),
+    cards.nth(1).boundingBox(),
+  ])
+  expect(calendarBox).not.toBeNull()
+  expect(firstCardBox).not.toBeNull()
+  expect(secondCardBox).not.toBeNull()
+  expect(calendarBox!.y).toBeLessThan(firstCardBox!.y)
+  expect(secondCardBox!.y).toBe(firstCardBox!.y)
+})
