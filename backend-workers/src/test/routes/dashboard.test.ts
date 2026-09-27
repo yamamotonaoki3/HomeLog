@@ -524,3 +524,50 @@ describe('GET /api/dashboard/calendar', () => {
     expect(body.notificationCount).toBe(1)
   })
 })
+
+describe('GET /api/dashboard/notifications/today', () => {
+  it('本人に表示できる当日の通知有効イベント数だけを返す', async () => {
+    const owner = await createUserWithHousehold('notification-count-owner@example.com')
+    const member = await env.DB.prepare(
+      'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id',
+    )
+      .bind('notification-count-member@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+    const today = formatJstToday()
+
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: null,
+      createdByUserId: owner.userId,
+      name: '共有の当日通知',
+      eventDate: today,
+      recurrenceType: 'none',
+      notifyEnabled: true,
+    })
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: owner.userId,
+      createdByUserId: owner.userId,
+      name: '本人の毎日通知',
+      eventDate: '2000-01-01',
+      recurrenceType: 'daily',
+      notifyEnabled: true,
+    })
+    await createEvent({
+      householdId: owner.householdId,
+      ownerUserId: member.id,
+      createdByUserId: member.id,
+      name: '他人の当日通知',
+      eventDate: today,
+      recurrenceType: 'none',
+      notifyEnabled: true,
+    })
+
+    const res = await app.request('/api/dashboard/notifications/today', { headers: owner.headers }, env)
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ notificationCount: 2 })
+  })
+})
