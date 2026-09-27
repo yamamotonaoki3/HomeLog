@@ -18,7 +18,7 @@ import { RecipesPage } from './pages/RecipesPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { WarikanPage } from './pages/WarikanPage'
 import { ZaikoPage } from './pages/ZaikoPage'
-import { SettingsPage } from './pages/SettingsPage'
+import { DisplaySettingsPage, SettingsPage } from './pages/SettingsPage'
 
 function App() {
   return (
@@ -47,6 +47,7 @@ function App() {
                 <Route path="/events" element={<EventsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/display" element={<DisplaySettingsPage />} />
               </Route>
             </Route>
           </Route>
