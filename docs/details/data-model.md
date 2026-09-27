@@ -421,22 +421,32 @@ erDiagram
 | dashboard_settings | JSONB | ○ | トップ画面の表示設定（下記構造）。デフォルトは全カード・全項目true |
 | updated_at | TIMESTAMP | ○ | 更新日時 |
 
-`dashboard_settings` は「カード（親）」と「カード内項目（子）」の2階層構造で持つ。カード内項目が増減してもスキーマ変更が不要なようJSONBとする。
+`dashboard_settings` は「カード（親）」「カード内項目（子）」「カード順」の構造で持つ。カード内項目が増減してもスキーマ変更が不要なようJSONBとする。カード順はユーザーごとに保存し、表示OFFのカードは描画対象から除外する。カレンダーは表示ONの場合に常に最上部へ固定し、カード順の対象外とする。
 
 ```json
 {
-  "cards": { "today": true, "money": true, "finance": true, "stock": true, "calendar": true },
+  "cards": {
+    "today": true, "stock": true, "finance": true,
+    "money": true, "eventExpenses": true, "calendar": true
+  },
+  "cardOrder": ["today", "stock", "finance", "money", "eventExpenses"],
   "items": {
-    "today":    { "balance": true, "menu": true, "events": true },
-    "money":    { "personal": true, "householdTotal": true, "unsettled": true, "eventSummary": true },
-    "stock":    { "shoppingCount": true, "lowStock": true, "commonItems": true },
-    "calendar": { "events": true, "balance": true }
+    "today": { "balance": true, "menu": true, "events": true },
+    "stock": { "shoppingList": true, "inventoryList": true },
+    "money": { "personal": true, "householdTotal": true, "unsettled": true },
+    "calendar": { "income": true, "expense": true, "events": true }
   }
 }
 ```
 
 - カードのフラグがfalseの場合、そのカードは項目の設定に関わらず非表示（項目の設定値自体は保持される）。
+- `cardOrder` の標準値は `today → stock → finance → money → eventExpenses`。未知のカードIDや重複は保存時に拒否し、未指定のカードは標準順の末尾へ補完する。
+- 表示設定とカード順は同一のユーザー設定更新として保存する。S-21で保存が成功した場合はS-04へ遷移し、失敗時は入力値を保持して再試行できるようにする。
 - 「個人の財政」は表示項目が1つ（口座残高合計）のためカード単位のフラグのみ持つ。
+- 「よく使う品目」「買い物リスト件数」「在庫不足件数」「今月のお金内のイベント別支出」は正式な設定項目から削除する。買い物・在庫は`shoppingList`と`inventoryList`の実データを、イベント別支出は独立カードで表示する。
+- イベント別支出カードの期間は `today` / `month` / `year` とし、既定値は `year`。`year` は投資専用ではなく暦年のイベント別支出集計を表す。
+- 期間の選択はS-04カード内だけで保持する一時的な画面状態とし、`dashboard_settings`には保存しない。集計境界は日本時間（JST）の当日・当月・暦年で判定する。
+- 集計対象日はイベントの繰り返し発生日ではなく、`expenses.expense_date`とする。`expenses.event_id`が対象イベントに一致し、ログインユーザー本人が支払った支出だけを合計する。他人の支出は返さない。
 - 設定画面（S-21、[wireframes.md](wireframes.md)参照）で編集する。ユーザーごとの設定であり、他の世帯メンバーの表示には影響しない。
 
 ### households（世帯グループ）／household_members（世帯メンバー）
