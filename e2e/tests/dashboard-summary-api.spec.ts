@@ -1,8 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './console-guard'
 import { addTransaction, setupUserWithHousehold } from './support/flows'
 
 test.describe('S-04 ダッシュボード集計API', () => {
-  test('データがない新規世帯でも今日の状況と今月のお金を表示できる', async ({ page }) => {
+  test('データがない新規世帯でも今日の状況と今月のお金を表示できる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     await setupUserWithHousehold(page, 'dashboard_empty')
 
     await expect(page.getByRole('heading', { name: '今日の状況' })).toBeVisible()
@@ -13,7 +14,8 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await expect(page.getByText('イベント別支出: なし')).toBeVisible()
   })
 
-  test('本人の収支・今週の献立・当日イベントを実プロセス経由で返す', async ({ page }) => {
+  test('本人の収支・今週の献立・当日イベントを実プロセス経由で返す', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     await setupUserWithHousehold(page, 'dashboard_api')
     const jstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
@@ -37,6 +39,12 @@ test.describe('S-04 ダッシュボード集計API', () => {
 
     const accessToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     expect(accessToken).toBeTruthy()
+    await expect.poll(async () => {
+      const summaryResponse = await page.request.get('/api/dashboard/summary', { headers: { Authorization: `Bearer ${accessToken}` } })
+      if (!summaryResponse.ok()) return []
+      const summary = await summaryResponse.json<{ weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[] }>()
+      return summary.weeklyMenuEntries
+    }, { timeout: 5_000 }).toContainEqual({ recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null })
     const response = await page.request.get('/api/dashboard/summary', { headers: { Authorization: `Bearer ${accessToken}` } })
     expect(response.ok()).toBeTruthy()
     const body = await response.json<{
