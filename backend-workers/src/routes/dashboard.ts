@@ -13,12 +13,17 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
 export const dashboardRoute = new Hono<AppEnv>()
 
+function nextDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10)
+}
+
 dashboardRoute.use('*', requireAuth)
 
 dashboardRoute.get('/summary', async (c) => {
   const eventPeriod = c.req.query('eventPeriod') ?? 'year'
-  if (eventPeriod !== 'year' && eventPeriod !== 'month') {
-    return c.json(errorResponse('VALIDATION_ERROR', 'eventPeriodはyearまたはmonthを指定してください'), 400)
+  if (eventPeriod !== 'year' && eventPeriod !== 'month' && eventPeriod !== 'today') {
+    return c.json(errorResponse('VALIDATION_ERROR', 'eventPeriodはtoday・month・yearのいずれかを指定してください'), 400)
   }
   const db = drizzle(c.env.DB)
   const householdId = await resolveHouseholdId(db, c.get('userId'))
@@ -91,9 +96,11 @@ dashboardRoute.get('/summary', async (c) => {
     .map((event) => ({ name: event.name, recurrenceType: event.recurrenceType }))
 
   const eventRange =
-    eventPeriod === 'month'
-      ? { rangeStart: monthStart, rangeEnd: nextMonthStart }
-      : { rangeStart: `${jstToday.getUTCFullYear()}-01-01`, rangeEnd: `${jstToday.getUTCFullYear() + 1}-01-01` }
+    eventPeriod === 'today'
+      ? { rangeStart: today, rangeEnd: nextDate(today) }
+      : eventPeriod === 'month'
+        ? { rangeStart: monthStart, rangeEnd: nextMonthStart }
+        : { rangeStart: `${jstToday.getUTCFullYear()}-01-01`, rangeEnd: `${jstToday.getUTCFullYear() + 1}-01-01` }
   const [monthlyPersonalExpenseRow, receivableRow, payableRow, eventExpenseRows] = await Promise.all([
     c.env.DB.prepare(
       'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE household_id = ? AND payer_user_id = ? AND expense_date >= ? AND expense_date < ?',
@@ -179,7 +186,9 @@ dashboardRoute.get('/calendar', async (c) => {
   const days = Array.from({ length: lastDay }, (_, index) => ({
     date: `${month}-${(index + 1).toString().padStart(2, '0')}`,
     fixedCosts: [] as string[],
-    events: [] as { name: string; isRecurring: boolean }[],
+    events: [] as { id: number; name: string; isRecurring: boolean; recurrenceType: RecurrenceType; eventDate: string }[],
+    income: 0,
+    expense: 0,
     balance: 0,
   }))
   const daysByDate = new Map(days.map((day) => [day.date, day]))
@@ -204,7 +213,7 @@ dashboardRoute.get('/calendar', async (c) => {
       .orderBy(fixedCosts.id)
       .all(),
     db
-      .select({ name: events.name, eventDate: events.eventDate, recurrenceType: events.recurrenceType, notifyEnabled: events.notifyEnabled })
+      .select({ id: events.id, name: events.name, eventDate: events.eventDate, recurrenceType: events.recurrenceType, notifyEnabled: events.notifyEnabled })
       .from(events)
       .where(and(eq(events.householdId, householdId), or(isNull(events.ownerUserId), eq(events.ownerUserId, userId))))
       .orderBy(events.id)
@@ -213,11 +222,15 @@ dashboardRoute.get('/calendar', async (c) => {
 
   for (const row of incomeRows.results) {
     const day = daysByDate.get(row.date)
-    if (day) day.balance += row.total
+    if (!day) continue
+    day.income += row.total
+    day.balance += row.total
   }
   for (const row of expenseRows.results) {
     const day = daysByDate.get(row.date)
-    if (day) day.balance -= row.total
+    if (!day) continue
+    day.expense += row.total
+    day.balance -= row.total
   }
   for (const fixedCost of visibleFixedCosts) {
     const date = `${month}-${Math.min(fixedCost.paymentDay, lastDay).toString().padStart(2, '0')}`
@@ -226,7 +239,13 @@ dashboardRoute.get('/calendar', async (c) => {
   for (const event of visibleEvents) {
     const recurrenceType = event.recurrenceType as RecurrenceType
     for (const date of resolveOccurrences({ eventDate: event.eventDate, recurrenceType }, monthStart, `${month}-${lastDay}`)) {
-      daysByDate.get(date)?.events.push({ name: event.name, isRecurring: recurrenceType !== 'none' })
+      daysByDate.get(date)?.events.push({
+        id: event.id,
+        name: event.name,
+        isRecurring: recurrenceType !== 'none',
+        recurrenceType,
+        eventDate: event.eventDate,
+      })
     }
   }
 
