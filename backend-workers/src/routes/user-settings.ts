@@ -87,24 +87,24 @@ function fromLegacy(legacy: z.infer<typeof legacySettingsSchema>): Settings {
   }
 }
 
-function normalize(input: unknown): Settings | null {
+function normalize(input: unknown, stored?: Settings): Settings | null {
   const current = settingsSchema.safeParse(input)
   if (current.success) {
     const aliases = settingsWithAliasesSchema.safeParse(input)
     if (!aliases.success) return null
     const { items } = aliases.data
     const settings = current.data
-    const derived = withLegacyAliases({ ...settings, cardOrder: completeOrder(settings.cardOrder) }).items
-    if (items.stock.shoppingCount !== undefined && items.stock.shoppingCount !== derived.stock.shoppingCount) {
+    const derived = stored ? withLegacyAliases(stored).items : undefined
+    if (derived && items.stock.shoppingCount !== undefined && items.stock.shoppingCount !== derived.stock.shoppingCount) {
       settings.items.stock.shoppingList = items.stock.shoppingCount
     }
-    if (items.stock.lowStock !== undefined && items.stock.lowStock !== derived.stock.lowStock) {
+    if (derived && items.stock.lowStock !== undefined && items.stock.lowStock !== derived.stock.lowStock) {
       settings.items.stock.inventoryList = items.stock.lowStock
     }
-    if (items.money.eventSummary !== undefined && items.money.eventSummary !== derived.money.eventSummary) {
+    if (derived && items.money.eventSummary !== undefined && items.money.eventSummary !== derived.money.eventSummary) {
       settings.cards.eventExpenses = items.money.eventSummary
     }
-    if (items.calendar.balance !== undefined && items.calendar.balance !== derived.calendar.balance) {
+    if (derived && items.calendar.balance !== undefined && items.calendar.balance !== derived.calendar.balance) {
       settings.items.calendar.income = items.calendar.balance
       settings.items.calendar.expense = items.calendar.balance
     }
@@ -150,7 +150,10 @@ userSettingsRoute.get('/', async (c) => {
 })
 
 userSettingsRoute.put('/', async (c) => {
-  const settings = normalize(await c.req.json().catch(() => null))
+  const row = await c.env.DB.prepare('SELECT dashboard_settings AS settings FROM user_settings WHERE user_id = ?')
+    .bind(c.get('userId'))
+    .first<{ settings: string }>()
+  const settings = normalize(await c.req.json().catch(() => null), row ? parseStored(row.settings) : defaults)
   if (!settings) return c.json(errorResponse('VALIDATION_ERROR', '設定内容が不正です'), 400)
   await c.env.DB.prepare(
     'INSERT INTO user_settings (user_id, dashboard_settings) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET dashboard_settings = excluded.dashboard_settings, updated_at = current_timestamp',

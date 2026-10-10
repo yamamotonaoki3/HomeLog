@@ -307,6 +307,44 @@ describe('PUT /api/user-settings', () => {
     expect(JSON.parse(row!.s)).toEqual(expected)
   })
 
+  it('GETレスポンスのエイリアスを残して買い物・在庫の新キーをfalseに変更すると保存される', async () => {
+    const { id, auth } = await createUser()
+    await storeRaw(id, fullSettings())
+    const body = await (await get(auth)).json<ResponseSettings>()
+    body.items.stock.shoppingList = false
+    body.items.stock.inventoryList = false
+    const settings = withoutAliases(body)
+    const res = await put(auth, body)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(responseSettings(settings))
+    expect(await (await get(auth)).json()).toEqual(responseSettings(settings))
+  })
+
+  it('GETレスポンスのエイリアスを残してeventExpensesをfalseに変更すると保存される', async () => {
+    const { id, auth } = await createUser()
+    await storeRaw(id, fullSettings())
+    const body = await (await get(auth)).json<ResponseSettings>()
+    body.cards.eventExpenses = false
+    const settings = withoutAliases(body)
+    const res = await put(auth, body)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(responseSettings(settings))
+    expect(await (await get(auth)).json()).toEqual(responseSettings(settings))
+  })
+
+  it('GETレスポンスのエイリアスを残してカレンダーの収入・支出をfalseに変更すると保存される', async () => {
+    const { id, auth } = await createUser()
+    await storeRaw(id, fullSettings())
+    const body = await (await get(auth)).json<ResponseSettings>()
+    body.items.calendar.income = false
+    body.items.calendar.expense = false
+    const settings = withoutAliases(body)
+    const res = await put(auth, body)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(responseSettings(settings))
+    expect(await (await get(auth)).json()).toEqual(responseSettings(settings))
+  })
+
   it.each([[true, false], [false, true]])('GETレスポンスで別カードだけ変更してもカレンダーの非対称設定を維持する（income=%s, expense=%s）', async (income, expense) => {
     const { auth } = await createUser()
     const settings = fullSettings()
