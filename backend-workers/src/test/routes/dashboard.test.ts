@@ -413,6 +413,30 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.eventExpenseSummaries).toEqual([{ eventId: visibleEventId, name: '表示対象イベント', total: 500 }])
   })
 
+  it('eventPeriod=todayではJST当日の本人支出だけを集計し、未知の期間は400を返す', async () => {
+    const owner = await createUserWithHousehold('summary-today-owner@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('summary-today-member@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+    const today = formatJstToday()
+    const yesterday = formatDate(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)) - 1)))
+    const eventId = await createDashboardEvent({ householdId: owner.householdId, ownerUserId: null, createdByUserId: owner.userId, name: '当日イベント', eventDate: today })
+    const otherOwnedId = await createDashboardEvent({ householdId: owner.householdId, ownerUserId: member.id, createdByUserId: member.id, name: '他人のイベント', eventDate: today })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 300, expenseDate: today, eventId })
+    await createExpenseWithId({ householdId: owner.householdId, userId: owner.userId, amount: 700, expenseDate: yesterday, eventId })
+    await createExpenseWithId({ householdId: owner.householdId, userId: member.id, amount: 5000, expenseDate: today, eventId })
+    await createExpenseWithId({ householdId: owner.householdId, userId: member.id, amount: 4000, expenseDate: today, eventId: otherOwnedId })
+
+    const res = await app.request('/api/dashboard/summary?eventPeriod=today', { headers: owner.headers }, env)
+    expect(res.status).toBe(200)
+    expect((await res.json<{ eventExpenseSummaries: unknown[] }>()).eventExpenseSummaries).toEqual([{ eventId, name: '当日イベント', total: 300 }])
+    for (const period of ['week', 'TODAY', '']) {
+      expect((await app.request(`/api/dashboard/summary?eventPeriod=${period}`, { headers: owner.headers }, env)).status).toBe(400)
+    }
+  })
+
   it('eventPeriodはyear/monthだけを受け付け、monthでは当月分だけを集計する', async () => {
     const owner = await createUserWithHousehold('summary-period-owner@example.com')
     const today = getJstToday()
@@ -474,6 +498,42 @@ describe('GET /api/dashboard/calendar', () => {
       events: [{ name: '毎週の予定', isRecurring: true }],
       balance: 3800,
     })
+  })
+
+  it('日別の収入と支出を別フィールドで返し、イベントにはIDと詳細表示用の情報を含める', async () => {
+    const owner = await createUserWithHousehold('calendar-split@example.com')
+    const member = await env.DB.prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?) RETURNING id')
+      .bind('calendar-split-member@example.com', 'dummy-hash', 'テスト花子')
+      .first<{ id: number }>()
+    if (!member) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(owner.householdId, member.id).run()
+    await createEvent({ householdId: owner.householdId, ownerUserId: null, createdByUserId: owner.userId, name: '毎月の予定', eventDate: '2026-01-10', recurrenceType: 'monthly' })
+    await createEvent({ householdId: owner.householdId, ownerUserId: owner.userId, createdByUserId: owner.userId, name: '自分の予定', eventDate: '2026-02-10', recurrenceType: 'none' })
+    await createEvent({ householdId: owner.householdId, ownerUserId: member.id, createdByUserId: member.id, name: '他人の予定', eventDate: '2026-02-10', recurrenceType: 'none' })
+    const ids = await env.DB.prepare('SELECT id, name FROM events WHERE household_id = ? ORDER BY id').bind(owner.householdId).all<{ id: number; name: string }>()
+    const idOf = (name: string) => ids.results.find((row) => row.name === name)?.id
+    await createIncome({ householdId: owner.householdId, userId: owner.userId, amount: 3000, incomeDate: '2026-02-10' })
+    await createIncome({ householdId: owner.householdId, userId: owner.userId, amount: 2000, incomeDate: '2026-02-10' })
+    await createExpense({ householdId: owner.householdId, userId: owner.userId, amount: 1500, expenseDate: '2026-02-10', includeInHouseholdTotal: true })
+    await createExpense({ householdId: owner.householdId, userId: member.id, amount: 9999, expenseDate: '2026-02-10', includeInHouseholdTotal: true })
+    await createIncome({ householdId: owner.householdId, userId: member.id, amount: 8888, incomeDate: '2026-02-11' })
+    await createExpense({ householdId: owner.householdId, userId: owner.userId, amount: 400, expenseDate: '2026-02-12', includeInHouseholdTotal: false })
+
+    const res = await app.request('/api/dashboard/calendar?month=2026-02', { headers: owner.headers }, env)
+    expect(res.status).toBe(200)
+    const body = await res.json<{ days: { date: string; income: number; expense: number; balance: number; events: unknown[] }[] }>()
+    const day = (date: string) => body.days.find((d) => d.date === date)
+    expect(day('2026-02-10')).toMatchObject({
+      income: 5000,
+      expense: 1500,
+      balance: 3500,
+      events: [
+        { id: idOf('毎月の予定'), name: '毎月の予定', isRecurring: true, recurrenceType: 'monthly', eventDate: '2026-01-10' },
+        { id: idOf('自分の予定'), name: '自分の予定', isRecurring: false, recurrenceType: 'none', eventDate: '2026-02-10' },
+      ],
+    })
+    expect(day('2026-02-11')).toMatchObject({ income: 0, expense: 0, balance: 0, events: [] })
+    expect(day('2026-02-12')).toMatchObject({ income: 0, expense: 400, balance: -400 })
   })
 
   it('他人の個人データを除外し、当日の通知有効イベント発生件数を返す', async () => {

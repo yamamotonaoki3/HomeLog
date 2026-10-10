@@ -11,6 +11,7 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
 
     await page.goto('/kakeibo')
     await addTransaction(page, '支出', 1200, '[E2E_TEST] カレンダー支出', { date: jstToday })
+    await addTransaction(page, '収入', 3000, '[E2E_TEST] カレンダー収入', { date: jstToday })
 
     await page.goto('/fixed-costs')
     await page.getByRole('button', { name: '固定費を登録' }).click()
@@ -35,14 +36,17 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     })
     expect(response.ok()).toBeTruthy()
     const body = await response.json<{
-      days: { date: string; fixedCosts: string[]; events: { name: string; isRecurring: boolean }[]; balance: number }[]
+      days: { date: string; fixedCosts: string[]; events: { id: number; name: string; isRecurring: boolean }[]; income: number; expense: number; balance: number }[]
       notificationCount: number
     }>()
     expect(body.days.find((day) => day.date === jstToday)).toMatchObject({
       fixedCosts: ['[E2E_TEST] カレンダー固定費'],
-      events: [{ name: '[E2E_TEST] カレンダーイベント', isRecurring: false }],
-      balance: -1200,
+      events: [{ name: '[E2E_TEST] カレンダーイベント', isRecurring: false, recurrenceType: 'none', eventDate: jstToday }],
+      income: 3000,
+      expense: 1200,
+      balance: 1800,
     })
+    expect(body.days.find((day) => day.date === jstToday)?.events[0].id).toEqual(expect.any(Number))
     expect(body.notificationCount).toBe(1)
     const notificationResponse = await page.request.get('/api/dashboard/notifications/today', {
       headers: { Authorization: `Bearer ${accessToken}` },

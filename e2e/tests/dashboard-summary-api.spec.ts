@@ -75,4 +75,38 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await page.getByRole('link', { name: 'イベント一覧を見る' }).click()
     await expect(page).toHaveURL(/\/events$/)
   })
+  test('イベント別支出をtoday・month・yearの期間で返し、未知の期間は400を返す', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await setupUserWithHousehold(page, 'dashboard_event_period')
+    const jstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const eventName = '[E2E_TEST] 期間別イベント'
+
+    await page.goto('/events')
+    await page.getByRole('button', { name: 'イベントを登録' }).click()
+    await page.getByLabel('イベント名').fill(eventName)
+    await page.getByLabel('日付').fill(jstToday)
+    await page.getByRole('button', { name: '登録', exact: true }).click()
+    await expect(page.getByTestId('events-panel').getByRole('row').filter({ hasText: eventName })).toBeVisible()
+
+    await page.goto('/kakeibo')
+    await page.getByRole('button', { name: '登録', exact: true }).first().click()
+    const modal = page.getByTestId('transaction-modal')
+    await modal.getByRole('tab', { name: '支出' }).click()
+    await modal.getByLabel('イベント（任意）').selectOption({ label: eventName })
+    await modal.getByLabel('金額').fill('800')
+    await modal.getByLabel('使用用途（任意）').fill('[E2E_TEST] 期間別支出')
+    await modal.getByLabel('日時').fill(jstToday)
+    await modal.getByRole('button', { name: '登録', exact: true }).click()
+    await expect(modal).toBeHidden()
+
+    const accessToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
+    const headers = { Authorization: `Bearer ${accessToken}` }
+    for (const period of ['today', 'month', 'year']) {
+      const response = await page.request.get(`/api/dashboard/summary?eventPeriod=${period}`, { headers })
+      expect(response.ok()).toBeTruthy()
+      const body = await response.json<{ eventExpenseSummaries: { eventId: number; name: string; total: number }[] }>()
+      expect(body.eventExpenseSummaries).toEqual([{ eventId: expect.any(Number), name: eventName, total: 800 }])
+    }
+    expect((await page.request.get('/api/dashboard/summary?eventPeriod=week', { headers })).status()).toBe(400)
+  })
 })
