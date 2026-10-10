@@ -11,11 +11,12 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   const cards = summaryCards.locator('.card')
 
   await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
-  await expect(cards).toHaveCount(4)
+  await expect(cards).toHaveCount(5)
   await expect(cards.nth(0).getByRole('heading', { name: '今日の状況' })).toBeVisible()
   await expect(cards.nth(1).getByRole('heading', { name: '買い物・在庫' })).toBeVisible()
   await expect(cards.nth(2).getByRole('heading', { name: '個人の財政' })).toBeVisible()
   await expect(cards.nth(3).getByRole('heading', { name: '今月のお金' })).toBeVisible()
+  await expect(cards.nth(4).getByRole('heading', { name: 'イベント別支出' })).toBeVisible()
 
   const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
     calendar.boundingBox(),
@@ -34,9 +35,9 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   const settings = page.getByRole('link', { name: '設定を開く' })
   const logout = page.getByRole('button', { name: 'ログアウト' })
   await expect(notificationAlarm).toBeVisible()
-  await cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).scrollIntoViewIfNeeded()
+  await cards.nth(4).getByRole('link', { name: 'イベント一覧を見る' }).scrollIntoViewIfNeeded()
   const [lastLinkBox, navBox, alarmBox, settingsBox, logoutBox] = await Promise.all([
-    cards.nth(3).getByRole('link', { name: 'イベント一覧を見る' }).boundingBox(),
+    cards.nth(4).getByRole('link', { name: 'イベント一覧を見る' }).boundingBox(),
     primaryNavigation.boundingBox(),
     notificationAlarm.boundingBox(),
     settings.boundingBox(),
@@ -63,7 +64,7 @@ test('PCではカレンダーの下にサマリーカードを複数列で表示
   const settings = page.getByRole('link', { name: '設定を開く' })
   const logout = page.getByRole('button', { name: 'ログアウト' })
   await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
-  await expect(cards).toHaveCount(4)
+  await expect(cards).toHaveCount(5)
   await expect(notificationAlarm).toBeVisible()
 
   const [calendarBox, firstCardBox, secondCardBox, alarmBox, settingsBox, logoutBox] = await Promise.all([

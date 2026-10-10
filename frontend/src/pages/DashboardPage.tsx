@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -9,10 +9,10 @@ import { Toast } from '../components/Toast'
 import { CalendarPanel } from '../components/dashboard/CalendarPanel'
 import { DayDetailModal } from '../components/dashboard/DayDetailModal'
 import type { CalendarDay } from '../components/dashboard/CalendarPanel'
+import { ORDERABLE_CARDS, type DashboardCard, type DisplaySettings, type OrderableCard } from '../api/userSettingsTypes'
 
 const COMMON_ITEMS_COUNT = 3
 type EventSummaryPeriod = 'year' | 'month'
-type DisplaySettings = { cards: Record<'today'|'money'|'finance'|'stock'|'calendar', boolean>; items: { today: Record<'balance'|'menu'|'events',boolean>; money: Record<'personal'|'householdTotal'|'unsettled'|'eventSummary',boolean>; stock: Record<'shoppingCount'|'lowStock'|'commonItems',boolean>; calendar: Record<'events'|'balance',boolean> } }
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
@@ -101,53 +101,85 @@ export function DashboardPage() {
     return <p>読み込み中...</p>
   }
 
+  const cardOrder = displaySettings?.cardOrder ?? ORDERABLE_CARDS
+  const showCard = (card: DashboardCard) => displaySettings?.cards[card] !== false
+  const items = displaySettings?.items
+
+  const cardContents: Record<OrderableCard, ReactNode> = {
+    today: (
+      <div className="card" key="today">
+        <h2>今日の状況</h2>
+        {items?.today.balance !== false && <p>収支: {summary?.todayBalance ?? 0}円</p>}
+        {items?.today.menu !== false && <p>今週の献立: {summary?.weeklyMenuEntries.map((entry) => entry.recipeTitle ?? entry.freeTextMemo).filter(Boolean).join('・') || 'なし'}</p>}
+        {items?.today.events !== false && <p>イベント: {summary?.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}
+      </div>
+    ),
+    stock: (
+      <div className="card" key="stock">
+        <h2>買い物・在庫</h2>
+        {summary && (
+          <>
+            {items?.stock.shoppingList !== false && <p>買い物リスト: {summary.shoppingListCount}件</p>}
+            {items?.stock.inventoryList !== false && <p>在庫不足: {summary.lowStockCount}件</p>}
+            <Link to="/zaiko">買い物リストを見る</Link>
+          </>
+        )}
+        <p>よく使う品目: {commonItems || 'なし'}</p>
+      </div>
+    ),
+    finance: (
+      <div className="card" key="finance">
+        <h2>個人の財政</h2>
+        <p>
+          口座残高合計: {accountBalanceTotal}円　<Link to="/accounts">口座・カード管理を見る</Link>
+        </p>
+      </div>
+    ),
+    money: (
+      <div className="card" key="money">
+        <h2>今月のお金</h2>
+        {/* 移行完了までの間はJava版バックエンドがhouseholdExpenseTotalを返さないため、
+            未定義時は0円表示にフォールバックする(Phase 6での接続先切り替え後は常に値が入る)。 */}
+        {items?.money.personal !== false && <p>個人支出: {summary?.monthlyPersonalExpense ?? 0}円</p>}
+        {items?.money.householdTotal !== false && <p>世帯合計対象額: {summary?.householdExpenseTotal ?? 0}円</p>}
+        {items?.money.unsettled !== false && (
+          <>
+            <p>受取予定: {summary?.unsettledReceivable?.count ?? 0}件・{summary?.unsettledReceivable?.total ?? 0}円</p>
+            <p>支払予定: {summary?.unsettledPayable?.count ?? 0}件・{summary?.unsettledPayable?.total ?? 0}円</p>
+          </>
+        )}
+        <Link to="/warikan">精算一覧を見る</Link>
+      </div>
+    ),
+    eventExpenses: (
+      <div className="card" key="eventExpenses">
+        <h2>イベント別支出</h2>
+        <label htmlFor="dashboard-event-period">イベント別支出（対象期間）</label>
+        <select
+          id="dashboard-event-period"
+          value={eventSummaryPeriod}
+          onChange={(event) => setEventSummaryPeriod(event.target.value as EventSummaryPeriod)}
+        >
+          <option value="year">今年</option>
+          <option value="month">今月</option>
+        </select>
+        {summary?.eventExpenseSummaries.length ? <><p>イベント別支出:</p>{summary.eventExpenseSummaries.map((event) => <p key={event.eventId}>{event.name}: {event.total}円</p>)}</> : <p>イベント別支出: なし</p>}
+        <Link to="/events">イベント一覧を見る</Link>
+      </div>
+    ),
+  }
+
   return (
     <div className="page">
       <div className="dashboard-layout">
-      {displaySettings?.cards.calendar !== false && <CalendarPanel onSelectDate={setSelectedDay} showEvents={displaySettings?.items.calendar.events !== false} showBalance={displaySettings?.items.calendar.balance !== false} />}
-      <div className="dashboard-summary-grid">
-        {displaySettings?.cards.today !== false && <div className="card">
-          <h2>今日の状況</h2>
-          {displaySettings?.items.today.balance !== false && <p>収支: {summary?.todayBalance ?? 0}円</p>}{displaySettings?.items.today.menu !== false && <p>今週の献立: {summary?.weeklyMenuEntries.map((entry) => entry.recipeTitle ?? entry.freeTextMemo).filter(Boolean).join('・') || 'なし'}</p>}{displaySettings?.items.today.events !== false && <p>イベント: {summary?.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}</div>}
-        {displaySettings?.cards.stock !== false && <div className="card">
-          <h2>買い物・在庫</h2>
-          {summary && (
-            <>
-              <p>買い物リスト: {summary.shoppingListCount}件</p>
-              <p>
-                在庫不足: {summary.lowStockCount}件　<Link to="/zaiko">買い物リストを見る</Link>
-              </p>
-            </>
-          )}
-          <p>よく使う品目: {commonItems || 'なし'}</p>
-        </div>}
-        {displaySettings?.cards.finance !== false && <div className="card">
-          <h2>個人の財政</h2>
-          <p>
-            口座残高合計: {accountBalanceTotal}円　<Link to="/accounts">口座・カード管理を見る</Link>
-          </p>
-        </div>}
-        {displaySettings?.cards.money !== false && <div className="card">
-          <h2>今月のお金</h2>
-          {/* 移行完了までの間はJava版バックエンドがhouseholdExpenseTotalを返さないため、
-              未定義時は0円表示にフォールバックする(Phase 6での接続先切り替え後は常に値が入る)。 */}
-          <p>個人支出: {summary?.monthlyPersonalExpense ?? 0}円</p>
-          <p>世帯合計対象額: {summary?.householdExpenseTotal ?? 0}円</p>
-          <p>受取予定: {summary?.unsettledReceivable?.count ?? 0}件・{summary?.unsettledReceivable?.total ?? 0}円</p>
-          <p>支払予定: {summary?.unsettledPayable?.count ?? 0}件・{summary?.unsettledPayable?.total ?? 0}円　<Link to="/warikan">精算一覧を見る</Link></p>
-          <label htmlFor="dashboard-event-period">イベント別支出（対象期間）</label>
-          <select
-            id="dashboard-event-period"
-            value={eventSummaryPeriod}
-            onChange={(event) => setEventSummaryPeriod(event.target.value as EventSummaryPeriod)}
-          >
-            <option value="year">今年</option>
-            <option value="month">今月</option>
-          </select>
-          {summary?.eventExpenseSummaries.length ? <><p>イベント別支出:</p>{summary.eventExpenseSummaries.map((event) => <p key={event.eventId}>{event.name}: {event.total}円</p>)}</> : <p>イベント別支出: なし</p>}
-          <Link to="/events">イベント一覧を見る</Link>
-        </div>}
-      </div>
+        {showCard('calendar') && (
+          <CalendarPanel
+            onSelectDate={setSelectedDay}
+            showEvents={items?.calendar.events !== false}
+            showBalance={items?.calendar.income !== false || items?.calendar.expense !== false}
+          />
+        )}
+        <div className="dashboard-summary-grid">{cardOrder.filter(showCard).map((card) => cardContents[card])}</div>
       </div>
       {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
       <Toast message={toast.message} showKey={toast.showKey} />

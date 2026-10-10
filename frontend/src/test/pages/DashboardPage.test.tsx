@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { DashboardPage } from '../../pages/DashboardPage'
 import type { InventoryItem } from '../../api/zaikoTypes'
+import type { DisplaySettings } from '../../api/userSettingsTypes'
 
 function setupApi(options: {
   summary?: {
@@ -30,6 +31,7 @@ function setupApi(options: {
   summaryError?: boolean
   accountsError?: boolean
   summaryRequestUrls?: string[]
+  settings?: DisplaySettings
   calendar?: {
     days: { date: string; fixedCosts: string[]; events: { name: string; isRecurring: boolean }[]; balance: number }[]
   }
@@ -54,6 +56,7 @@ function setupApi(options: {
         ...options.summary,
       })
     }),
+    http.get('/api/user-settings', () => (options.settings ? HttpResponse.json(options.settings) : HttpResponse.json({ message: 'not found' }, { status: 404 }))),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
     http.get('/api/dashboard/calendar', () => HttpResponse.json(options.calendar ?? { days: [] })),
     http.get('/api/dashboard/notifications/today', () => HttpResponse.json({ notificationCount: 0 })),
@@ -270,5 +273,57 @@ describe('DashboardPage', () => {
     expect(summaryCards).toBeInTheDocument()
     expect(layout?.firstElementChild).toContainElement(calendarHeading)
     expect(layout?.lastElementChild).toBe(summaryCards)
+  })
+
+  describe('表示設定の反映', () => {
+    function settings(): DisplaySettings {
+      return {
+        cards: { today: true, stock: true, finance: true, money: true, eventExpenses: true, calendar: true },
+        cardOrder: ['today', 'stock', 'finance', 'money', 'eventExpenses'],
+        items: {
+          today: { balance: true, menu: true, events: true },
+          stock: { shoppingList: true, inventoryList: true },
+          money: { personal: true, householdTotal: true, unsettled: true },
+          calendar: { income: true, expense: true, events: true },
+        },
+      }
+    }
+
+    async function cardHeadings(container: HTMLElement) {
+      await screen.findByRole('heading', { name: '月間カレンダー' })
+      return Array.from(container.querySelectorAll('.dashboard-summary-grid > .card > h2')).map((h) => h.textContent)
+    }
+
+    it('保存済みのカード順でカードを並べ、イベント別支出を独立したカードとして表示する', async () => {
+      const value = settings()
+      value.cardOrder = ['eventExpenses', 'money', 'finance', 'stock', 'today']
+      setupApi({ settings: value })
+      const { container } = renderDashboardPage()
+      await waitFor(async () => expect(await cardHeadings(container)).toEqual(['イベント別支出', '今月のお金', '個人の財政', '買い物・在庫', '今日の状況']))
+    })
+
+    it('表示OFFのカード・項目とカレンダーを表示しない', async () => {
+      const value = settings()
+      value.cards.finance = false
+      value.cards.eventExpenses = false
+      value.items.stock.inventoryList = false
+      value.items.money.householdTotal = false
+      setupApi({ settings: value, summary: { shoppingListCount: 2, lowStockCount: 1, householdExpenseTotal: 500 } })
+      const { container } = renderDashboardPage()
+      await waitFor(async () => expect(await cardHeadings(container)).toEqual(['今日の状況', '買い物・在庫', '今月のお金']))
+      expect(screen.getByText('買い物リスト: 2件')).toBeInTheDocument()
+      expect(screen.queryByText(/在庫不足/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/世帯合計対象額/)).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('イベント別支出（対象期間）')).not.toBeInTheDocument()
+    })
+
+    it('カレンダーが表示OFFなら月間カレンダーを表示しない', async () => {
+      const value = settings()
+      value.cards.calendar = false
+      setupApi({ settings: value })
+      renderDashboardPage()
+      expect(await screen.findByRole('heading', { name: '今日の状況' })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: '月間カレンダー' })).not.toBeInTheDocument()
+    })
   })
 })
