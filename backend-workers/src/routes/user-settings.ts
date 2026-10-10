@@ -94,11 +94,20 @@ function normalize(input: unknown): Settings | null {
     if (!aliases.success) return null
     const { items } = aliases.data
     const settings = current.data
-    settings.items.stock.shoppingList = items.stock.shoppingCount ?? settings.items.stock.shoppingList
-    settings.items.stock.inventoryList = items.stock.lowStock ?? settings.items.stock.inventoryList
-    settings.cards.eventExpenses = items.money.eventSummary ?? settings.cards.eventExpenses
-    settings.items.calendar.income = items.calendar.balance ?? settings.items.calendar.income
-    settings.items.calendar.expense = items.calendar.balance ?? settings.items.calendar.expense
+    const derived = withLegacyAliases({ ...settings, cardOrder: completeOrder(settings.cardOrder) }).items
+    if (items.stock.shoppingCount !== undefined && items.stock.shoppingCount !== derived.stock.shoppingCount) {
+      settings.items.stock.shoppingList = items.stock.shoppingCount
+    }
+    if (items.stock.lowStock !== undefined && items.stock.lowStock !== derived.stock.lowStock) {
+      settings.items.stock.inventoryList = items.stock.lowStock
+    }
+    if (items.money.eventSummary !== undefined && items.money.eventSummary !== derived.money.eventSummary) {
+      settings.cards.eventExpenses = items.money.eventSummary
+    }
+    if (items.calendar.balance !== undefined && items.calendar.balance !== derived.calendar.balance) {
+      settings.items.calendar.income = items.calendar.balance
+      settings.items.calendar.expense = items.calendar.balance
+    }
     return { ...settings, cardOrder: completeOrder(settings.cardOrder) }
   }
   if (typeof input === 'object' && input !== null) {

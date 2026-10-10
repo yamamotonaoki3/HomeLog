@@ -307,6 +307,37 @@ describe('PUT /api/user-settings', () => {
     expect(JSON.parse(row!.s)).toEqual(expected)
   })
 
+  it.each([[true, false], [false, true]])('GETレスポンスで別カードだけ変更してもカレンダーの非対称設定を維持する（income=%s, expense=%s）', async (income, expense) => {
+    const { auth } = await createUser()
+    const settings = fullSettings()
+    settings.items.calendar.income = income
+    settings.items.calendar.expense = expense
+    expect((await put(auth, settings)).status).toBe(200)
+    const body = await (await get(auth)).json<ResponseSettings>()
+    body.cards.finance = false
+    settings.cards.finance = false
+    const res = await put(auth, body)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(responseSettings(settings))
+    expect(await (await get(auth)).json()).toEqual(responseSettings(settings))
+  })
+
+  it.each([[true, false], [false, true]])('非対称設定のGETレスポンスでbalanceをfalseに変更すると収入・支出ともfalseで保存する（income=%s, expense=%s）', async (income, expense) => {
+    const { auth } = await createUser()
+    const settings = fullSettings()
+    settings.items.calendar.income = income
+    settings.items.calendar.expense = expense
+    expect((await put(auth, settings)).status).toBe(200)
+    const body = await (await get(auth)).json<ResponseSettings>()
+    body.items.calendar.balance = false
+    settings.items.calendar.income = false
+    settings.items.calendar.expense = false
+    const res = await put(auth, body)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(responseSettings(settings))
+    expect(await (await get(auth)).json()).toEqual(responseSettings(settings))
+  })
+
   it.each(['shoppingCount', 'lowStock', 'eventSummary', 'balance'] as const)('旧エイリアス%sが真偽値以外なら400', async (key) => {
     const { id, auth } = await createUser()
     const settings = fullSettings()
