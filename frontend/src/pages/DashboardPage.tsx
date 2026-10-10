@@ -176,7 +176,8 @@ export function DashboardPage() {
           <CalendarPanel
             onSelectDate={setSelectedDay}
             showEvents={items?.calendar.events !== false}
-            showBalance={items?.calendar.income !== false || items?.calendar.expense !== false}
+            showIncome={items?.calendar.income !== false}
+            showExpense={items?.calendar.expense !== false}
           />
         )}
         <div className="dashboard-summary-grid">{cardOrder.filter(showCard).map((card) => cardContents[card])}</div>

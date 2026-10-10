@@ -6,6 +6,7 @@ import { server } from '../mocks/server'
 import { DashboardPage } from '../../pages/DashboardPage'
 import type { InventoryItem } from '../../api/zaikoTypes'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
+import type { CalendarDay } from '../../components/dashboard/CalendarPanel'
 
 function setupApi(options: {
   summary?: {
@@ -33,7 +34,7 @@ function setupApi(options: {
   summaryRequestUrls?: string[]
   settings?: DisplaySettings
   calendar?: {
-    days: { date: string; fixedCosts: string[]; events: { name: string; isRecurring: boolean }[]; balance: number }[]
+    days: CalendarDay[]
   }
 } = {}) {
   server.use(
@@ -243,11 +244,11 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(summaryRequestUrls.some((url) => url.endsWith('eventPeriod=month'))).toBe(true))
   })
 
-  it('月間カレンダーにイベント・固定費・日次収支を表示する', async () => {
+  it('月間カレンダーにイベント・固定費・日次支出を表示する', async () => {
     setupApi({
       summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 },
       calendar: {
-        days: [{ date: '2026-09-25', fixedCosts: ['家賃'], events: [{ name: '通院', isRecurring: true }], balance: -1200 }],
+        days: [{ date: '2026-09-25', fixedCosts: ['家賃'], events: [{ id: 1, name: '通院', isRecurring: true, recurrenceType: 'weekly', eventDate: '2026-09-04' }], income: 0, expense: 1200, balance: -1200 }],
       },
     })
     renderDashboardPage()
