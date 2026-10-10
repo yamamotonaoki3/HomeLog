@@ -4,30 +4,6 @@ import { setupUserWithHousehold } from './support/flows'
 
 const DEFAULT_ORDER = ['today', 'stock', 'finance', 'money', 'eventExpenses']
 
-type Settings = {
-  cards: Record<'today' | 'stock' | 'finance' | 'money' | 'eventExpenses' | 'calendar', boolean>
-  cardOrder: string[]
-  items: {
-    today: Record<'balance' | 'menu' | 'events', boolean>
-    stock: Record<'shoppingList' | 'inventoryList', boolean>
-    money: Record<'personal' | 'householdTotal' | 'unsettled', boolean>
-    calendar: Record<'income' | 'expense' | 'events', boolean>
-  }
-}
-
-function toNewFormat(settings: Settings): Settings {
-  return {
-    cards: settings.cards,
-    cardOrder: settings.cardOrder,
-    items: {
-      today: settings.items.today,
-      stock: { shoppingList: settings.items.stock.shoppingList, inventoryList: settings.items.stock.inventoryList },
-      money: { personal: settings.items.money.personal, householdTotal: settings.items.money.householdTotal, unsettled: settings.items.money.unsettled },
-      calendar: { income: settings.items.calendar.income, expense: settings.items.calendar.expense, events: settings.items.calendar.events },
-    },
-  }
-}
-
 async function accessTokenOf(page: Page): Promise<string> {
   const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
   expect(token).toBeTruthy()
@@ -50,7 +26,7 @@ test.describe('S-21 ダッシュボード表示設定API', () => {
 
     const initial = await api.get()
     expect(initial.ok()).toBeTruthy()
-    const defaults = toNewFormat(await initial.json())
+    const defaults = await initial.json()
     expect(defaults.cardOrder).toEqual(DEFAULT_ORDER)
     expect(defaults.cards).toEqual({ today: true, stock: true, finance: true, money: true, eventExpenses: true, calendar: true })
     expect(defaults.items.stock).toEqual({ shoppingList: true, inventoryList: true })
@@ -64,8 +40,8 @@ test.describe('S-21 ダッシュボード表示設定API', () => {
     }
     const saved = await api.put(updated)
     expect(saved.status()).toBe(200)
-    expect(toNewFormat(await saved.json())).toEqual(updated)
-    expect(toNewFormat(await (await api.get()).json())).toEqual(updated)
+    expect(await saved.json()).toEqual(updated)
+    expect(await (await api.get()).json()).toEqual(updated)
   })
 
   test('不正なカード順は400で拒否し、保存済みの設定を維持する', async ({ page, consoleGuard }) => {
