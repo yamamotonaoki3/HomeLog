@@ -29,6 +29,14 @@ const settingsSchema = z.object({
   }),
 })
 
+const settingsWithAliasesSchema = settingsSchema.extend({
+  items: settingsSchema.shape.items.extend({
+    stock: settingsSchema.shape.items.shape.stock.extend({ shoppingCount: z.boolean().optional(), lowStock: z.boolean().optional() }),
+    money: settingsSchema.shape.items.shape.money.extend({ eventSummary: z.boolean().optional() }),
+    calendar: settingsSchema.shape.items.shape.calendar.extend({ balance: z.boolean().optional() }),
+  }),
+})
+
 // #169 の再設計前の形式。保存済みの値と、再設計前のUIからの送信を受け付けるために残す。
 const legacySettingsSchema = z.object({
   cards: z.object({ today: z.boolean(), money: z.boolean(), finance: z.boolean(), stock: z.boolean(), calendar: z.boolean() }),
@@ -81,9 +89,37 @@ function fromLegacy(legacy: z.infer<typeof legacySettingsSchema>): Settings {
 
 function normalize(input: unknown): Settings | null {
   const current = settingsSchema.safeParse(input)
-  if (current.success) return { ...current.data, cardOrder: completeOrder(current.data.cardOrder) }
+  if (current.success) {
+    const aliases = settingsWithAliasesSchema.safeParse(input)
+    if (!aliases.success) return null
+    const { items } = aliases.data
+    const settings = current.data
+    settings.items.stock.shoppingList = items.stock.shoppingCount ?? settings.items.stock.shoppingList
+    settings.items.stock.inventoryList = items.stock.lowStock ?? settings.items.stock.inventoryList
+    settings.cards.eventExpenses = items.money.eventSummary ?? settings.cards.eventExpenses
+    settings.items.calendar.income = items.calendar.balance ?? settings.items.calendar.income
+    settings.items.calendar.expense = items.calendar.balance ?? settings.items.calendar.expense
+    return { ...settings, cardOrder: completeOrder(settings.cardOrder) }
+  }
+  if (typeof input === 'object' && input !== null) {
+    if ('cardOrder' in input) return null
+    if ('cards' in input && typeof input.cards === 'object' && input.cards !== null && 'eventExpenses' in input.cards) return null
+  }
   const legacy = legacySettingsSchema.safeParse(input)
   return legacy.success ? fromLegacy(legacy.data) : null
+}
+
+// #171/#174 のUI刷新後に廃止予定の互換エイリアス。
+function withLegacyAliases(settings: Settings) {
+  return {
+    ...settings,
+    items: {
+      ...settings.items,
+      stock: { ...settings.items.stock, shoppingCount: settings.items.stock.shoppingList, lowStock: settings.items.stock.inventoryList, commonItems: false },
+      money: { ...settings.items.money, eventSummary: settings.cards.eventExpenses },
+      calendar: { ...settings.items.calendar, balance: settings.items.calendar.income || settings.items.calendar.expense },
+    },
+  }
 }
 
 function parseStored(raw: string): Settings {
@@ -101,7 +137,7 @@ userSettingsRoute.get('/', async (c) => {
   const row = await c.env.DB.prepare('SELECT dashboard_settings AS settings FROM user_settings WHERE user_id = ?')
     .bind(c.get('userId'))
     .first<{ settings: string }>()
-  return c.json(row ? parseStored(row.settings) : defaults)
+  return c.json(withLegacyAliases(row ? parseStored(row.settings) : defaults))
 })
 
 userSettingsRoute.put('/', async (c) => {
@@ -112,5 +148,5 @@ userSettingsRoute.put('/', async (c) => {
   )
     .bind(c.get('userId'), JSON.stringify(settings))
     .run()
-  return c.json(settings)
+  return c.json(withLegacyAliases(settings))
 })
