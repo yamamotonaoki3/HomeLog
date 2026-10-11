@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 // E2E専用のローカルD1保存先。開発用データ(.wrangler/state)とは分離し、実行ごとに作り直す。
 // 接続先は常にローカル(wrangler dev)であり、本番・ステージングのDBには接続しない。
+// Workers AI等のリモートバインディングも無効化し、Cloudflare認証なしで起動する。
 const E2E_PERSIST_DIR = '.wrangler/e2e-state'
 const BACKEND_PORT = 8787
 const FRONTEND_PORT = 5173
@@ -21,7 +22,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `npx wrangler d1 migrations apply homelog-db --local --persist-to ${E2E_PERSIST_DIR} && npx wrangler dev --port ${BACKEND_PORT} --persist-to ${E2E_PERSIST_DIR}`,
+      command: `npx wrangler d1 migrations apply homelog-db --local --persist-to ${E2E_PERSIST_DIR} && npx wrangler dev --local --port ${BACKEND_PORT} --persist-to ${E2E_PERSIST_DIR}`,
       cwd: '../backend-workers',
       port: BACKEND_PORT,
       reuseExistingServer: false, // 開発用DBを掴んだ既存サーバーを再利用しない
