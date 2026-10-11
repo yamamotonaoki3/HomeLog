@@ -109,6 +109,9 @@ describe('RecipeModal 手書きタブ', () => {
 
     expect(screen.getByText('解析中...')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
+    expect(screen.getByRole('tab', { name: '手動' })).toBeDisabled()
+    expect(screen.getByRole('tab', { name: '手書き' })).toBeDisabled()
+    expect(screen.getByRole('tab', { name: 'WEB' })).toBeDisabled()
     release()
     expect(await screen.findByLabelText('タイトル')).toHaveValue('肉じゃが')
     expect(screen.queryByText('解析中...')).not.toBeInTheDocument()

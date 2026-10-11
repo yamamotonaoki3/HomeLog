@@ -235,6 +235,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
               aria-selected={tab === 'manual'}
               className={tab === 'manual' ? 'btn btn-primary' : 'btn btn-secondary'}
               onClick={() => setTab('manual')}
+              disabled={ocrStatus === 'analyzing'}
             >
               手動
             </button>
