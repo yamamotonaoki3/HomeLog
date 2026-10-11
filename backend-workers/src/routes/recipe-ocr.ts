@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
@@ -12,6 +13,8 @@ const INVALID_IMAGE_MESSAGE = '画像はJPEG・PNG・WebP形式、5MB以下の�
 const IMAGE_NOT_FOUND_MESSAGE = '画像が見つかりません。もう一度アップロードしてください'
 const EXTERNAL_ERROR_MESSAGE = '画像の解析に失敗しました。時間をおいて再度お試しください'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+// 5MBの画像に加え、multipartのヘッダーや境界文字列などの余裕として64KBを確保する。
+const MAX_UPLOAD_BODY_BYTES = MAX_IMAGE_BYTES + 64 * 1024
 
 // 受け付ける画像形式と、ファイル先頭のマジックナンバー(形式ごとに決まっている数バイト)。
 // Content-Typeは送信側で自由に偽装できるため、中身の先頭バイトでも形式を確かめる。
@@ -39,7 +42,10 @@ export const recipeOcrRoute = new Hono<AppEnv>()
 recipeOcrRoute.use('*', requireAuth)
 
 // POST /api/recipes/ocr/upload: 画像をR2に一時保存し、解析時に使うkeyを返す。
-recipeOcrRoute.post('/upload', async (c) => {
+recipeOcrRoute.post('/upload', bodyLimit({
+  maxSize: MAX_UPLOAD_BODY_BYTES,
+  onError: (c) => c.json(errorResponse('VALIDATION_ERROR', INVALID_IMAGE_MESSAGE), 413),
+}), async (c) => {
   let file: unknown
   try {
     file = (await c.req.formData()).get('file')

@@ -131,6 +131,19 @@ describe('POST /api/recipes/ocr/upload', () => {
     const { headers } = await createUser('testuser_ocr_nohousehold@example.com', false)
     expect((await upload(headers, pngFile())).status).toBe(404)
   })
+
+  it('リクエストボディの上限を超える場合は413を返し、R2に保存しない', async () => {
+    const { householdId, headers } = await createUser('testuser_ocr_body_limit@example.com')
+    const res = await upload(headers, pngFile(5 * 1024 * 1024 + 128 * 1024))
+
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '画像はJPEG・PNG・WebP形式、5MB以下のファイルを選択してください',
+      details: [],
+    })
+    expect((await env.RECIPE_IMAGES.list({ prefix: `ocr/${householdId}/` })).objects).toEqual([])
+  })
 })
 
 describe('POST /api/recipes/ocr/analyze', () => {
