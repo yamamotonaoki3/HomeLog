@@ -27,7 +27,7 @@ interface Props {
   initialUrl?: string
 }
 
-// 手書き(ocr)は、写真の解析結果を確認・編集してから手動と同じフォームで保存する。
+// 画像解析(ocr)は、写真の解析結果を確認・編集してから手動と同じフォームで保存する。
 type RegisterTab = 'manual' | 'ocr' | 'web'
 type OcrStatus = 'idle' | 'analyzing' | 'done'
 
@@ -115,7 +115,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
       title: trimmedTitle,
       ingredients: ingredients.trim() === '' ? null : ingredients,
       steps: steps.trim() === '' ? null : steps,
-      // 手書きタブからの登録だけ、登録方法を'ocr'として保存する(手動は従来どおり省略=manual)。
+      // 画像解析タブからの登録だけ、登録方法を'ocr'として保存する(手動は従来どおり省略=manual)。
       ...(isOcrTab ? { sourceType: 'ocr' as const } : {}),
     }
     if (isEdit) {
@@ -247,7 +247,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
               onClick={() => setTab('ocr')}
               disabled={ocrStatus === 'analyzing'}
             >
-              手書き
+              画像解析
             </button>
             <button
               type="button"

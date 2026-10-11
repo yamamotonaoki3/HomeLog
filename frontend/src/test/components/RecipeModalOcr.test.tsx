@@ -55,7 +55,7 @@ function renderModal() {
 
 async function openOcrTab() {
   const user = userEvent.setup()
-  await user.click(screen.getByRole('tab', { name: '手書き' }))
+  await user.click(screen.getByRole('tab', { name: '画像解析' }))
   return user
 }
 
@@ -64,11 +64,11 @@ beforeEach(() => {
   prepareMock.mockImplementation(async () => new File([new Uint8Array(10)], 'recipe.jpg', { type: 'image/jpeg' }))
 })
 
-describe('RecipeModal 手書きタブ', () => {
-  it('手動・手書き・WEBの3タブを表示する', () => {
+describe('RecipeModal 画像解析タブ', () => {
+  it('手動・画像解析・WEBの3タブを表示する', () => {
     setupApi()
     renderModal()
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['手動', '手書き', 'WEB'])
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['手動', '画像解析', 'WEB'])
   })
 
   it('写真を選ぶと縮小→アップロード→解析し、結果を編集してsourceType=ocrで保存できる', async () => {
@@ -110,7 +110,7 @@ describe('RecipeModal 手書きタブ', () => {
     expect(screen.getByText('解析中...')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
     expect(screen.getByRole('tab', { name: '手動' })).toBeDisabled()
-    expect(screen.getByRole('tab', { name: '手書き' })).toBeDisabled()
+    expect(screen.getByRole('tab', { name: '画像解析' })).toBeDisabled()
     expect(screen.getByRole('tab', { name: 'WEB' })).toBeDisabled()
     release()
     expect(await screen.findByLabelText('タイトル')).toHaveValue('肉じゃが')
@@ -130,7 +130,7 @@ describe('RecipeModal 手書きタブ', () => {
     const calls = setupApi()
     renderModal()
     const user = userEvent.setup({ applyAccept: false })
-    await user.click(screen.getByRole('tab', { name: '手書き' }))
+    await user.click(screen.getByRole('tab', { name: '画像解析' }))
     await user.upload(screen.getByLabelText('レシピの写真'), new File(['text'], 'memo.txt', { type: 'text/plain' }))
 
     expect(await screen.findByText('画像ファイルを選択してください')).toBeInTheDocument()
