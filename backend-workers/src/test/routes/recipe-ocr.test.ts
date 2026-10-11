@@ -220,6 +220,21 @@ describe('POST /api/recipes/ocr/analyze', () => {
     expect((await res.json<{ code: string }>()).code).toBe('EXTERNAL_SERVICE_ERROR')
   })
 
+  it.each([false, true])('VisionがHTTP 200でerrorを返す場合は502になり画像を削除する(文字あり: %s)', async (withText) => {
+    const { headers, key } = await uploaded('testuser_ocr_vision_body_error@example.com')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ responses: [{
+      error: { code: 8, message: 'quota exceeded' },
+      ...(withText ? { fullTextAnnotation: { text: '[E2E_TEST] 読み取り結果' } } : {}),
+    }] })))
+    const { env: overrideEnv, run } = testEnv({ response: {} })
+
+    const res = await analyze(headers, { key }, overrideEnv)
+    expect(res.status).toBe(502)
+    expect((await res.json<{ code: string }>()).code).toBe('EXTERNAL_SERVICE_ERROR')
+    expect(run).not.toHaveBeenCalled()
+    expect(await env.RECIPE_IMAGES.head(key)).toBeNull()
+  })
+
   it('APIキーが未設定の場合は外部APIを呼ばず502を返す', async () => {
     const { headers, key } = await uploaded('testuser_ocr_nokey@example.com')
     const fetchMock = vi.fn()

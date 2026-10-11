@@ -27,7 +27,10 @@ function toBase64(buffer: ArrayBuffer): string {
 }
 
 const visionResponseSchema = z.object({
-  responses: z.array(z.object({ fullTextAnnotation: z.object({ text: z.string() }).optional() })).min(1),
+  responses: z.array(z.object({
+    fullTextAnnotation: z.object({ text: z.string() }).optional(),
+    error: z.object({ code: z.number(), message: z.string() }).optional(),
+  })).min(1),
 })
 
 // 画像から文字を読み取る。文字が無ければnullを返す。
@@ -57,8 +60,26 @@ export async function extractTextWithVision(apiKey: string, image: ArrayBuffer):
 
   const parsed = visionResponseSchema.safeParse(await response.json().catch(() => null))
   if (!parsed.success) throw new ExternalServiceError('vision response malformed')
+  if (parsed.data.responses[0].error) throw new ExternalServiceError('vision annotation failed')
   const text = parsed.data.responses[0].fullTextAnnotation?.text.trim()
   return text ? text : null
+}
+
+// 解析されずに24時間を超えて残った一時画像を削除する。
+export async function deleteStaleOcrImages(bucket: R2Bucket, now: Date): Promise<number> {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000
+  let cursor: string | undefined
+  let deleted = 0
+  do {
+    const page = await bucket.list({ prefix: 'ocr/', ...(cursor ? { cursor } : {}) })
+    const keys = page.objects.filter((object) => object.uploaded.getTime() < cutoff).map((object) => object.key)
+    if (keys.length > 0) {
+      await bucket.delete(keys)
+      deleted += keys.length
+    }
+    cursor = page.truncated ? page.cursor : undefined
+  } while (cursor)
+  return deleted
 }
 
 const structuredRecipeSchema = z.object({

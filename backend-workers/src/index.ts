@@ -8,6 +8,7 @@ import { expenseSplitsRoute } from './routes/expense-splits'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
+import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { getJstToday } from './lib/date'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
@@ -70,7 +71,14 @@ app.route('/api/user-settings', userSettingsRoute)
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
   async scheduled(_controller: ScheduledController, env: Bindings): Promise<void> {
-    await postDueFixedCosts(env.DB, getJstToday())
+    // 一方が失敗しても、もう一方の日次処理は実行する。
+    const results = await Promise.allSettled([
+      postDueFixedCosts(env.DB, getJstToday()),
+      deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
+    ])
+    for (const result of results) {
+      if (result.status === 'rejected') console.error('日次処理に失敗しました', result.reason)
+    }
   },
 })
 
