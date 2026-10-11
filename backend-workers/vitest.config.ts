@@ -11,6 +11,9 @@ export default defineConfig(async () => ({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: './wrangler.toml' },
+      // Workers AI等のリモートバインディングにテストから接続しない(CIに認証情報が無く、課金も発生するため)。
+      // AIを使う処理のテストではモックに差し替える。
+      remoteBindings: false,
       miniflare: {
         bindings: { TEST_MIGRATIONS: await readD1Migrations(migrationsPath) },
       },

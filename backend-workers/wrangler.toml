@@ -26,6 +26,11 @@ migrations_dir = "drizzle"
 binding = "RECIPE_IMAGES"
 bucket_name = "homelog-recipe-images"
 
+# OCR結果の整形に使うWorkers AI(#132)。模擬版が無くローカル実行でも実AIを呼ぶため、テストではモックに差し替える。
+[ai]
+binding = "AI"
+remote = true
+
 # 固定費の毎月自動計上バッチ。既存JavaのFixedCostPostingService
 # (@Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo"))相当。
 # JSTは夏時間が無いため、UTC 16:00固定 = JST 01:00で問題ない。
