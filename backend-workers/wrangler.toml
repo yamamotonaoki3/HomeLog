@@ -21,6 +21,11 @@ database_name = "homelog-db"
 database_id = "local-placeholder"
 migrations_dir = "drizzle"
 
+# OCR用画像の一時保存先(#132)。ローカル開発・テストではwranglerの模擬R2を使い、実バケットには接続しない。
+[[r2_buckets]]
+binding = "RECIPE_IMAGES"
+bucket_name = "homelog-recipe-images"
+
 # 固定費の毎月自動計上バッチ。既存JavaのFixedCostPostingService
 # (@Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo"))相当。
 # JSTは夏時間が無いため、UTC 16:00固定 = JST 01:00で問題ない。
