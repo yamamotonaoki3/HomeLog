@@ -18,17 +18,17 @@ const MAX_UPLOAD_BODY_BYTES = MAX_IMAGE_BYTES + 64 * 1024
 
 // 受け付ける画像形式と、ファイル先頭のマジックナンバー(形式ごとに決まっている数バイト)。
 // Content-Typeは送信側で自由に偽装できるため、中身の先頭バイトでも形式を確かめる。
-const IMAGE_TYPES: Record<string, { ext: string; matches: (bytes: Uint8Array) => boolean }> = {
-  'image/jpeg': { ext: 'jpg', matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  'image/png': {
+const IMAGE_TYPES = new Map<string, { ext: string; matches: (bytes: Uint8Array) => boolean }>([
+  ['image/jpeg', { ext: 'jpg', matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff }],
+  ['image/png', {
     ext: 'png',
     matches: (b) => [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((value, index) => b[index] === value),
-  },
-  'image/webp': {
+  }],
+  ['image/webp', {
     ext: 'webp',
     matches: (b) => String.fromCharCode(...b.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...b.subarray(8, 12)) === 'WEBP',
-  },
-}
+  }],
+])
 
 const analyzeSchema = z.object({ key: z.string().regex(/^ocr\/\d+\/[0-9a-f-]{36}\.(jpg|png|webp)$/) })
 
@@ -55,7 +55,7 @@ recipeOcrRoute.post('/upload', bodyLimit({
   if (!(file instanceof File)) {
     return c.json(errorResponse('VALIDATION_ERROR', INVALID_IMAGE_MESSAGE), 400)
   }
-  const imageType = IMAGE_TYPES[file.type]
+  const imageType = IMAGE_TYPES.get(file.type)
   if (!imageType || file.size === 0 || file.size > MAX_IMAGE_BYTES) {
     return c.json(errorResponse('VALIDATION_ERROR', INVALID_IMAGE_MESSAGE), 400)
   }

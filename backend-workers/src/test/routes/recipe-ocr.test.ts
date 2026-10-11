@@ -115,6 +115,16 @@ describe('POST /api/recipes/ocr/upload', () => {
     expect((await res.json<{ code: string }>()).code).toBe('VALIDATION_ERROR')
   })
 
+  it.each(['constructor', '__proto__'])('Content-Typeが%sの場合は400を返す', async (type) => {
+    const { headers } = await createUser('testuser_ocr_inherited_type@example.com')
+    const file = new File([new Uint8Array(PNG_HEADER)], 'recipe.png', { type })
+    expect(file.type).toBe(type)
+
+    const res = await upload(headers, file)
+    expect(res.status).toBe(400)
+    expect((await res.json<{ code: string }>()).code).toBe('VALIDATION_ERROR')
+  })
+
   it('Content-Typeと中身が一致しない場合は400を返す', async () => {
     const { headers } = await createUser('testuser_ocr_fake@example.com')
     const res = await upload(headers, new File([new TextEncoder().encode('not an image')], 'fake.png', { type: 'image/png' }))
