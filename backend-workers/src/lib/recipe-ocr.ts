@@ -82,16 +82,34 @@ export async function deleteStaleOcrImages(bucket: R2Bucket, now: Date): Promise
   return deleted
 }
 
+// 材料・手順は、1行に1つの改行区切り文字列に正規化する。
+// AIは配列で答えるよう指示しているが、文字列や「[a(改行), b]」のような配列の文字列表現で返すこともあるため、
+// どの形でも確認フォームにそのまま入れられる形に整える。
+function toLines(value: string | string[] | null): string | null {
+  if (value === null) return null
+  let text = Array.isArray(value) ? value.join('\n') : value.trim()
+  // 「[a(改行), b]」形式は外側の角かっこを外し、行頭・行末に残る区切りのカンマを除く。
+  const isListLiteral = !Array.isArray(value) && text.startsWith('[') && text.endsWith(']')
+  if (isListLiteral) text = text.slice(1, -1)
+  const lines = text
+    .split('\n')
+    .map((line) => (isListLiteral ? line.trim().replace(/^,\s*/, '').replace(/,$/, '') : line).trim())
+    .filter((line) => line !== '')
+  return lines.length > 0 ? lines.join('\n') : null
+}
+
+const listField = z.union([z.string(), z.array(z.string())]).nullable().transform(toLines)
+
 const structuredRecipeSchema = z.object({
   title: z.string().max(100),
-  ingredients: z.string().nullable(),
-  steps: z.string().nullable(),
+  ingredients: listField,
+  steps: listField,
 })
 
 const SYSTEM_PROMPT = [
   'あなたは手書きレシピの読み取り結果を整理するアシスタントです。',
   '与えられたテキストはOCRで読み取ったもので、誤字や改行の乱れを含むことがあります。',
-  'テキストに書かれている内容だけを使い、title(料理名)・ingredients(材料と分量、1行に1つ)・steps(手順、1行に1つ)に分けてください。',
+  'テキストに書かれている内容だけを使い、title(料理名)・ingredients(材料と分量。1つずつ配列の要素にする)・steps(手順。1つずつ配列の要素にする)に分けてください。',
   '書かれていない材料や手順を補ったり創作したりしてはいけません。該当する内容が無い項目はnullにしてください。',
 ].join('\n')
 
@@ -115,8 +133,8 @@ export async function structureRecipeText(ai: Ai, rawText: string): Promise<Stru
           type: 'object',
           properties: {
             title: { type: 'string' },
-            ingredients: { type: ['string', 'null'] },
-            steps: { type: ['string', 'null'] },
+            ingredients: { type: ['array', 'null'], items: { type: 'string' } },
+            steps: { type: ['array', 'null'], items: { type: 'string' } },
           },
           required: ['title', 'ingredients', 'steps'],
         },
