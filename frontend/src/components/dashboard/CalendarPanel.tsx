@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from '../../api/client'
+import type { Event } from '../../api/eventTypes'
+import { EventDetailModal } from './EventDetailModal'
+
+export interface CalendarEvent {
+  id: number
+  name: string
+  isRecurring: boolean
+  recurrenceType: Event['recurrenceType']
+  eventDate: string
+}
 
 export interface CalendarDay {
   date: string
   fixedCosts: string[]
-  events: { name: string; isRecurring: boolean }[]
+  events: CalendarEvent[]
+  income: number
+  expense: number
   balance: number
 }
 
@@ -23,9 +35,20 @@ function addMonths(month: string, amount: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-export function CalendarPanel({ onSelectDate, showEvents = true, showBalance = true }: { onSelectDate: (day: CalendarDay) => void; showEvents?: boolean; showBalance?: boolean }) {
+export function CalendarPanel({
+  onSelectDate,
+  showEvents = true,
+  showIncome = true,
+  showExpense = true,
+}: {
+  onSelectDate: (day: CalendarDay) => void
+  showEvents?: boolean
+  showIncome?: boolean
+  showExpense?: boolean
+}) {
   const [month, setMonth] = useState(currentMonth)
   const [data, setData] = useState<CalendarResponse>({ days: [] })
+  const [selectedEvent, setSelectedEvent] = useState<{ event: CalendarEvent; date: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -45,12 +68,25 @@ export function CalendarPanel({ onSelectDate, showEvents = true, showBalance = t
       <button type="button" aria-label="次月" onClick={() => setMonth((value) => addMonths(value, 1))}>▶</button>
     </div>
     <div className="calendar-grid">
-      {data.days.map((day) => <button type="button" className="calendar-day" key={day.date} aria-label={day.date} onClick={() => onSelectDate(day)}>
-        <strong>{Number(day.date.slice(-2))}</strong>
-        {showEvents && day.events.map((event) => <span key={`event-${event.name}`}>{event.isRecurring ? '📌' : ''}{event.name}</span>)}
-        {day.fixedCosts.map((fixedCost) => <span key={`fixed-${fixedCost}`}>●{fixedCost}</span>)}
-        {showBalance && <span>{day.balance >= 0 ? '+' : ''}{day.balance}円</span>}
-      </button>)}
+      {/* イベントボタンを日付ボタンの中に入れるとボタンの入れ子になりクリックも競合するため、セル内で兄弟要素として並べる */}
+      {data.days.map((day) => <div className="calendar-day" key={day.date}>
+        <button type="button" className="calendar-day-date" aria-label={day.date} onClick={() => onSelectDate(day)}>
+          <strong>{Number(day.date.slice(-2))}</strong>
+          {day.fixedCosts.map((fixedCost) => <span key={`fixed-${fixedCost}`}>●{fixedCost}</span>)}
+          {showIncome && day.income > 0 && <span className="calendar-income">+{day.income}円</span>}
+          {showExpense && day.expense > 0 && <span className="calendar-expense">-{day.expense}円</span>}
+        </button>
+        {showEvents && day.events.map((event) => <button
+          type="button"
+          className="calendar-event"
+          key={`event-${event.id}`}
+          aria-label={`イベント「${event.name}」の詳細`}
+          onClick={() => setSelectedEvent({ event, date: day.date })}
+        >
+          {event.isRecurring ? '📌' : ''}{event.name}
+        </button>)}
+      </div>)}
     </div>
+    {selectedEvent && <EventDetailModal event={selectedEvent.event} date={selectedEvent.date} onClose={() => setSelectedEvent(null)} />}
   </section>
 }

@@ -2,26 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
-import type { Event, SummaryPeriod } from '../api/eventTypes'
+import { RECURRENCE_LABELS, timeRangeLabel, type Event, type SummaryPeriod } from '../api/eventTypes'
 import { Toast } from '../components/Toast'
 import { EventModal } from '../components/events/EventModal'
-
-const RECURRENCE_LABELS: Record<Event['recurrenceType'], string> = {
-  none: '単発',
-  daily: '毎日',
-  weekly: '毎週',
-  monthly: '毎月',
-  yearly: '毎年',
-}
-
-// 終日は「終日」、時刻指定は「9:00〜12:00」(終了時刻あり)/「9:00〜」(終了時刻未定)と表示する
-// (F06_kakeibo_event.md 5-2章、S-09イベント一覧の表示仕様)。
-function timeRangeLabel(event: Event): string {
-  if (event.isAllDay) {
-    return '終日'
-  }
-  return event.endTime ? `${event.startTime}〜${event.endTime}` : `${event.startTime}〜`
-}
 
 // イベント1件分の集計状態。show_on_dashboard=falseによる404(意図した集計対象外)と、
 // 通信断・認証切れ・サーバーエラー等の予期しない失敗を区別して表示を出し分ける。
