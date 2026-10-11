@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { DashboardPage } from '../../pages/DashboardPage'
-import type { InventoryItem } from '../../api/zaikoTypes'
+import type { InventoryItem, ShoppingListItem } from '../../api/zaikoTypes'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
 import type { CalendarDay } from '../../components/dashboard/CalendarPanel'
 
@@ -22,6 +22,10 @@ function setupApi(options: {
     eventExpenseSummaries?: { eventId: number; name: string; total: number }[]
   }
   inventory?: InventoryItem[]
+  shoppingList?: ShoppingListItem[]
+  shoppingListError?: boolean
+  eventSummariesByPeriod?: Record<string, { eventId: number; name: string; total: number }[]>
+  eventSummaryError?: boolean
   accounts?: {
     id: number
     name: string
@@ -40,7 +44,8 @@ function setupApi(options: {
   server.use(
     http.get('/api/dashboard/summary', ({ request }) => {
       options.summaryRequestUrls?.push(request.url)
-      if (options.summaryError) {
+      const period = new URL(request.url).searchParams.get('eventPeriod')
+      if (options.summaryError || (period && options.eventSummaryError)) {
         return HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'サマリーの取得に失敗しました' }, { status: 500 })
       }
       return HttpResponse.json({
@@ -55,10 +60,14 @@ function setupApi(options: {
         unsettledPayable: { count: 0, total: 0 },
         eventExpenseSummaries: [],
         ...options.summary,
+        ...(period && options.eventSummariesByPeriod ? { eventExpenseSummaries: options.eventSummariesByPeriod[period] } : {}),
       })
     }),
     http.get('/api/user-settings', () => (options.settings ? HttpResponse.json(options.settings) : HttpResponse.json({ message: 'not found' }, { status: 404 }))),
     http.get('/api/inventory-items', () => HttpResponse.json(options.inventory ?? [])),
+    http.get('/api/shopping-list-items', () =>
+      options.shoppingListError ? HttpResponse.json({ message: '失敗' }, { status: 500 }) : HttpResponse.json(options.shoppingList ?? []),
+    ),
     http.get('/api/dashboard/calendar', () => HttpResponse.json(options.calendar ?? { days: [] })),
     http.get('/api/dashboard/notifications/today', () => HttpResponse.json({ notificationCount: 0 })),
     http.get('/api/accounts', () => {
@@ -85,31 +94,46 @@ const inventory: InventoryItem[] = [
   { id: 4, name: '味噌', categoryId: 6, storeId: null, quantity: 3, threshold: 1 },
 ]
 
+const shoppingList: ShoppingListItem[] = [
+  { id: 1, inventoryItemId: 3, name: '醤油', isManual: false, purchased: false, purchasedQuantity: 0 },
+  { id: 2, inventoryItemId: 9, name: '購入済みの品', isManual: true, purchased: true, purchasedQuantity: 1 },
+  { id: 3, inventoryItemId: 10, name: 'トイレットペーパー', isManual: true, purchased: false, purchasedQuantity: 0 },
+]
+
 describe('DashboardPage', () => {
-  it('買い物リスト件数・在庫不足件数・よく使う品目（先頭3件）が表示される', async () => {
-    setupApi({ summary: { shoppingListCount: 3, lowStockCount: 2, householdExpenseTotal: 0 }, inventory })
+  it('買い物リスト（未購入のみ）と在庫リストの実項目を表示し、各項目から在庫管理画面へ移動できる', async () => {
+    setupApi({ inventory, shoppingList })
     renderDashboardPage()
 
-    await waitFor(() => expect(screen.getByText('買い物・在庫')).toBeInTheDocument())
-    expect(screen.getByText(/買い物リスト: 3件/)).toBeInTheDocument()
-    expect(screen.getByText(/在庫不足: 2件/)).toBeInTheDocument()
-    expect(screen.getByText(/よく使う品目: 卵・牛乳・醤油/)).toBeInTheDocument()
+    const shopping = await screen.findByRole('list', { name: '買い物リスト' })
+    expect(within(shopping).getAllByRole('link').map((link) => link.textContent)).toEqual(['醤油', 'トイレットペーパー'])
+    expect(within(shopping).getByRole('link', { name: '醤油' })).toHaveAttribute('href', '/zaiko')
+    const stock = await screen.findByRole('list', { name: '在庫リスト' })
+    expect(within(stock).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(stock).getByRole('link', { name: '卵' })).toHaveAttribute('href', '/zaiko')
+    expect(within(stock).getByText('醤油').closest('li')).toHaveTextContent('（不足）')
+    expect(within(stock).getByText('卵').closest('li')).not.toHaveTextContent('（不足）')
+    expect(screen.queryByText(/よく使う品目/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/在庫不足:/)).not.toBeInTheDocument()
   })
 
-  it('在庫が0件のとき「よく使う品目: なし」を表示する', async () => {
-    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }, inventory: [] })
+  it('買い物リスト・在庫が空のときは空である旨を表示し、多い場合は先頭8件と残件数を表示する', async () => {
+    const many = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, inventoryItemId: index + 1, name: `品目${index + 1}`, isManual: true, purchased: false, purchasedQuantity: 0 }))
+    setupApi({ inventory: [], shoppingList: many })
     renderDashboardPage()
 
-    await waitFor(() => expect(screen.getByText(/よく使う品目: なし/)).toBeInTheDocument())
+    const shopping = await screen.findByRole('list', { name: '買い物リスト' })
+    expect(within(shopping).getAllByRole('listitem')).toHaveLength(8)
+    expect(screen.getByText('ほか2件')).toBeInTheDocument()
+    expect(screen.getByText('在庫は登録されていません')).toBeInTheDocument()
   })
 
-  it('「買い物リストを見る」リンクが/zaikoを指す', async () => {
-    setupApi({ summary: { shoppingListCount: 1, lowStockCount: 1, householdExpenseTotal: 0 }, inventory })
+  it('買い物リストの取得に失敗したらカード内にエラーを表示し、在庫リストは表示する', async () => {
+    setupApi({ inventory, shoppingListError: true })
     renderDashboardPage()
 
-    await waitFor(() =>
-      expect(screen.getByRole('link', { name: '買い物リストを見る' })).toHaveAttribute('href', '/zaiko'),
-    )
+    expect(await screen.findByText('買い物リストを取得できませんでした')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: '在庫リスト' })).toBeInTheDocument()
   })
 
   it('API失敗時はトーストでエラーを表示する', async () => {
@@ -139,9 +163,8 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('口座情報の取得に失敗しました')).toBeInTheDocument())
-    expect(screen.getByText(/買い物リスト: 3件/)).toBeInTheDocument()
-    expect(screen.getByText(/在庫不足: 2件/)).toBeInTheDocument()
-    expect(screen.getByText(/よく使う品目: 卵・牛乳・醤油/)).toBeInTheDocument()
+    expect(screen.getByText(/口座残高合計: 取得できませんでした/)).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: '在庫リスト' })).toBeInTheDocument()
   })
 
   it('「個人の財政」カードに自分の口座残高合計を表示する', async () => {
@@ -208,13 +231,13 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
     expect(screen.getByText(/収支: -500円/)).toBeInTheDocument()
-    expect(screen.getByText(/今週の献立: カレー・外食/)).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: '今週の献立' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['カレー', '外食'])
     expect(screen.getByText(/イベント: 学習/)).toBeInTheDocument()
     expect(screen.getByText(/個人支出: 32000円/)).toBeInTheDocument()
     expect(screen.getByText(/世帯合計対象額: 45300円/)).toBeInTheDocument()
     expect(screen.getByText(/受取予定: 1件・4000円/)).toBeInTheDocument()
     expect(screen.getByText(/支払予定: 1件・4500円/)).toBeInTheDocument()
-    expect(screen.getByText(/旅行: 30000円/)).toBeInTheDocument()
+    expect(await screen.findByText(/旅行: 30000円/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '精算一覧を見る' })).toHaveAttribute('href', '/warikan')
     expect(screen.getByRole('link', { name: 'イベント一覧を見る' })).toHaveAttribute('href', '/events')
   })
@@ -226,22 +249,46 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
     expect(screen.getByText(/今週の献立: なし/)).toBeInTheDocument()
     expect(screen.getByText(/イベント: なし/)).toBeInTheDocument()
-    expect(screen.getByText('イベント別支出: なし')).toBeInTheDocument()
+    expect(await screen.findByText('イベント別支出: なし')).toBeInTheDocument()
   })
 
-  it('イベント別支出は期間を今年から今月へ切り替えられる', async () => {
+  it('イベント別支出は今日・今月・今年を切り替えて、その期間の集計を表示する', async () => {
     const summaryRequestUrls: string[] = []
-    setupApi({
-      summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 },
-      summaryRequestUrls,
-    })
+    setupApi({ summaryRequestUrls, eventSummariesByPeriod: { year: [{ eventId: 1, name: '旅行', total: 30000 }], month: [{ eventId: 1, name: '旅行', total: 5000 }], today: [] } })
     renderDashboardPage()
 
     const periodSelect = await screen.findByLabelText('イベント別支出（対象期間）')
     expect(periodSelect).toHaveValue('year')
+    expect(within(periodSelect).getAllByRole('option').map((option) => option.textContent)).toEqual(['今日', '今月', '今年'])
+    expect(await screen.findByText('旅行: 30000円')).toBeInTheDocument()
     fireEvent.change(periodSelect, { target: { value: 'month' } })
+    expect(await screen.findByText('旅行: 5000円')).toBeInTheDocument()
+    fireEvent.change(periodSelect, { target: { value: 'today' } })
+    expect(await screen.findByText('イベント別支出: なし')).toBeInTheDocument()
+    expect(summaryRequestUrls.some((url) => url.endsWith('eventPeriod=today'))).toBe(true)
+  })
 
-    await waitFor(() => expect(summaryRequestUrls.some((url) => url.endsWith('eventPeriod=month'))).toBe(true))
+  it('イベント別支出の取得に失敗したらカード内にエラーを表示する', async () => {
+    setupApi({ eventSummaryError: true })
+    renderDashboardPage()
+    expect(await screen.findByText('イベント別支出を取得できませんでした')).toBeInTheDocument()
+  })
+
+  it('全カードとカレンダーを非表示にした場合は表示設定への案内を表示する', async () => {
+    setupApi({
+      settings: {
+        cards: { today: false, stock: false, finance: false, money: false, eventExpenses: false, calendar: false },
+        cardOrder: ['today', 'stock', 'finance', 'money', 'eventExpenses'],
+        items: {
+          today: { balance: true, menu: true, events: true },
+          stock: { shoppingList: true, inventoryList: true },
+          money: { personal: true, householdTotal: true, unsettled: true },
+          calendar: { income: true, expense: true, events: true },
+        },
+      },
+    })
+    renderDashboardPage()
+    expect(await screen.findByRole('link', { name: '表示設定を開く' })).toHaveAttribute('href', '/settings/display')
   })
 
   it('月間カレンダーにイベント・固定費・日次支出を表示する', async () => {
@@ -309,11 +356,13 @@ describe('DashboardPage', () => {
       value.cards.eventExpenses = false
       value.items.stock.inventoryList = false
       value.items.money.householdTotal = false
-      setupApi({ settings: value, summary: { shoppingListCount: 2, lowStockCount: 1, householdExpenseTotal: 500 } })
+      value.items.today.menu = false
+      setupApi({ settings: value, inventory, shoppingList })
       const { container } = renderDashboardPage()
       await waitFor(async () => expect(await cardHeadings(container)).toEqual(['今日の状況', '買い物・在庫', '今月のお金']))
-      expect(screen.getByText('買い物リスト: 2件')).toBeInTheDocument()
-      expect(screen.queryByText(/在庫不足/)).not.toBeInTheDocument()
+      expect(await screen.findByRole('list', { name: '買い物リスト' })).toBeInTheDocument()
+      expect(screen.queryByRole('list', { name: '在庫リスト' })).not.toBeInTheDocument()
+      expect(screen.queryByText(/今週の献立/)).not.toBeInTheDocument()
       expect(screen.queryByText(/世帯合計対象額/)).not.toBeInTheDocument()
       expect(screen.queryByLabelText('イベント別支出（対象期間）')).not.toBeInTheDocument()
     })
