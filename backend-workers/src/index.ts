@@ -15,6 +15,7 @@ import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
 import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
 import { menuEntriesRoute } from './routes/menu-entries'
+import { recipeOcrRoute } from './routes/recipe-ocr'
 import { recipesRoute } from './routes/recipes'
 import { shoppingListItemsRoute } from './routes/shopping-list-items'
 import { storesRoute } from './routes/stores'
@@ -23,7 +24,9 @@ import { userSettingsRoute } from './routes/user-settings'
 
 // wrangler.tomlのbindings定義から`wrangler types`で自動生成される
 // グローバルEnv型(worker-configuration.d.ts、gitignore対象)をそのまま使う。
-export type Bindings = Env
+// GOOGLE_VISION_API_KEYはwrangler secret put / .dev.varsで設定するシークレットで、
+// 未設定の環境(CI等)では型が生成されないため、任意項目として明示的に足す。
+export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string }
 
 // requireAuthミドルウェアがJWT検証後にセットするコンテキスト変数。
 export type Variables = {
@@ -54,6 +57,7 @@ app.route('/api/expense-splits', expenseSplitsRoute)
 app.route('/api/incomes', incomesRoute)
 app.route('/api/fixed-costs', fixedCostsRoute)
 app.route('/api/dashboard', dashboardRoute)
+app.route('/api/recipes/ocr', recipeOcrRoute)
 app.route('/api/recipes', recipesRoute)
 app.route('/api/menu-entries', menuEntriesRoute)
 app.route('/api/events', eventsRoute)

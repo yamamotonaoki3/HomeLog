@@ -28,6 +28,11 @@ const recipeSchema = z.object({
   steps: z.string().nullish(),
 })
 
+// 新規登録時のみ、登録方法(手動/手書き画像解析)を受け付ける。WEBレシピはPOST /from-url専用。
+const createRecipeSchema = recipeSchema.extend({
+  sourceType: z.enum(['manual', 'ocr']).default('manual'),
+})
+
 // お気に入りON/OFF切り替え専用のリクエストボディの形。
 const favoriteSchema = z.object({
   isFavorite: z.boolean(),
@@ -207,7 +212,7 @@ recipesRoute.get('/', async (c) => {
 // POST /api/recipes: レシピを新規登録する。
 recipesRoute.post('/', async (c) => {
   // safeParseは「検証してエラーがあっても例外を投げず、成功/失敗を結果オブジェクトで返す」メソッド。
-  const parsed = recipeSchema.safeParse(await parseJsonBody(c))
+  const parsed = createRecipeSchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
@@ -220,7 +225,7 @@ recipesRoute.post('/', async (c) => {
   }
 
   // parsed.dataには検証済み・型が確定した値が入っている(分割代入で個別の変数に取り出す)。
-  const { title, ingredients, steps } = parsed.data
+  const { title, ingredients, steps, sourceType } = parsed.data
   // db.insert(recipes).values({...})は「INSERT INTO recipes (...) VALUES (...)」に相当する。
   // .returning()を付けると、INSERT直後にその行をSELECTし直さずそのまま結果として受け取れる。
   // `ingredients ?? null`は「ingredientsがnull/undefinedならnullを使う」という意味
@@ -233,8 +238,8 @@ recipesRoute.post('/', async (c) => {
       title,
       ingredients: ingredients ?? null,
       steps: steps ?? null,
-      // 今回は手動登録のみに対応するため、常に'manual'固定で保存する。
-      sourceType: 'manual',
+      // 手動登録('manual')か、画像解析結果を確認・編集して登録した('ocr')かを保存する。
+      sourceType,
       isFavorite: false,
     })
     .returning()

@@ -17,8 +17,22 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 - 2026-09-24: E2Eの後始末はnpmの`posttest`に頼らない（テスト失敗時にスキップされる）。ラッパーで常に実行し、後始末の失敗も終了コードに反映する
 - 2026-09-24: E2Eで操作部品を含むセルに`toContainText`を使うと、ボタン・選択肢の文字列に一致して常に通る。値の要素を特定し`toHaveText`で前後の値を確認する
 - 2026-10-11: キー名を変える設定APIで、新旧キーを併記する互換エイリアスは「どちらが変更されたか」を判別できず破綻する。過渡期の制約を明示して受容する
+- 2026-10-11: Workers AI等のリモート専用バインディングを追加すると、テスト・E2Eの`wrangler dev`がCloudflare認証を要求して起動失敗する。テストは`remoteBindings: false`、E2Eは`--local`で切り離す
 
 ## 記録
+
+### 2026-10-11: リモート専用バインディング(Workers AI)の追加で、テスト・E2Eのサーバーが認証を要求して起動失敗する
+
+- **種別**: 実装中の手直し＋Codexレビューで採用（Issue #189、PR #190。P1×1）
+- **対象領域・関連ファイル**: `backend-workers/wrangler.toml`（`[ai]`）、`backend-workers/vitest.config.ts`、`e2e/playwright.config.ts`
+- **何が起きたか / 対応**: `[ai]` バインディングを追加しただけで、vitest-pool-workersが起動時にCloudflareへの
+  リモート接続を試み、`Failed to start the remote proxy session`で全テストが起動失敗した（R2・D1と違いWorkers AIには
+  ローカル模擬版が無いため）。`cloudflareTest({ remoteBindings: false })`で解消。さらにCodexから「E2Eが起動する
+  `wrangler dev`も同様にリモート接続を要求し、認証情報の無いCIでバックエンドが起動しない」と指摘（P1）。
+  `wrangler dev --local`を付けて解消。
+- **次回の行動規則**:
+  - **リモート専用のバインディング（AI等）を`wrangler.toml`に足すときは、vitest（`remoteBindings: false`）と、E2E・CIで起動する`wrangler dev`（`--local`）の両方を同じPRで切り離す**。テスト側では該当バインディングをモックに差し替える。
+- **状態**: 有効
 
 ### 2026-10-11: キー名を変える設定APIに互換エイリアスを足すと、変更された側を判別できず破綻する
 

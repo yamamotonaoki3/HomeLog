@@ -5,3 +5,7 @@
 # このファイルや wrangler.toml には実際の値を書かないこと。
 
 JWT_SECRET=changeme-generate-a-random-32-char-or-longer-value
+
+# 手書きレシピOCR(F-09)でGoogle Cloud Visionを実際に呼ぶときだけ設定する(任意)。
+# 本番は wrangler secret put GOOGLE_VISION_API_KEY で設定する。未設定なら解析APIは502を返す。
+# GOOGLE_VISION_API_KEY=changeme
