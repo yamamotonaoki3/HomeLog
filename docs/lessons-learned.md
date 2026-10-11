@@ -17,8 +17,39 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 - 2026-09-24: E2Eの後始末はnpmの`posttest`に頼らない（テスト失敗時にスキップされる）。ラッパーで常に実行し、後始末の失敗も終了コードに反映する
 - 2026-09-24: E2Eで操作部品を含むセルに`toContainText`を使うと、ボタン・選択肢の文字列に一致して常に通る。値の要素を特定し`toHaveText`で前後の値を確認する
 - 2026-10-11: キー名を変える設定APIで、新旧キーを併記する互換エイリアスは「どちらが変更されたか」を判別できず破綻する。過渡期の制約を明示して受容する
+- 2026-10-11: Workers AI等のリモート専用バインディングを追加すると、テスト・E2Eの`wrangler dev`がCloudflare認証を要求して起動失敗する。テストは`remoteBindings: false`、E2Eは`--local`で切り離す
+- 2026-10-11: ファイルアップロードAPIは「パース前のボディ上限」「Mapでの許可リスト」「外部APIの200内エラー」「放置された一時ファイルの掃除」を最初から設計に入れる
 
 ## 記録
+
+### 2026-10-11: ファイルアップロード＋外部API解析のエンドポイントで、初版に漏れた4つの観点
+
+- **種別**: Codexレビューで採用（Issue #132、PR #191。P2×5、4巡で収束）
+- **対象領域・関連ファイル**: `backend-workers/src/routes/recipe-ocr.ts`、`backend-workers/src/lib/recipe-ocr.ts`、`backend-workers/src/index.ts`（scheduled）
+- **何が起きたか / 対応**: 手書きレシピOCR APIの初版で次が漏れていた。
+  1. `formData()`はボディ全体をメモリに載せるため、5MBのサイズ検証より前に巨大なボディを受け付けてしまう → `hono/body-limit`で上限をかけ413を返す。
+  2. 許可する形式を`Record`のキー検索で引いたため、`constructor`等で継承プロパティを拾って500になる → `Map`に変更。
+  3. Google VisionはHTTP 200でも`responses[0].error`で失敗を返すことがあり、「文字なし(400)」と誤判定していた → errorを先に見て502。
+  4. 解析されずに放置された一時画像が残り続ける → 毎日のcronで24時間超の`ocr/`配下を削除。
+  あわせて、API層のE2E（`e2e/tests/recipe-ocr-api.spec.ts`）が無いという指摘も受けて追加した。
+- **次回の行動規則**:
+  - **ファイルを受け取るエンドポイントは、パース前のボディ上限・`Map`/own-propertyでの許可リスト・中身(マジックナンバー)の検証を初版から入れる**。
+  - **外部APIはHTTPステータスだけでなく、レスポンス本文内のエラー表現も仕様で確認してから成功/失敗を判定する**。
+  - **「一時ファイル」を作る設計では、正常系での削除に加えて、途中離脱時に残ったものを掃除する仕組み（cron・ライフサイクル）を同じPRで用意する**。
+- **状態**: 有効
+
+### 2026-10-11: リモート専用バインディング(Workers AI)の追加で、テスト・E2Eのサーバーが認証を要求して起動失敗する
+
+- **種別**: 実装中の手直し＋Codexレビューで採用（Issue #189、PR #190。P1×1）
+- **対象領域・関連ファイル**: `backend-workers/wrangler.toml`（`[ai]`）、`backend-workers/vitest.config.ts`、`e2e/playwright.config.ts`
+- **何が起きたか / 対応**: `[ai]` バインディングを追加しただけで、vitest-pool-workersが起動時にCloudflareへの
+  リモート接続を試み、`Failed to start the remote proxy session`で全テストが起動失敗した（R2・D1と違いWorkers AIには
+  ローカル模擬版が無いため）。`cloudflareTest({ remoteBindings: false })`で解消。さらにCodexから「E2Eが起動する
+  `wrangler dev`も同様にリモート接続を要求し、認証情報の無いCIでバックエンドが起動しない」と指摘（P1）。
+  `wrangler dev --local`を付けて解消。
+- **次回の行動規則**:
+  - **リモート専用のバインディング（AI等）を`wrangler.toml`に足すときは、vitest（`remoteBindings: false`）と、E2E・CIで起動する`wrangler dev`（`--local`）の両方を同じPRで切り離す**。テスト側では該当バインディングをモックに差し替える。
+- **状態**: 有効
 
 ### 2026-10-11: キー名を変える設定APIに互換エイリアスを足すと、変更された側を判別できず破綻する
 

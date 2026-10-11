@@ -8,6 +8,7 @@ import { expenseSplitsRoute } from './routes/expense-splits'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
+import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { getJstToday } from './lib/date'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
@@ -15,6 +16,7 @@ import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
 import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
 import { menuEntriesRoute } from './routes/menu-entries'
+import { recipeOcrRoute } from './routes/recipe-ocr'
 import { recipesRoute } from './routes/recipes'
 import { shoppingListItemsRoute } from './routes/shopping-list-items'
 import { storesRoute } from './routes/stores'
@@ -23,7 +25,9 @@ import { userSettingsRoute } from './routes/user-settings'
 
 // wrangler.tomlのbindings定義から`wrangler types`で自動生成される
 // グローバルEnv型(worker-configuration.d.ts、gitignore対象)をそのまま使う。
-export type Bindings = Env
+// GOOGLE_VISION_API_KEYはwrangler secret put / .dev.varsで設定するシークレットで、
+// 未設定の環境(CI等)では型が生成されないため、任意項目として明示的に足す。
+export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string }
 
 // requireAuthミドルウェアがJWT検証後にセットするコンテキスト変数。
 export type Variables = {
@@ -54,6 +58,7 @@ app.route('/api/expense-splits', expenseSplitsRoute)
 app.route('/api/incomes', incomesRoute)
 app.route('/api/fixed-costs', fixedCostsRoute)
 app.route('/api/dashboard', dashboardRoute)
+app.route('/api/recipes/ocr', recipeOcrRoute)
 app.route('/api/recipes', recipesRoute)
 app.route('/api/menu-entries', menuEntriesRoute)
 app.route('/api/events', eventsRoute)
@@ -66,7 +71,14 @@ app.route('/api/user-settings', userSettingsRoute)
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
   async scheduled(_controller: ScheduledController, env: Bindings): Promise<void> {
-    await postDueFixedCosts(env.DB, getJstToday())
+    // 一方が失敗しても、もう一方の日次処理は実行する。
+    const results = await Promise.allSettled([
+      postDueFixedCosts(env.DB, getJstToday()),
+      deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
+    ])
+    for (const result of results) {
+      if (result.status === 'rejected') console.error('日次処理に失敗しました', result.reason)
+    }
   },
 })
 
