@@ -61,7 +61,7 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: '今日の状況' })).toBeVisible()
     await expect(page.getByText('収支: -1200円')).toBeVisible()
-    await expect(page.getByText('今週の献立: [E2E_TEST] ダッシュボード献立')).toBeVisible()
+    await expect(page.getByRole('list', { name: '今週の献立' })).toContainText('[E2E_TEST] ダッシュボード献立')
     await expect(page.getByText('イベント: [E2E_TEST] ダッシュボードイベント')).toBeVisible()
     await expect(page.getByText('個人支出: 1200円')).toBeVisible()
     const eventPeriod = page.getByLabel('イベント別支出（対象期間）')
