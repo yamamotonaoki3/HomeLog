@@ -1,10 +1,18 @@
 // `useState`はReactの機能で、「画面の状態(値)を持ち、値が変わったら自動的に再描画する」ための仕組み。
 // `type FormEvent`のように`type`を付けてimportすると、値ではなく「型情報だけ」を取り込む
 // (実行時のコードには影響しない、TypeScript独自の書き方)。
-import { useState, type FormEvent } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Recipe } from '../../api/kondateTypes'
+import { ImageUnsupportedError, OCR_MAX_BYTES, prepareOcrImage } from '../../lib/ocrImage'
+
+// POST /recipes/ocr/analyze の応答(DBには保存されていない解析結果)。
+interface OcrAnalyzeResult {
+  title: string
+  ingredients: string | null
+  steps: string | null
+}
 
 // このコンポーネント(部品)が親から受け取る引数(React用語で「props」)の型定義。
 // Javaのメソッド引数の型宣言に近いイメージ。
@@ -19,7 +27,9 @@ interface Props {
   initialUrl?: string
 }
 
-type RegisterTab = 'manual' | 'web'
+// 画像解析(ocr)は、写真の解析結果を確認・編集してから手動と同じフォームで保存する。
+type RegisterTab = 'manual' | 'ocr' | 'web'
+type OcrStatus = 'idle' | 'analyzing' | 'done'
 
 // `{ recipe, onClose, onSaved }`はProps型のオブジェクトから各プロパティを直接取り出す書き方
 // (分割代入)。`props.recipe`と書く代わりに`recipe`とだけ書けるようになる。
@@ -43,9 +53,56 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
   const [error, setError] = useState('')
   // フォーム送信中は二重送信を防ぐためボタンを無効化するためのフラグ。
   const [submitting, setSubmitting] = useState(false)
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
+  const [ocrNotice, setOcrNotice] = useState('')
+  const isOcrTab = !isEdit && tab === 'ocr'
+
+  // 写真が選ばれたら、縮小 → アップロード(R2に一時保存) → 解析 の順に行い、結果をフォームに入れる。
+  const handlePhotoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // 同じ写真を選び直しても変更イベントが起きるよう、選択状態をリセットする。
+    e.target.value = ''
+    if (!file) return
+    setError('')
+    setOcrNotice('')
+    if (!file.type.startsWith('image/')) {
+      setError('画像ファイルを選択してください')
+      return
+    }
+    setOcrStatus('analyzing')
+    try {
+      const image = await prepareOcrImage(file)
+      if (image.size > OCR_MAX_BYTES) {
+        setError('画像が大きすぎます（5MBまで）')
+        setOcrStatus('idle')
+        return
+      }
+      const form = new FormData()
+      form.append('file', image)
+      const uploaded = await apiClient.post<{ key: string }>('/recipes/ocr/upload', form)
+      const { data } = await apiClient.post<OcrAnalyzeResult>('/recipes/ocr/analyze', { key: uploaded.data.key })
+      setTitle(data.title)
+      setIngredients(data.ingredients ?? '')
+      setSteps(data.steps ?? '')
+      // AIで整理できなかった場合、サーバーは読み取った文字を手順欄に入れタイトルを空で返す。
+      if (data.title.trim() === '') setOcrNotice('読み取った内容を確認し、タイトルなどを入力してください')
+      setOcrStatus('done')
+    } catch (err) {
+      setError(
+        err instanceof ImageUnsupportedError
+          ? 'この画像は読み込めませんでした。JPEGまたはPNGの写真を選んでください'
+          : getApiErrorMessage(err, '画像の解析に失敗しました'),
+      )
+      setOcrStatus('idle')
+    }
+  }
 
   // 手動登録・手動/OCR編集の送信処理(既存のPOST /recipes・PATCH /recipes/:id)。
   const submitManual = async () => {
+    if (isOcrTab && ocrStatus !== 'done') {
+      setError('写真を選んで解析してください')
+      return false
+    }
     const trimmedTitle = title.trim()
     // クライアント側(ブラウザ側)での簡易バリデーション。サーバーに送る前にここで弾く。
     if (trimmedTitle.length < 1 || trimmedTitle.length > 100) {
@@ -58,6 +115,8 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
       title: trimmedTitle,
       ingredients: ingredients.trim() === '' ? null : ingredients,
       steps: steps.trim() === '' ? null : steps,
+      // 画像解析タブからの登録だけ、登録方法を'ocr'として保存する(手動は従来どおり省略=manual)。
+      ...(isOcrTab ? { sourceType: 'ocr' as const } : {}),
     }
     if (isEdit) {
       await apiClient.patch(`/recipes/${recipe.id}`, payload)
@@ -176,8 +235,19 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
               aria-selected={tab === 'manual'}
               className={tab === 'manual' ? 'btn btn-primary' : 'btn btn-secondary'}
               onClick={() => setTab('manual')}
+              disabled={ocrStatus === 'analyzing'}
             >
               手動
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'ocr'}
+              className={tab === 'ocr' ? 'btn btn-primary' : 'btn btn-secondary'}
+              onClick={() => setTab('ocr')}
+              disabled={ocrStatus === 'analyzing'}
+            >
+              画像解析
             </button>
             <button
               type="button"
@@ -185,6 +255,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
               aria-selected={tab === 'web'}
               className={tab === 'web' ? 'btn btn-primary' : 'btn btn-secondary'}
               onClick={() => setTab('web')}
+              disabled={ocrStatus === 'analyzing'}
             >
               WEB
             </button>
@@ -201,6 +272,25 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
             </>
           ) : (
             <>
+              {isOcrTab && (
+                <>
+                  <label htmlFor="recipe-photo">レシピの写真</label>
+                  {/* accept="image/*"で、スマホではカメラ撮影か写真アプリからの選択を選べる。 */}
+                  <input
+                    id="recipe-photo"
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoChange}
+                    disabled={ocrStatus === 'analyzing'}
+                  />
+                  {ocrStatus === 'analyzing' && <p role="status">解析中...</p>}
+                  {ocrNotice && <p role="status">{ocrNotice}</p>}
+                </>
+              )}
+            </>
+          )}
+          {(isEdit || tab === 'manual' || (isOcrTab && ocrStatus === 'done')) && (
+            <>
               <label htmlFor="recipe-title">タイトル</label>
               {/* value={title}で入力欄の表示内容をuseStateの値と連動させ、
                   onChangeで入力される度にsetTitleを呼んで状態を更新する(制御されたコンポーネント)。 */}
@@ -214,7 +304,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
           <p className="error">{error}</p>
           <div className="modal-actions">
             {/* submitting中はボタンを押せなくする(disabled)。 */}
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || ocrStatus === 'analyzing'}>
               {isEdit ? '更新' : '登録'}
             </button>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
