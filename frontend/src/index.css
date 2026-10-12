@@ -26,6 +26,10 @@ a:hover { text-decoration: underline; }
 .nav-link:hover, .nav-link.is-active { background: #334155; color: #fff; text-decoration: none; }
 .nav-logout { margin-left: auto; background: none; border: 1px solid #64748b; color: #cbd5e1; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
 .secondary-nav { display: flex; justify-content: center; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+/* 上部タブは白背景なので、下部ナビ(濃色背景)用の文字色を上書きする */
+.secondary-nav .nav-link { color: #334155; border: 1px solid #cbd5e1; font-weight: 500; }
+.secondary-nav .nav-link:hover { background: #f1f5f9; color: #0f172a; }
+.secondary-nav .nav-link[aria-current="page"] { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 700; }
 .app-content { flex: 1; width: 100%; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 .primary-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: flex; justify-content: center; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: #1e293b; box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.16); }
 .primary-nav .nav-link { flex: 1; max-width: 280px; min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; }
