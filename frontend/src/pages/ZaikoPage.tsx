@@ -82,7 +82,18 @@ export function ZaikoPage() {
 
   return (
     <div className="page zaiko-page">
-      {isShoppingTab ? (
+      {/* 入力途中の購入個数などパネル内の状態を失わないよう、両パネルとも描画したまま非選択側を隠す */}
+      <div hidden={isShoppingTab}>
+        <InventoryPanel
+          inventory={inventory}
+          categories={categories}
+          stores={stores}
+          onStoresChange={setStores}
+          onRefresh={refreshAll}
+          onNotify={showToast}
+        />
+      </div>
+      <div hidden={!isShoppingTab}>
         <ShoppingListPanel
           shopping={shopping}
           inventory={inventory}
@@ -93,16 +104,7 @@ export function ZaikoPage() {
           onRefresh={refreshAll}
           onNotify={showToast}
         />
-      ) : (
-        <InventoryPanel
-          inventory={inventory}
-          categories={categories}
-          stores={stores}
-          onStoresChange={setStores}
-          onRefresh={refreshAll}
-          onNotify={showToast}
-        />
-      )}
+      </div>
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )
