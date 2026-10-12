@@ -35,7 +35,10 @@ function App() {
             <Route element={<RequireHousehold />}>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<DashboardPage />} />
-                <Route path="/zaiko" element={<ZaikoPage />} />
+                {/* タブを切り替えてもZaikoPage(取得済みデータ)を作り直さないよう子ルートにする */}
+                <Route path="/zaiko" element={<ZaikoPage />}>
+                  <Route path="shopping" element={null} />
+                </Route>
                 <Route path="/kakeibo" element={<KakeiboPage />} />
                 <Route path="/warikan" element={<WarikanPage />} />
                 <Route path="/fixed-costs" element={<FixedCostsPage />} />

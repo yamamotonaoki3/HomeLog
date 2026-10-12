@@ -18,6 +18,7 @@ function renderWithLayout(initialPath: string) {
           <Route element={<AppLayout />}>
             <Route path="/" element={<div>ダッシュボード本体</div>} />
             <Route path="/zaiko" element={<div>在庫画面本体</div>} />
+            <Route path="/zaiko/shopping" element={<div>買い物リスト画面本体</div>} />
             <Route path="/kakeibo" element={<div>家計簿画面本体</div>} />
             <Route path="/menu" element={<div>献立表画面本体</div>} />
             <Route path="/recipes" element={<div>レシピ画面本体</div>} />
@@ -68,6 +69,30 @@ describe('AppLayout', () => {
 
     expect(screen.getByRole('link', { name: '在庫管理' })).toHaveClass('is-active')
     expect(screen.getByRole('link', { name: '家計簿' })).not.toHaveClass('is-active')
+  })
+
+  it('在庫管理では在庫一覧・買い物リストのタブを表示し、現在のタブが判別できる', () => {
+    const { unmount } = renderWithLayout('/zaiko')
+
+    const zaikoNavigation = screen.getByRole('navigation', { name: '在庫管理関連機能' })
+    const inventoryTab = within(zaikoNavigation).getByRole('link', { name: '在庫一覧' })
+    const shoppingTab = within(zaikoNavigation).getByRole('link', { name: '買い物リスト' })
+    expect(inventoryTab).toHaveAttribute('href', '/zaiko')
+    expect(shoppingTab).toHaveAttribute('href', '/zaiko/shopping')
+    expect(inventoryTab).toHaveAttribute('aria-current', 'page')
+    expect(shoppingTab).not.toHaveAttribute('aria-current')
+    unmount()
+
+    renderWithLayout('/zaiko/shopping')
+    expect(screen.getByRole('link', { name: '買い物リスト' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '在庫一覧' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: '在庫管理' })).toHaveClass('is-active')
+  })
+
+  it('在庫管理以外では在庫管理のタブを表示しない', () => {
+    renderWithLayout('/kakeibo')
+
+    expect(screen.queryByRole('navigation', { name: '在庫管理関連機能' })).not.toBeInTheDocument()
   })
 
   it('家計簿・献立表の関連機能へ移動できる', () => {

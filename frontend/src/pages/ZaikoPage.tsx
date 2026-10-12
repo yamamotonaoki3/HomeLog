@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Category, InventoryItem, ShoppingListItem, ShoppingSort, Store } from '../api/zaikoTypes'
@@ -7,6 +8,8 @@ import { InventoryPanel } from '../components/zaiko/InventoryPanel'
 import { ShoppingListPanel } from '../components/zaiko/ShoppingListPanel'
 
 export function ZaikoPage() {
+  // 上部タブ(AppLayout)の選択はURLで表す。/zaiko=在庫一覧、/zaiko/shopping=買い物リスト
+  const isShoppingTab = useLocation().pathname.startsWith('/zaiko/shopping')
   const [categories, setCategories] = useState<Category[]>([])
   const [stores, setStores] = useState<Store[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
@@ -79,24 +82,29 @@ export function ZaikoPage() {
 
   return (
     <div className="page zaiko-page">
-      <InventoryPanel
-        inventory={inventory}
-        categories={categories}
-        stores={stores}
-        onStoresChange={setStores}
-        onRefresh={refreshAll}
-        onNotify={showToast}
-      />
-      <ShoppingListPanel
-        shopping={shopping}
-        inventory={inventory}
-        categories={categories}
-        stores={stores}
-        sort={sort}
-        onSortChange={handleSortChange}
-        onRefresh={refreshAll}
-        onNotify={showToast}
-      />
+      {/* 入力途中の購入個数などパネル内の状態を失わないよう、両パネルとも描画したまま非選択側を隠す */}
+      <div hidden={isShoppingTab}>
+        <InventoryPanel
+          inventory={inventory}
+          categories={categories}
+          stores={stores}
+          onStoresChange={setStores}
+          onRefresh={refreshAll}
+          onNotify={showToast}
+        />
+      </div>
+      <div hidden={!isShoppingTab}>
+        <ShoppingListPanel
+          shopping={shopping}
+          inventory={inventory}
+          categories={categories}
+          stores={stores}
+          sort={sort}
+          onSortChange={handleSortChange}
+          onRefresh={refreshAll}
+          onNotify={showToast}
+        />
+      </div>
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )

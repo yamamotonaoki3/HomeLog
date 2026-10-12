@@ -17,14 +17,19 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
     const quantity = inventoryRow.locator('.qty-value')
     await expect(quantity).toHaveText('0.0')
 
+    const tabs = page.getByRole('navigation', { name: '在庫管理関連機能' })
+    await tabs.getByRole('link', { name: '買い物リスト' }).click()
+    await expect(page).toHaveURL(/\/zaiko\/shopping$/)
+
     const shopping = page.getByTestId('shopping-panel')
     const shoppingRow = shopping.getByRole('row').filter({ hasText: name })
     await expect(shoppingRow).toBeVisible()
 
     await shoppingRow.getByRole('button', { name: `${name}の購入個数を増やす` }).click()
     await shopping.getByRole('button', { name: '更新' }).click()
-
-    await expect(quantity).toHaveText('1.0')
     await expect(shoppingRow).toHaveCount(0)
+
+    await tabs.getByRole('link', { name: '在庫一覧' }).click()
+    await expect(quantity).toHaveText('1.0')
   })
 })

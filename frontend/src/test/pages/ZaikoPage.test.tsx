@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { ZaikoPage } from '../../pages/ZaikoPage'
 import type { InventoryItem, ShoppingListItem } from '../../api/zaikoTypes'
@@ -125,38 +125,88 @@ function setupApi(initial: Partial<MockState> = {}) {
   return { state, calls }
 }
 
-function renderZaikoPage() {
+// 本番ではタブはAppLayoutの上部タブにあるため、テストでは同じリンク先を持つ簡易タブを置く
+function renderZaikoPage(initialPath = '/zaiko') {
   return render(
-    <MemoryRouter initialEntries={['/zaiko']}>
-      <ZaikoPage />
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Link to="/zaiko">在庫一覧</Link>
+      <Link to="/zaiko/shopping">買い物リスト</Link>
+      <Routes>
+        <Route path="/zaiko" element={<ZaikoPage />}>
+          <Route path="shopping" element={null} />
+        </Route>
+      </Routes>
     </MemoryRouter>,
   )
+}
+
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: '在庫一覧' | '買い物リスト') {
+  await user.click(screen.getByRole('link', { name }))
 }
 
 const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 2.0, threshold: 0.5 }
 const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0 }
 
 describe('ZaikoPage', () => {
-  it('在庫一覧と買い物リストが表示される', async () => {
+  it('/zaikoでは在庫一覧だけを表示し、買い物リストタブに切り替えると買い物リストだけを表示する', async () => {
     setupApi({
       inventory: [milk, egg],
       shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
     })
+    const user = userEvent.setup()
     renderZaikoPage()
 
     await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
     const inventoryPanel = screen.getByTestId('inventory-panel')
     expect(within(inventoryPanel).getByText('乳製品')).toBeInTheDocument()
     expect(within(inventoryPanel).getByText('スーパーA')).toBeInTheDocument()
+    expect(screen.getByTestId('shopping-panel')).not.toBeVisible()
+
+    await openTab(user, '買い物リスト')
+
     const shoppingPanel = screen.getByTestId('shopping-panel')
     expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument()
+    expect(screen.getByTestId('inventory-panel')).not.toBeVisible()
+  })
+
+  it('/zaiko/shoppingを直接開くと買い物リストだけを表示する', async () => {
+    setupApi({
+      inventory: [egg],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
+    })
+    renderZaikoPage('/zaiko/shopping')
+
+    const shoppingPanel = await screen.findByTestId('shopping-panel')
+    expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument()
+    expect(screen.getByTestId('inventory-panel')).not.toBeVisible()
+  })
+
+  it('入力途中の購入個数はタブを行き来しても保持される', async () => {
+    setupApi({
+      inventory: [egg],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
+    })
+    const user = userEvent.setup()
+    renderZaikoPage('/zaiko/shopping')
+    const shoppingPanel = await screen.findByTestId('shopping-panel')
+    await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
+    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
+    await openTab(user, '在庫一覧')
+    await openTab(user, '買い物リスト')
+
+    const eggRow = screen.getByRole('button', { name: '卵の購入個数を増やす' }).closest('tr')!
+    expect(within(eggRow).getByText('2')).toBeInTheDocument()
   })
 
   it('在庫・買い物リストが空のときプレースホルダーを表示する', async () => {
     setupApi()
+    const user = userEvent.setup()
     renderZaikoPage()
 
     await waitFor(() => expect(screen.getByText('在庫がありません')).toBeInTheDocument())
+    await openTab(user, '買い物リスト')
     expect(screen.getByText('買い物リストは空です')).toBeInTheDocument()
   })
 
@@ -194,7 +244,10 @@ describe('ZaikoPage', () => {
     await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
+    await waitFor(() => expect(screen.getByText('0.0')).toBeInTheDocument())
 
+    // タブを切り替えたときに、在庫の増減で自動追加された最新の買い物リストが表示される
+    await openTab(user, '買い物リスト')
     const shoppingPanel = screen.getByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('牛乳')).toBeInTheDocument())
   })
@@ -269,8 +322,8 @@ describe('ZaikoPage', () => {
   it('品目を手動追加できる', async () => {
     const { calls } = setupApi({ inventory: [milk] })
     const user = userEvent.setup()
-    renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    renderZaikoPage('/zaiko/shopping')
+    await screen.findByTestId('shopping-panel')
 
     await user.click(screen.getByRole('button', { name: '品目を手動追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '牛乳')
@@ -289,7 +342,7 @@ describe('ZaikoPage', () => {
       shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: true, purchased: false, purchasedQuantity: 0 }],
     })
     const user = userEvent.setup()
-    renderZaikoPage()
+    renderZaikoPage('/zaiko/shopping')
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
@@ -301,8 +354,8 @@ describe('ZaikoPage', () => {
 
   it('初期表示は買う店順（store）で取得される', async () => {
     const { calls } = setupApi({ inventory: [milk] })
-    renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    renderZaikoPage('/zaiko/shopping')
+    await screen.findByTestId('shopping-panel')
 
     expect(calls.some((c) => c.method === 'GET' && c.url === '/api/shopping-list-items?sort=store')).toBe(true)
     expect(screen.getByLabelText('並び替え')).toHaveValue('store')
@@ -311,8 +364,8 @@ describe('ZaikoPage', () => {
   it('並び替えを変更するとsortパラメータ付きで再取得する', async () => {
     const { calls } = setupApi({ inventory: [milk] })
     const user = userEvent.setup()
-    renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    renderZaikoPage('/zaiko/shopping')
+    await screen.findByTestId('shopping-panel')
 
     await user.selectOptions(screen.getByLabelText('並び替え'), 'カテゴリー順')
 
@@ -355,7 +408,7 @@ describe('ZaikoPage', () => {
       ],
     })
     const user = userEvent.setup()
-    renderZaikoPage()
+    renderZaikoPage('/zaiko/shopping')
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
@@ -371,8 +424,11 @@ describe('ZaikoPage', () => {
       expect(updateCall?.body).toEqual({ items: [{ id: 10, purchasedQuantity: 2 }] })
     })
     await waitFor(() => expect(within(screen.getByTestId('shopping-panel')).queryByText('卵')).not.toBeInTheDocument())
+    expect(screen.getByText('在庫に反映しました')).toBeInTheDocument()
+
+    // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
+    await openTab(user, '在庫一覧')
     const eggRow = screen.getByRole('button', { name: '卵を増やす' }).closest('tr')!
     expect(within(eggRow).getByText('2.0')).toBeInTheDocument()
-    expect(screen.getByText('在庫に反映しました')).toBeInTheDocument()
   })
 })

@@ -51,6 +51,17 @@ export function AppLayout() {
         </div>
       </header>
 
+      {activePrimary === '/zaiko' && (
+        <nav aria-label="在庫管理関連機能" className="secondary-nav">
+          {/* endを付けないと/zaiko/shoppingでも在庫一覧が選択中になる */}
+          <NavLink to="/zaiko" end className="nav-link">
+            在庫一覧
+          </NavLink>
+          <NavLink to="/zaiko/shopping" className="nav-link">
+            買い物リスト
+          </NavLink>
+        </nav>
+      )}
       {isKakeiboSection && (
         <nav aria-label="家計簿関連機能" className="secondary-nav">
           <NavLink to="/warikan" className="nav-link">
