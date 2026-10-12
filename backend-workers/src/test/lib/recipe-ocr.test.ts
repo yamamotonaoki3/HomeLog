@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test'
 import { describe, expect, it, vi } from 'vitest'
-import { deleteStaleOcrImages } from '../../lib/recipe-ocr'
+import { deleteStaleOcrImages, structureRecipeText } from '../../lib/recipe-ocr'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -31,5 +31,40 @@ describe('deleteStaleOcrImages', () => {
     expect(list.mock.calls).toEqual([[{ prefix: 'ocr/' }], [{ prefix: 'ocr/', cursor: 'next' }]])
     expect(remove).toHaveBeenCalledWith(['ocr/1/a.png'])
     expect(remove).toHaveBeenCalledWith(['ocr/1/b.png'])
+  })
+})
+
+describe('structureRecipeText', () => {
+  function ai(response: unknown) {
+    return { run: vi.fn().mockResolvedValue({ response }) } as unknown as Ai
+  }
+
+  it('材料・手順が配列で返った場合は改行区切りの文字列にする', async () => {
+    const result = await structureRecipeText(
+      ai({ title: '肉じゃが', ingredients: ['じゃがいも 3個', 'にんじん 1本'], steps: ['1. 切る', '2. 煮る'] }),
+      '読み取った文字',
+    )
+    expect(result).toEqual({ title: '肉じゃが', ingredients: 'じゃがいも 3個\nにんじん 1本', steps: '1. 切る\n2. 煮る' })
+  })
+
+  it('配列の文字列表現([a\n, b])で返った場合も要素ごとの改行区切りに整える', async () => {
+    const result = await structureRecipeText(
+      ai({ title: '肉じゃが', ingredients: '[じゃがいも 3個\n, にんじん 1本\n, 牛肉 200g]', steps: '[1. 野菜を切る\n, 2. 煮る]' }),
+      '読み取った文字',
+    )
+    expect(result).toEqual({ title: '肉じゃが', ingredients: 'じゃがいも 3個\nにんじん 1本\n牛肉 200g', steps: '1. 野菜を切る\n2. 煮る' })
+  })
+
+  it('空の配列はnullにする', async () => {
+    const result = await structureRecipeText(ai({ title: 'カレー', ingredients: [], steps: null }), 'カレー')
+    expect(result).toEqual({ title: 'カレー', ingredients: null, steps: null })
+  })
+
+  it('AIには材料・手順を文字列配列で答えるよう指示する', async () => {
+    const model = ai({ title: 'x', ingredients: null, steps: null })
+    await structureRecipeText(model, 'x')
+    const [, input] = vi.mocked(model.run).mock.calls[0] as unknown as [string, { response_format: { json_schema: { properties: Record<string, { type: unknown; items?: unknown }> } } }]
+    expect(input.response_format.json_schema.properties.ingredients).toEqual({ type: ['array', 'null'], items: { type: 'string' } })
+    expect(input.response_format.json_schema.properties.steps).toEqual({ type: ['array', 'null'], items: { type: 'string' } })
   })
 })
