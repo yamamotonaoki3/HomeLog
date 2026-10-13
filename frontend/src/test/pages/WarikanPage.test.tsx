@@ -219,7 +219,7 @@ describe('WarikanPage コメント', () => {
 })
 
 describe('WarikanPage 世帯内/世帯外タブ', () => {
-  it('デフォルトでは世帯内タブが選択され世帯内の内訳のみ表示される', async () => {
+  it('デフォルトはすべてタブで世帯内と世帯外の内訳を表示する', async () => {
     setupApi([
       split({ id: 1, expensePurpose: '世帯内の支出', isExternal: false }),
       split({ id: 2, expensePurpose: '世帯外の支出', isExternal: true, debtorLabel: 'E2EUser A' }),
@@ -227,8 +227,8 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
-    expect(screen.queryByText('世帯外の支出')).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '世帯内', selected: true })).toBeInTheDocument()
+    expect(screen.getByText('世帯外の支出')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'すべて', selected: true })).toBeInTheDocument()
   })
 
   it('世帯外タブに切り替えると世帯外の内訳のみ表示される', async () => {
@@ -254,6 +254,77 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
 
     await user.click(screen.getByRole('tab', { name: '世帯外' }))
 
-    expect(await screen.findByText('割り勘の内訳はありません')).toBeInTheDocument()
+    expect(await screen.findByText('世帯外の割り勘の内訳はありません')).toBeInTheDocument()
+  })
+
+  it.each([false, true])('単一種別でも初期表示に内訳を表示する（isExternal=%s）', async (isExternal) => {
+    setupApi([split({ isExternal, expensePurpose: '[E2E_TEST] 単一種別', debtorLabel: 'testuser_external', amountDue: 500 })])
+    renderPage()
+    const row = await screen.findByRole('row', { name: /単一種別/ })
+    expect(row).toHaveTextContent('testuser_external')
+    expect(row).toHaveTextContent('500円')
+    expect(row).toHaveTextContent('未請求')
+    expect(screen.getByRole('tab', { name: 'すべて', selected: true })).toBeInTheDocument()
+  })
+
+  it('世帯内・世帯外で絞り込み、すべてに戻すと両方を復元する', async () => {
+    setupApi([
+      split({ id: 1, expensePurpose: '[E2E_TEST] 内部' }),
+      split({ id: 2, expensePurpose: '[E2E_TEST] 外部', isExternal: true }),
+    ])
+    renderPage()
+    await screen.findByText('[E2E_TEST] 内部')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('tab', { name: '世帯内' }))
+    expect(screen.getByText('[E2E_TEST] 内部')).toBeInTheDocument()
+    expect(screen.queryByText('[E2E_TEST] 外部')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '世帯外' }))
+    expect(screen.queryByText('[E2E_TEST] 内部')).not.toBeInTheDocument()
+    expect(screen.getByText('[E2E_TEST] 外部')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'すべて' }))
+    expect(screen.getByText('[E2E_TEST] 内部')).toBeInTheDocument()
+    expect(screen.getByText('[E2E_TEST] 外部')).toBeInTheDocument()
+  })
+
+  it('全件0件と選択種別0件の文言を区別する', async () => {
+    setupApi([])
+    renderPage()
+    await screen.findByText('割り勘の内訳はありません')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('tab', { name: '世帯内' }))
+    expect(screen.getByText('世帯内の割り勘の内訳はありません')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '世帯外' }))
+    expect(screen.getByText('世帯外の割り勘の内訳はありません')).toBeInTheDocument()
+  })
+
+  it.each(['request', 'settle-self', 'delete'])('再取得後も明示選択した世帯外タブを維持する（%s）', async (action) => {
+    setupApi([split({}), split({ id: 2, isExternal: true, expensePurpose: '[E2E_TEST] 外部' })])
+    renderPage()
+    await rowOf()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('tab', { name: '世帯外' }))
+    const row = screen.getByRole('row', { name: /外部/ })
+    if (action === 'request') {
+      await user.click(within(row).getByRole('button', { name: '請求' }))
+      await waitFor(() => expect(row).toHaveTextContent('請求中'))
+    } else if (action === 'settle-self') {
+      await user.click(within(row).getByRole('button', { name: '精算済みにする' }))
+      await user.click(within(await screen.findByTestId('settlement-account-modal')).getByRole('button', { name: '精算済みにする' }))
+      await waitFor(() => expect(row).toHaveTextContent('精算済み'))
+    } else {
+      await user.click(within(row).getByRole('button', { name: '削除' }))
+      await user.click(screen.getByRole('button', { name: '削除する' }))
+      await screen.findByText('世帯外の割り勘の内訳はありません')
+    }
+    expect(screen.getByRole('tab', { name: '世帯外', selected: true })).toBeInTheDocument()
+    expect(screen.queryByText('共同購入')).not.toBeInTheDocument()
+  })
+
+  it('取得失敗はエラー通知を表示する', async () => {
+    setupApi([])
+    server.use(http.get('/api/expense-splits', () => HttpResponse.json({ message: '割り勘の取得に失敗しました' }, { status: 500 })))
+    renderPage()
+    expect(await screen.findByText('割り勘の取得に失敗しました')).toBeInTheDocument()
+    expect(screen.queryByText('共同購入')).not.toBeInTheDocument()
   })
 })

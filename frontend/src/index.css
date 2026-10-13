@@ -105,6 +105,11 @@ a:hover { text-decoration: underline; }
 /* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 
+/* 割り勘一覧は狭い画面でも表の中だけをスクロールし、操作列へ到達できる。 */
+.warikan-page .tabs { flex-wrap: wrap; }
+.warikan-table-scroll { max-width: 100%; overflow-x: auto; }
+.warikan-table-scroll .table { min-width: 640px; }
+
 /* モーダル */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);

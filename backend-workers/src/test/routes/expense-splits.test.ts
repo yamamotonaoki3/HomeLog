@@ -110,7 +110,7 @@ async function createExpenseWithSplits(
   headers: Record<string, string>,
   _payerUserId: number,
   splits: SplitBody[],
-  opts: { amount?: number; splitInputType?: 'ratio' | 'amount' } = {},
+  opts: { amount?: number; splitInputType?: 'ratio' | 'amount'; purpose?: string } = {},
 ) {
   const categoryId = await getFirstCategoryId(headers)
   const amount = opts.amount ?? 1000
@@ -123,7 +123,7 @@ async function createExpenseWithSplits(
       body: JSON.stringify({
         expenseDate: '2024-01-01',
         amount,
-        purpose: '共同購入',
+        purpose: opts.purpose ?? '共同購入',
         categoryId,
         splitInputType: inputType,
         splits,
@@ -145,6 +145,32 @@ beforeEach(async () => {
 })
 
 describe('POST /api/expenses(割り勘)', () => {
+  it.each(['ratio', 'amount'] as const)('1人世帯の世帯外割り勘を%sで登録し、DB・一覧の同一内訳を照合する', async (splitInputType) => {
+    const owner = await createUserWithHousehold('testuser_owner@example.com', 'testuser_owner')
+    const debtorExternalName = 'testuser_external'
+    const purpose = '[E2E_TEST] 世帯外割り勘'
+    const response = await createExpenseWithSplits(owner.headers, owner.userId, [
+      { debtorExternalName, ...(splitInputType === 'ratio' ? { ratio: 50 } : { amountDue: 500 }) },
+    ], { splitInputType, purpose })
+    expect(response.status).toBe(201)
+    const created = await response.json<{ id: number; splits: { amountDue: number; status: string }[] }>()
+    expect(created.splits).toHaveLength(1)
+    expect(created.splits[0]).toMatchObject({ amountDue: 500, status: 'unpaid' })
+    const persisted = await env.DB.prepare('SELECT * FROM expense_splits WHERE expense_id = ?').bind(created.id).all()
+    expect(persisted.results).toHaveLength(1)
+    expect(persisted.results[0]).toMatchObject({
+      expense_id: created.id, debtor_user_id: null,
+      split_ratio: 50, amount_due: 500, status: 'unpaid',
+    })
+    expect(persisted.results[0].debtor_external_id).toEqual(expect.any(Number))
+    const listed = await app.request('/api/expense-splits', { headers: owner.headers }, env)
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toEqual([expect.objectContaining({
+      id: persisted.results[0].id, expenseId: created.id, expensePurpose: purpose, debtorLabel: debtorExternalName,
+      role: 'payer', isExternal: true, amountDue: 500, splitRatio: 50, status: 'unpaid', splitInputType,
+    })])
+  })
+
   it('世帯メンバーとの50:50割り勘でunpaidの内訳が作成される', async () => {
     const owner = await createUserWithHousehold('taro@example.com')
     const member = await createUserWithoutHousehold('hanako@example.com')
@@ -204,6 +230,7 @@ describe('POST /api/expenses(割り勘)', () => {
       env,
     )
     expect(res.status).toBe(201)
+    expect((await env.DB.prepare('SELECT id FROM expense_splits').all()).results).toHaveLength(0)
   })
 })
 
@@ -215,18 +242,26 @@ describe('GET /api/expense-splits', () => {
     const third = await createUserWithoutHousehold('third@example.com', 'サード')
     await joinHousehold(third.headers, owner.headers)
 
-    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }])
+    const createdRes = await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorUserId: member.userId, ratio: 50 }])
+    expect(createdRes.status).toBe(201)
+    const created = await createdRes.json<{ id: number }>()
+    const persisted = await env.DB.prepare('SELECT id FROM expense_splits WHERE expense_id = ?').bind(created.id).first<{ id: number }>()
 
     const ownerList = await (await app.request('/api/expense-splits', { headers: owner.headers }, env)).json<{ role: string }[]>()
     expect(ownerList).toHaveLength(1)
     expect(ownerList[0].role).toBe('payer')
+    expect(ownerList[0]).toMatchObject({ id: persisted!.id, expenseId: created.id, isExternal: false, amountDue: 500, status: 'unpaid' })
 
     const memberList = await (await app.request('/api/expense-splits', { headers: member.headers }, env)).json<{ role: string; debtorLabel: string }[]>()
     expect(memberList).toHaveLength(1)
     expect(memberList[0].role).toBe('debtor')
+    expect(memberList[0]).toMatchObject({ id: persisted!.id, expenseId: created.id, isExternal: false, amountDue: 500, status: 'unpaid' })
 
     const thirdList = await (await app.request('/api/expense-splits', { headers: third.headers }, env)).json<unknown[]>()
     expect(thirdList).toHaveLength(0)
+    const outsider = await createUserWithHousehold('testuser_outsider@example.com', 'testuser_outsider')
+    const outsiderList = await (await app.request('/api/expense-splits', { headers: outsider.headers }, env)).json()
+    expect(outsiderList).toEqual([])
   })
 })
 

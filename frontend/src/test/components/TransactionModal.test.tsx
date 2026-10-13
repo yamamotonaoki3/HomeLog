@@ -11,7 +11,7 @@ const members = [
   { userId: 20, displayName: 'テスト花子' },
 ]
 
-function setup() {
+function setup(candidateMembers = members) {
   const calls: Record<string, unknown>[] = []
   server.use(
     http.post('/api/expenses', async ({ request }) => {
@@ -27,7 +27,7 @@ function setup() {
       incomeCategories={[]}
       accounts={[]}
       events={[]}
-      members={members}
+      members={candidateMembers}
       initialKind="expense"
       onClose={vi.fn()}
       onSaved={onSaved}
@@ -38,7 +38,7 @@ function setup() {
 
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('金額'), '1000')
-  await user.type(screen.getByLabelText('使用用途（任意）'), 'ランチ')
+  await user.type(screen.getByLabelText('使用用途（任意）'), '[E2E_TEST] ランチ')
 }
 
 describe('TransactionModal 使用用途', () => {
@@ -55,6 +55,48 @@ describe('TransactionModal 使用用途', () => {
 })
 
 describe('TransactionModal 割り勘', () => {
+  it.each(['ratio', 'amount'] as const)('候補0人なら世帯外相手を%sで送信する', async (inputType) => {
+    const { calls, onSaved } = setup([])
+    const user = userEvent.setup()
+    await fillBasics(user)
+    await user.click(screen.getByLabelText('割り勘する'))
+    expect(screen.getByLabelText('割り勘の相手の種別')).toHaveValue('external')
+    await user.type(screen.getByLabelText('世帯外の人の名前'), 'testuser_external')
+    if (inputType === 'amount') {
+      await user.click(screen.getByRole('tab', { name: '金額入力' }))
+      await user.type(screen.getByLabelText('負担額（円）'), '500')
+    } else {
+      expect(screen.getByLabelText('負担割合（％）')).toHaveValue(50)
+    }
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0].splitInputType).toBe(inputType)
+    expect(calls[0].splits).toEqual([{ debtorExternalName: 'testuser_external', ...(inputType === 'ratio' ? { ratio: 50 } : { amountDue: 500 }) }])
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+  })
+
+  it('候補0人で世帯外の名前が未入力なら送信しない', async () => {
+    const { calls } = setup([])
+    const user = userEvent.setup()
+    await fillBasics(user)
+    await user.click(screen.getByLabelText('割り勘する'))
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    expect(calls).toHaveLength(0)
+    expect(screen.getAllByText('割り勘の相手(世帯外の人)の名前を入力してください').length).toBeGreaterThan(0)
+  })
+
+  it('割り勘OFFなら内訳を送信しない', async () => {
+    const { calls } = setup([])
+    const user = userEvent.setup()
+    await fillBasics(user)
+    await user.click(screen.getByLabelText('割り勘する'))
+    await user.type(screen.getByLabelText('世帯外の人の名前'), 'testuser_external')
+    await user.click(screen.getByLabelText('割り勘する'))
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).not.toHaveProperty('splits')
+    expect(calls[0]).not.toHaveProperty('splitInputType')
+  })
   it('割り勘ONで相手を追加すると送信ボディにsplitsが入る', async () => {
     const { calls } = setup()
     const user = userEvent.setup()
