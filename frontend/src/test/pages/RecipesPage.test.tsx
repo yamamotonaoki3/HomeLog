@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -105,8 +105,27 @@ describe('RecipesPage', () => {
     renderRecipesPage()
 
     await waitFor(() => expect(screen.getByText('肉じゃが')).toBeInTheDocument())
-    expect(screen.getByText('牛肉・じゃがいも')).toBeInTheDocument()
-    expect(screen.getByText('煮込む')).toBeInTheDocument()
+    // 一覧にはタイトルだけを表示し、材料・手順は出さない
+    expect(screen.queryByText('牛肉・じゃがいも')).not.toBeInTheDocument()
+    expect(screen.queryByText('煮込む')).not.toBeInTheDocument()
+  })
+
+  it('タイトルを押すと材料・手順の詳細モーダルが開く', async () => {
+    setupApi({
+      recipes: [{ id: 1, title: '肉じゃが', ingredients: '牛肉・じゃがいも', steps: '煮込む', sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false }],
+    })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await waitFor(() => expect(screen.getByText('肉じゃが')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '肉じゃが' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'レシピ詳細' })
+    expect(within(dialog).getByText('牛肉・じゃがいも')).toBeInTheDocument()
+    expect(within(dialog).getByText('煮込む')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
   })
 
   it('レシピを登録すると一覧に反映されモーダルが閉じる', async () => {
@@ -163,7 +182,10 @@ describe('RecipesPage', () => {
     renderRecipesPage()
     await waitFor(() => expect(screen.getByText('肉じゃが')).toBeInTheDocument())
 
+    // 編集は詳細モーダルから行う
+    await user.click(screen.getByRole('button', { name: '肉じゃが' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
+    expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'レシピを編集' })).toBeInTheDocument()
     const titleInput = screen.getByLabelText('タイトル')
     await user.clear(titleInput)
@@ -183,7 +205,10 @@ describe('RecipesPage', () => {
     renderRecipesPage()
     await waitFor(() => expect(screen.getByText('肉じゃが')).toBeInTheDocument())
 
+    // 削除は詳細モーダルから行う
+    await user.click(screen.getByRole('button', { name: '肉じゃが' }))
     await user.click(screen.getByRole('button', { name: '削除' }))
+    expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'レシピを削除しますか？' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '削除する' }))
 
@@ -244,9 +269,10 @@ describe('RecipesPage', () => {
     await waitFor(() => expect(screen.getByText('WEBレシピタイトル')).toBeInTheDocument())
     const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/recipes/from-url')
     expect(postCall?.body).toMatchObject({ url: 'https://recipe.example.com/123', memo: '来週作る' })
-    // WEBレシピは材料・手順を保持しないため一覧では「-」表示になる。
-    const cells = screen.getAllByText('-')
-    expect(cells.length).toBeGreaterThanOrEqual(2)
+    // 一覧はタイトルのみで、元ページへのリンクは詳細モーダルに表示する。
+    expect(screen.queryByRole('link', { name: '元ページを開く' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'WEBレシピタイトル' }))
+    expect(screen.getByRole('link', { name: '元ページを開く' })).toBeInTheDocument()
   })
 
   it('WEBレシピの編集ではmemoのみ変更できる', async () => {
@@ -269,6 +295,7 @@ describe('RecipesPage', () => {
     renderRecipesPage()
     await waitFor(() => expect(screen.getByText('クラシルの肉じゃが')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: 'クラシルの肉じゃが' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
     expect(screen.getByRole('heading', { name: 'WEBレシピを編集' })).toBeInTheDocument()
     // タイトルは読み取り専用表示のため入力欄としては存在しない。

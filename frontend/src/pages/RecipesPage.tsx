@@ -7,6 +7,7 @@ import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Recipe } from '../api/kondateTypes'
 import { Toast } from '../components/Toast'
+import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import { RecipeModal } from '../components/kondate/RecipeModal'
 
 // 本文中のURLらしき文字列を1つ抽出する(Web Share Targetの`text`パラメータ用のフォールバック)。
@@ -32,6 +33,10 @@ export function RecipesPage() {
   // 削除確認ダイアログの対象(nullなら非表示)。
   const [deleteTarget, setDeleteTarget] = useState<Recipe | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // 詳細モーダルで表示中のレシピ(nullなら非表示)。
+  const [detailTarget, setDetailTarget] = useState<Recipe | null>(null)
+  // Escapeキー監視の登録し直しを避けるため、閉じる処理は作り直さない。
+  const closeDetail = useCallback(() => setDetailTarget(null), [])
   // 画面右下等に一時的に出すお知らせ(トースト)の表示内容。
   // showKeyは「同じメッセージでも再表示させたい」ときにキーを変えて再描画を促すための値。
   const [toast, setToast] = useState({ message: '', showKey: 0 })
@@ -139,70 +144,45 @@ export function RecipesPage() {
             レシピを登録
           </button>
         </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>タイトル</th>
-              <th>材料</th>
-              <th>手順</th>
-              <th>お気に入り</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* 三項演算子で「レシピが0件なら案内メッセージ、1件以上なら一覧行」を出し分ける。 */}
-            {recipes.length === 0 ? (
-              <tr>
-                <td colSpan={5}>レシピはありません</td>
-              </tr>
-            ) : (
-              // recipes.map(...)で配列の各要素から<tr>(表の行)を1つずつ作る。
-              // key={recipe.id}はReactが各行を正しく区別・更新するために必須の指定。
-              recipes.map((recipe) => (
-                <tr key={recipe.id}>
-                  <td>
-                    {/* WEBレシピはサムネイル(あれば)と元ページへの外部リンクを併記する。 */}
-                    {recipe.thumbnailUrl && (
-                      <img src={recipe.thumbnailUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', marginRight: '6px', verticalAlign: 'middle' }} />
-                    )}
-                    {recipe.title}
-                    {recipe.sourceType === 'web' && recipe.url && (
-                      <>
-                        {' '}
-                        <a href={recipe.url} target="_blank" rel="noopener noreferrer">
-                          元ページを開く
-                        </a>
-                      </>
-                    )}
-                  </td>
-                  {/* WEBレシピは材料・手順を保持しないため「-」を表示する。それ以外はnullなら空文字。 */}
-                  <td>{recipe.sourceType === 'web' ? '-' : recipe.ingredients ?? ''}</td>
-                  <td>{recipe.sourceType === 'web' ? '-' : recipe.steps ?? ''}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-tiny"
-                      onClick={() => handleToggleFavorite(recipe)}
-                      aria-pressed={recipe.isFavorite}
-                    >
-                      {recipe.isFavorite ? '★ お気に入り' : '☆ お気に入りにする'}
-                    </button>
-                  </td>
-                  <td>
-                    {/* クリックでmodalTargetにこのレシピを設定する=このレシピの編集モーダルを開く。 */}
-                    <button type="button" className="btn btn-tiny" onClick={() => setModalTarget(recipe)}>
-                      編集
-                    </button>
-                    <button type="button" className="btn btn-tiny" onClick={() => setDeleteTarget(recipe)}>
-                      削除
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        {/* 一覧はタイトル(とサムネイル・お気に入り)だけを表示し、材料・手順などは詳細モーダルで見る。 */}
+        {recipes.length === 0 ? (
+          <p>レシピはありません</p>
+        ) : (
+          <ul className="recipe-list">
+            {recipes.map((recipe) => (
+              <li key={recipe.id} className="recipe-list-item">
+                <button type="button" className="recipe-title-button" onClick={() => setDetailTarget(recipe)}>
+                  {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" className="recipe-list-thumbnail" />}
+                  <span>{recipe.title}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-tiny"
+                  onClick={() => handleToggleFavorite(recipe)}
+                  aria-pressed={recipe.isFavorite}
+                >
+                  {recipe.isFavorite ? '★ お気に入り' : '☆ お気に入りにする'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+      {/* 編集・削除は詳細モーダルから。押したら詳細を閉じて、編集モーダル/削除確認へ切り替える。 */}
+      {detailTarget && (
+        <RecipeDetailModal
+          recipe={detailTarget}
+          onClose={closeDetail}
+          onEdit={() => {
+            setDetailTarget(null)
+            setModalTarget(detailTarget)
+          }}
+          onDelete={() => {
+            setDetailTarget(null)
+            setDeleteTarget(detailTarget)
+          }}
+        />
+      )}
       {/* modalTargetがundefinedでない(=登録 or 編集モーダルを開くべき)ときだけモーダルを描画する。 */}
       {modalTarget !== undefined && (
         <RecipeModal
