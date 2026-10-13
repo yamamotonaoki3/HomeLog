@@ -13,7 +13,7 @@ function toLines(text: string | null): string[] {
 
 // 手順は<ol>で番号を振るため、元の文字列に書かれた「1.」「2)」などの番号は外す(番号の二重表示を防ぐ)。
 function stripStepNumber(line: string): string {
-  return line.replace(/^\d+\s*[.．、)）]\s*/, '')
+  return line.replace(/^\d+\s*[.．、)）](?!\d)\s*/, '')
 }
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {

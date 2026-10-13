@@ -59,6 +59,18 @@ describe('RecipeDetailModal', () => {
     expect(within(steps).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['材料を切る', '炒める', '煮込む'])
   })
 
+  it('手順の先頭の小数はそのまま表示し、リスト番号だけを外す', () => {
+    renderModal({ ...manualRecipe, steps: '1.5cm幅に切る\n1. 切る\n2) 炒める\n3．煮る' })
+
+    const steps = screen.getByRole('list', { name: '手順' })
+    expect(within(steps).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      '1.5cm幅に切る',
+      '切る',
+      '炒める',
+      '煮る',
+    ])
+  })
+
   it('材料・手順が未入力なら「未登録」と表示する', () => {
     renderModal({ ...manualRecipe, ingredients: null, steps: '  ' })
 
