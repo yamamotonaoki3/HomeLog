@@ -20,6 +20,7 @@ function renderWithLayout(initialPath: string) {
             <Route path="/zaiko" element={<div>在庫画面本体</div>} />
             <Route path="/zaiko/shopping" element={<div>買い物リスト画面本体</div>} />
             <Route path="/kakeibo" element={<div>家計簿画面本体</div>} />
+            <Route path="/warikan" element={<div>割り勘画面本体</div>} />
             <Route path="/menu" element={<div>献立表画面本体</div>} />
             <Route path="/recipes" element={<div>レシピ画面本体</div>} />
             <Route path="/settings" element={<SettingsPage />} />
@@ -93,6 +94,35 @@ describe('AppLayout', () => {
     renderWithLayout('/kakeibo')
 
     expect(screen.queryByRole('navigation', { name: '在庫管理関連機能' })).not.toBeInTheDocument()
+  })
+
+  it('家計簿・献立表の上部タブの先頭に、それぞれのホーム画面へのタブがある', () => {
+    const { unmount } = renderWithLayout('/kakeibo')
+
+    const kakeiboNavigation = screen.getByRole('navigation', { name: '家計簿関連機能' })
+    const kakeiboTabs = within(kakeiboNavigation).getAllByRole('link')
+    expect(kakeiboTabs[0]).toHaveTextContent('家計簿')
+    expect(kakeiboTabs[0]).toHaveAttribute('href', '/kakeibo')
+    expect(kakeiboTabs[0]).toHaveAttribute('aria-current', 'page')
+    unmount()
+
+    const { unmount: unmountWarikan } = renderWithLayout('/warikan')
+    const warikanNavigation = screen.getByRole('navigation', { name: '家計簿関連機能' })
+    expect(within(warikanNavigation).getByRole('link', { name: '家計簿' })).not.toHaveAttribute('aria-current')
+    unmountWarikan()
+
+    const { unmount: unmountMenu } = renderWithLayout('/menu')
+    const menuNavigation = screen.getByRole('navigation', { name: '献立表関連機能' })
+    const menuTabs = within(menuNavigation).getAllByRole('link')
+    expect(menuTabs[0]).toHaveTextContent('献立表')
+    expect(menuTabs[0]).toHaveAttribute('href', '/menu')
+    expect(menuTabs[0]).toHaveAttribute('aria-current', 'page')
+    unmountMenu()
+
+    renderWithLayout('/recipes')
+    const recipesNavigation = screen.getByRole('navigation', { name: '献立表関連機能' })
+    expect(within(recipesNavigation).getByRole('link', { name: '献立表' })).not.toHaveAttribute('aria-current')
+    expect(within(recipesNavigation).getByRole('link', { name: 'レシピ' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('家計簿・献立表の関連機能へ移動できる', () => {

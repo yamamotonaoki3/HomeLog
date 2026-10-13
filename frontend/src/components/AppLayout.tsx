@@ -64,6 +64,9 @@ export function AppLayout() {
       )}
       {isKakeiboSection && (
         <nav aria-label="家計簿関連機能" className="secondary-nav">
+          <NavLink to="/kakeibo" end className="nav-link">
+            家計簿
+          </NavLink>
           <NavLink to="/warikan" className="nav-link">
             割り勘
           </NavLink>
@@ -77,6 +80,9 @@ export function AppLayout() {
       )}
       {isMenuSection && (
         <nav aria-label="献立表関連機能" className="secondary-nav">
+          <NavLink to="/menu" end className="nav-link">
+            献立表
+          </NavLink>
           <NavLink to="/recipes" className="nav-link">
             レシピ
           </NavLink>
