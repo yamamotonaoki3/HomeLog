@@ -30,3 +30,30 @@ test('主要機能の下部ナビゲーションと関連機能への導線が�
   await expect(page).toHaveURL(/\/menu$/)
   await expect(page.getByRole('navigation', { name: '献立表関連機能' }).getByRole('link', { name: 'レシピ' })).toBeVisible()
 })
+
+test('スマホ幅でも上部タブが横にはみ出さず、すべて画面内に表示される', async ({ page, consoleGuard }) => {
+  consoleGuard.watch(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setupUserWithHousehold(page, 'navigation_fit')
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 })
+    for (const [path, name] of [
+      ['/kakeibo', '家計簿関連機能'],
+      ['/zaiko', '在庫管理関連機能'],
+      ['/menu', '献立表関連機能'],
+    ] as const) {
+      await page.goto(path)
+      const navigation = page.getByRole('navigation', { name })
+      await expect(navigation).toBeVisible()
+      // 横スクロールが発生していない
+      expect(await navigation.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+      for (const link of await navigation.getByRole('link').all()) {
+        const box = await link.boundingBox()
+        expect(box, `${path} の「${await link.textContent()}」(${width}px)`).not.toBeNull()
+        expect(box!.x).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+      }
+    }
+  }
+})

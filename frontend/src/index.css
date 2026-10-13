@@ -178,8 +178,16 @@ input[type="checkbox"], input[type="radio"] {
   .nav-inner { padding: 10px 12px; }
   .account-nav { gap: 2px; }
   .nav-logout { padding: 6px 8px; font-size: 12px; }
-  .secondary-nav { justify-content: flex-start; overflow-x: auto; white-space: nowrap; }
+  /* 上部タブは横スクロールさせず、収まらない幅では折り返して全タブを見せる(#203) */
+  .secondary-nav { flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
+  .secondary-nav .nav-link { white-space: nowrap; }
   .primary-nav { gap: 4px; padding-right: 8px; padding-left: 8px; }
+}
+
+@media (max-width: 480px) {
+  /* スマホ幅では文字と余白を詰めて、4つのタブが1行に収まるようにする。押せる高さは40pxを確保する */
+  .secondary-nav { gap: 4px; padding: 8px; }
+  .secondary-nav .nav-link { display: inline-flex; align-items: center; min-height: 40px; padding: 4px 8px; font-size: 13px; }
 }
 
 @media (max-width: 420px) {
