@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 
 const run = (command, args) => new Promise((resolve) => {
-  const child = spawn(command, args, { shell: true, stdio: 'inherit' })
+  const child = spawn(command, args, { shell: true, stdio: 'inherit', windowsHide: true })
 
   child.on('error', (error) => {
     console.error(`コマンドの起動に失敗しました: ${command}`, error)

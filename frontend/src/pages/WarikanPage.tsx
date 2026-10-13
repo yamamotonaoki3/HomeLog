@@ -48,11 +48,11 @@ function purposeText(split: ExpenseSplit) {
 }
 
 // 相手が世帯内メンバーか世帯外の非アプリ利用者かで一覧を絞り込むタブ(S-07)。
-type WorldFilter = 'internal' | 'external'
+type WorldFilter = 'all' | 'internal' | 'external'
 
 export function WarikanPage() {
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
-  const [worldFilter, setWorldFilter] = useState<WorldFilter>('internal')
+  const [worldFilter, setWorldFilter] = useState<WorldFilter>('all')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [settlement, setSettlement] = useState<{ kind: SettlementKind; split: ExpenseSplit } | null>(null)
@@ -140,10 +140,13 @@ export function WarikanPage() {
     return <p>読み込み中...</p>
   }
 
-  const visibleSplits = splits.filter((split) => (worldFilter === 'external' ? split.isExternal : !split.isExternal))
+  const visibleSplits = splits.filter((split) => worldFilter === 'all' || (worldFilter === 'external' ? split.isExternal : !split.isExternal))
+  const emptyMessage = worldFilter === 'all'
+    ? '割り勘の内訳はありません'
+    : `${worldFilter === 'internal' ? '世帯内' : '世帯外'}の割り勘の内訳はありません`
 
   return (
-    <div className="page">
+    <div className="page warikan-page">
       <div className="panel" data-testid="warikan-panel">
         <div className="toolbar">
           <h2>割り勘・精算</h2>
@@ -152,6 +155,15 @@ export function WarikanPage() {
           </Link>
         </div>
         <div className="tabs" role="tablist" aria-label="相手の絞り込み">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={worldFilter === 'all'}
+            className={worldFilter === 'all' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setWorldFilter('all')}
+          >
+            すべて
+          </button>
           <button
             type="button"
             role="tab"
@@ -171,120 +183,122 @@ export function WarikanPage() {
             世帯外
           </button>
         </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th>用途</th>
-              <th>相手</th>
-              <th>負担額</th>
-              <th>状態</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleSplits.length === 0 ? (
+        <div className="warikan-table-scroll" role="region" aria-label="割り勘の内訳一覧（横スクロール可能）" tabIndex={0}>
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={6}>割り勘の内訳はありません</td>
+                <th>日付</th>
+                <th>用途</th>
+                <th>相手</th>
+                <th>負担額</th>
+                <th>状態</th>
+                <th>操作</th>
               </tr>
-            ) : (
-              visibleSplits.map((split) => (
-                <tr key={split.id}>
-                  <td>{split.expenseDate}</td>
-                  <td>{purposeText(split)}</td>
-                  <td>{split.role === 'payer' ? `${split.debtorLabel} へ請求` : `${split.payerLabel} へ支払`}</td>
-                  <td>
-                    {split.amountDue}円（{split.splitRatio}%）
-                  </td>
-                  <td>{STATUS_LABEL[split.status]}</td>
-                  <td>
-                    {split.role === 'payer' && (
-                      <>
-                        {(split.status === 'unpaid' || split.status === 'pending') && (
-                          <button
-                            type="button"
-                            className="btn btn-tiny"
-                            disabled={working}
-                            onClick={() => void patchSplit(split, 'request', '請求しました')}
-                          >
-                            請求
-                          </button>
-                        )}
-                        {split.status === 'payment_reported' && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-tiny"
-                              disabled={working}
-                              onClick={() => setSettlement({ kind: 'receive', split })}
-                            >
-                              受け取りました
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-tiny"
-                              disabled={working}
-                              onClick={() => void patchSplit(split, 'request', 'まだ受け取っていないと通知しました')}
-                            >
-                              まだ受け取っていない
-                            </button>
-                          </>
-                        )}
-                        {split.isExternal && split.status !== 'settled' && (
-                          <button
-                            type="button"
-                            className="btn btn-tiny"
-                            disabled={working}
-                            onClick={() => setSettlement({ kind: 'self', split })}
-                          >
-                            精算済みにする
-                          </button>
-                        )}
-                        {split.status !== 'settled' && (
-                          <button
-                            type="button"
-                            className="btn btn-tiny"
-                            disabled={working}
-                            onClick={() => setDeleteTarget(split)}
-                          >
-                            削除
-                          </button>
-                        )}
-                      </>
-                    )}
-                    {split.role === 'debtor' && (
-                      <>
-                        {(split.status === 'unpaid' || split.status === 'requested' || split.status === 'pending') && (
-                          <button
-                            type="button"
-                            className="btn btn-tiny"
-                            disabled={working}
-                            onClick={() => setSettlement({ kind: 'pay', split })}
-                          >
-                            支払う
-                          </button>
-                        )}
-                        {(split.status === 'requested' || split.status === 'payment_reported') && (
-                          <button
-                            type="button"
-                            className="btn btn-tiny"
-                            disabled={working}
-                            onClick={() => void patchSplit(split, 'hold', '保留にしました')}
-                          >
-                            保留
-                          </button>
-                        )}
-                      </>
-                    )}
-                    <button type="button" className="btn btn-tiny" onClick={() => setCommentsTarget(split)}>
-                      コメント{split.commentCount > 0 ? `(${split.commentCount})` : ''}
-                    </button>
-                  </td>
+            </thead>
+            <tbody>
+              {visibleSplits.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>{emptyMessage}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                visibleSplits.map((split) => (
+                  <tr key={split.id}>
+                    <td>{split.expenseDate}</td>
+                    <td>{purposeText(split)}</td>
+                    <td>{split.role === 'payer' ? `${split.debtorLabel} へ請求` : `${split.payerLabel} へ支払`}</td>
+                    <td>
+                      {split.amountDue}円（{split.splitRatio}%）
+                    </td>
+                    <td>{STATUS_LABEL[split.status]}</td>
+                    <td>
+                      {split.role === 'payer' && (
+                        <>
+                          {(split.status === 'unpaid' || split.status === 'pending') && (
+                            <button
+                              type="button"
+                              className="btn btn-tiny"
+                              disabled={working}
+                              onClick={() => void patchSplit(split, 'request', '請求しました')}
+                            >
+                              請求
+                            </button>
+                          )}
+                          {split.status === 'payment_reported' && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-tiny"
+                                disabled={working}
+                                onClick={() => setSettlement({ kind: 'receive', split })}
+                              >
+                                受け取りました
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-tiny"
+                                disabled={working}
+                                onClick={() => void patchSplit(split, 'request', 'まだ受け取っていないと通知しました')}
+                              >
+                                まだ受け取っていない
+                              </button>
+                            </>
+                          )}
+                          {split.isExternal && split.status !== 'settled' && (
+                            <button
+                              type="button"
+                              className="btn btn-tiny"
+                              disabled={working}
+                              onClick={() => setSettlement({ kind: 'self', split })}
+                            >
+                              精算済みにする
+                            </button>
+                          )}
+                          {split.status !== 'settled' && (
+                            <button
+                              type="button"
+                              className="btn btn-tiny"
+                              disabled={working}
+                              onClick={() => setDeleteTarget(split)}
+                            >
+                              削除
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {split.role === 'debtor' && (
+                        <>
+                          {(split.status === 'unpaid' || split.status === 'requested' || split.status === 'pending') && (
+                            <button
+                              type="button"
+                              className="btn btn-tiny"
+                              disabled={working}
+                              onClick={() => setSettlement({ kind: 'pay', split })}
+                            >
+                              支払う
+                            </button>
+                          )}
+                          {(split.status === 'requested' || split.status === 'payment_reported') && (
+                            <button
+                              type="button"
+                              className="btn btn-tiny"
+                              disabled={working}
+                              onClick={() => void patchSplit(split, 'hold', '保留にしました')}
+                            >
+                              保留
+                            </button>
+                          )}
+                        </>
+                      )}
+                      <button type="button" className="btn btn-tiny" onClick={() => setCommentsTarget(split)}>
+                        コメント{split.commentCount > 0 ? `(${split.commentCount})` : ''}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {settlement && (
