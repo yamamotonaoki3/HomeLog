@@ -88,7 +88,7 @@ a:hover { text-decoration: underline; }
 /* ページ・パネル */
 .hidden { display: none !important; }
 .page { background: transparent; max-width: 1100px; margin: 0 auto; padding: 20px; }
-.zaiko-page { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.zaiko-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .panel { background: #fff; padding: 16px; border-radius: 8px; }
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .toolbar h2 { margin: 0; font-size: 16px; }
@@ -101,6 +101,15 @@ a:hover { text-decoration: underline; }
 .table th { background: #f1f5f9; }
 .qty-value { display: inline-block; width: 34px; text-align: center; }
 .step-select { width: 55px; margin-left: 6px; }
+
+/* 在庫の増減は上から＋、個数、−、ステップ。狭幅では表内だけをスクロールする。 */
+.inventory-table-scroll { max-width: 100%; overflow-x: auto; }
+.inventory-table-scroll .table { min-width: 480px; table-layout: fixed; overflow: visible; }
+.inventory-table-scroll th, .inventory-table-scroll td { overflow-wrap: anywhere; }
+.inventory-quantity-controls { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.inventory-quantity-controls .btn { min-width: 40px; min-height: 40px; }
+.inventory-quantity-controls .qty-value { width: auto; min-width: 40px; }
+.inventory-quantity-controls .step-select { margin-left: 0; min-height: 40px; }
 
 /* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }

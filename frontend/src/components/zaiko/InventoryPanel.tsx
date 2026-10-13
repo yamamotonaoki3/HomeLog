@@ -43,61 +43,65 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
           在庫を登録
         </button>
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>品名</th>
-            <th>カテゴリー</th>
-            <th>買う店</th>
-            <th>在庫個数</th>
-            <th>閾値</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inventory.length === 0 ? (
+      <div className="inventory-table-scroll" role="region" aria-label="在庫一覧（横スクロール可能）" tabIndex={0}>
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={5}>在庫がありません</td>
+              <th>品名</th>
+              <th>カテゴリー</th>
+              <th>買う店</th>
+              <th>在庫個数</th>
+              <th>閾値</th>
             </tr>
-          ) : (
-            inventory.map((item) => (
-              <tr key={item.id}>
-                <td>{item.name}</td>
-                <td>{categoryName(item.categoryId)}</td>
-                <td>{storeName(item.storeId)}</td>
-                <td>
-                  <button
-                    type="button"
-                    className="btn btn-tiny"
-                    aria-label={`${item.name}を減らす`}
-                    onClick={() => adjustQuantity(item, -1)}
-                  >
-                    －
-                  </button>
-                  <span className="qty-value">{item.quantity.toFixed(1)}</span>
-                  <button
-                    type="button"
-                    className="btn btn-tiny"
-                    aria-label={`${item.name}を増やす`}
-                    onClick={() => adjustQuantity(item, 1)}
-                  >
-                    ＋
-                  </button>
-                  <select
-                    className="step-select"
-                    aria-label={`${item.name}の増減ステップ`}
-                    value={String(steps[item.id] ?? 1)}
-                    onChange={(e) => setSteps((prev) => ({ ...prev, [item.id]: Number(e.target.value) }))}
-                  >
-                    <option value="1">1</option>
-                    <option value="0.1">0.1</option>
-                  </select>
-                </td>
-                <td>{item.threshold.toFixed(1)}</td>
+          </thead>
+          <tbody>
+            {inventory.length === 0 ? (
+              <tr>
+                <td colSpan={5}>在庫がありません</td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              inventory.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.name}</td>
+                  <td>{categoryName(item.categoryId)}</td>
+                  <td>{storeName(item.storeId)}</td>
+                  <td>
+                    <div className="inventory-quantity-controls">
+                      <button
+                        type="button"
+                        className="btn btn-tiny"
+                        aria-label={`${item.name}を増やす`}
+                        onClick={() => adjustQuantity(item, 1)}
+                      >
+                        ＋
+                      </button>
+                      <span className="qty-value">{item.quantity.toFixed(1)}</span>
+                      <button
+                        type="button"
+                        className="btn btn-tiny"
+                        aria-label={`${item.name}を減らす`}
+                        onClick={() => adjustQuantity(item, -1)}
+                      >
+                        －
+                      </button>
+                      <select
+                        className="step-select"
+                        aria-label={`${item.name}の増減ステップ`}
+                        value={String(steps[item.id] ?? 1)}
+                        onChange={(e) => setSteps((prev) => ({ ...prev, [item.id]: Number(e.target.value) }))}
+                      >
+                        <option value="1">1</option>
+                        <option value="0.1">0.1</option>
+                      </select>
+                    </div>
+                  </td>
+                  <td>{item.threshold.toFixed(1)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
       {modalOpen && (
         <InventoryModal
           categories={categories}

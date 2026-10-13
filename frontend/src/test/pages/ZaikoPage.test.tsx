@@ -148,6 +148,32 @@ const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, 
 const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0 }
 
 describe('ZaikoPage', () => {
+  it('在庫操作は＋、個数、−、ステップの順で、品目ごとのステップを保持する', async () => {
+    const { calls } = setupApi({ inventory: [{ ...milk }, { ...egg, quantity: 2 }] })
+    const user = userEvent.setup()
+    renderZaikoPage()
+    const plus = await screen.findByRole('button', { name: '牛乳を増やす' })
+    const row = plus.closest('tr')!
+    const controls = [...row.querySelectorAll('button, .qty-value, select')]
+    expect(controls).toEqual([
+      plus, row.querySelector('.qty-value'),
+      within(row).getByRole('button', { name: '牛乳を減らす' }),
+      within(row).getByRole('combobox'),
+    ])
+    await user.selectOptions(screen.getByLabelText('牛乳の増減ステップ'), '0.1')
+    await user.click(plus)
+    await waitFor(() => expect(row.querySelector('.qty-value')).toHaveTextContent(/^2\.1$/))
+    await user.click(screen.getByRole('button', { name: '卵を減らす' }))
+    const eggRow = screen.getByRole('button', { name: '卵を増やす' }).closest('tr')!
+    await waitFor(() => expect(eggRow.querySelector('.qty-value')).toHaveTextContent(/^1\.0$/))
+    expect(screen.getByLabelText('牛乳の増減ステップ')).toHaveValue('0.1')
+    expect(screen.getByLabelText('卵の増減ステップ')).toHaveValue('1')
+    expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
+      { method: 'PATCH', url: '/api/inventory-items/1/quantity', body: { delta: 0.1 } },
+      { method: 'PATCH', url: '/api/inventory-items/2/quantity', body: { delta: -1 } },
+    ])
+  })
+
   it('/zaikoでは在庫一覧だけを表示し、買い物リストタブに切り替えると買い物リストだけを表示する', async () => {
     setupApi({
       inventory: [milk, egg],
