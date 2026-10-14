@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
@@ -101,6 +101,37 @@ const shoppingList: ShoppingListItem[] = [
 ]
 
 describe('DashboardPage', () => {
+  it.each([
+    { state: '口座あり', accounts: [{ id: 1, name: '[E2E_TEST] 口座', type: 'bank', balance: 13000, cards: [] }], balance: '13000円' },
+    { state: '口座なし', accounts: [], balance: '0円' },
+    { state: '取得失敗', accountsError: true, balance: '取得できませんでした' },
+  ])('$stateでも残高段落の直後に管理リンクを表示する', async ({ balance, ...options }) => {
+    setupApi(options)
+    renderDashboardPage()
+    const paragraph = await screen.findByText('口座残高合計: ' + balance)
+    const card = paragraph.closest('.card')!
+    const links = within(card as HTMLElement).getAllByRole('link', { name: '口座・カード管理を見る' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/accounts')
+    expect(paragraph).not.toContainElement(links[0])
+    expect(paragraph.nextElementSibling).toBe(links[0])
+  })
+
+  it('読み込み中も残高段落の直後に管理リンクを表示する', async () => {
+    setupApi()
+    server.use(http.get('/api/accounts', async () => {
+      await delay(200)
+      return HttpResponse.json([])
+    }))
+    renderDashboardPage()
+    const paragraph = screen.getByText('口座残高合計: 読み込み中...')
+    const link = screen.getByRole('link', { name: '口座・カード管理を見る' })
+    expect(paragraph).not.toContainElement(link)
+    expect(paragraph.nextElementSibling).toBe(link)
+    expect(link).toHaveAttribute('href', '/accounts')
+    await screen.findByText('口座残高合計: 0円')
+  })
+
   it('買い物リスト（未購入のみ）と在庫リストの実項目を表示し、各項目から在庫管理画面へ移動できる', async () => {
     setupApi({ inventory, shoppingList })
     renderDashboardPage()
@@ -365,6 +396,7 @@ describe('DashboardPage', () => {
       expect(screen.queryByText(/今週の献立/)).not.toBeInTheDocument()
       expect(screen.queryByText(/世帯合計対象額/)).not.toBeInTheDocument()
       expect(screen.queryByLabelText('イベント別支出（対象期間）')).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: '口座・カード管理を見る' })).not.toBeInTheDocument()
     })
 
     it('カレンダーが表示OFFなら月間カレンダーを表示しない', async () => {

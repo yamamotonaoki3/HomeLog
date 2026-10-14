@@ -86,3 +86,45 @@ test('PCではカレンダーの下にサマリーカードを複数列で表示
   expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
   expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(logoutBox!.x)
 })
+
+for (const width of [1280, 390, 320]) {
+  test(width + 'pxで口座管理リンクを残高の下に表示し管理画面へ移動できる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })
+    await setupUserWithHousehold(page, 'dashboard-accounts-' + width)
+    await page.goto('/accounts')
+    await page.getByRole('button', { name: '口座を登録' }).click()
+    await page.getByLabel('口座名').fill('[E2E_TEST] 生活口座')
+    await page.getByLabel('初期残高').fill('13000')
+    await page.getByRole('button', { name: '登録', exact: true }).click()
+    await expect(page.getByTestId('accounts-panel')).toContainText('残高: 13000円')
+    await page.goto('/')
+
+    const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: '個人の財政', exact: true }) })
+    const balance = card.locator('p').filter({ hasText: '口座残高合計:' })
+    const link = card.getByRole('link', { name: '口座・カード管理を見る', exact: true })
+    await expect(balance).toHaveText('口座残高合計: 13000円')
+    await expect(link).toHaveCount(1)
+    await expect(link).toHaveAttribute('href', '/accounts')
+    await link.scrollIntoViewIfNeeded()
+    const [balanceBox, linkBox, cardBox] = await Promise.all([balance.boundingBox(), link.boundingBox(), card.boundingBox()])
+    expect(balanceBox).not.toBeNull()
+    expect(linkBox).not.toBeNull()
+    expect(cardBox).not.toBeNull()
+    expect(linkBox!.y).toBeGreaterThanOrEqual(balanceBox!.y + balanceBox!.height)
+    expect(linkBox!.x).toBeGreaterThanOrEqual(cardBox!.x)
+    expect(linkBox!.x + linkBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+    if (width < 800) {
+      const navBox = await page.getByRole('navigation', { name: '主要機能' }).boundingBox()
+      expect(navBox).not.toBeNull()
+      expect(linkBox!.y + linkBox!.height).toBeLessThanOrEqual(navBox!.y)
+    }
+    if (process.env.ISSUE_217_SHOTS_DIR) {
+      await page.screenshot({ path: process.env.ISSUE_217_SHOTS_DIR + '/dashboard-' + width + '.png', fullPage: true })
+    }
+    await link.click()
+    await expect(page).toHaveURL(/\/accounts$/)
+    await expect(page.getByRole('heading', { name: '口座・カード管理', exact: true })).toBeVisible()
+  })
+}

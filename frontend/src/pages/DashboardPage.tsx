@@ -189,8 +189,8 @@ export function DashboardPage() {
         <p>
           口座残高合計:{' '}
           {accountBalanceTotal.status === 'ok' ? `${accountBalanceTotal.data}円` : accountBalanceTotal.status === 'loading' ? '読み込み中...' : '取得できませんでした'}
-          <Link to="/accounts">口座・カード管理を見る</Link>
         </p>
+        <Link to="/accounts">口座・カード管理を見る</Link>
       </div>
     ),
     money: (
