@@ -154,7 +154,7 @@ describe('ZaikoPage', () => {
     renderZaikoPage()
     const plus = await screen.findByRole('button', { name: '牛乳を増やす' })
     const row = plus.closest('tr')!
-    const controls = [...row.querySelectorAll('button, .qty-value, select')]
+    const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value, select')]
     expect(controls).toEqual([
       plus, row.querySelector('.qty-value'),
       within(row).getByRole('button', { name: '牛乳を減らす' }),
@@ -295,7 +295,7 @@ describe('ZaikoPage', () => {
 
     await waitFor(() => expect(screen.getByText('トマト')).toBeInTheDocument())
     const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/inventory-items')
-    expect(postCall?.body).toEqual({ name: 'トマト', categoryId: 1, storeId: null, quantity: 3, threshold: 1 })
+    expect(postCall?.body).toEqual({ name: 'トマト', categoryId: 1, storeId: null, quantity: 3, threshold: 1, price: null })
   })
 
   it('在庫登録モーダルで品名未入力はクライアント側エラーを表示しAPIを呼ばない', async () => {
