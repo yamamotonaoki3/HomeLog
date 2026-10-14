@@ -120,6 +120,7 @@ export function ShoppingListPanel({
           </button>
         </div>
       )}
+      <div className="shopping-table-scroll" role="region" aria-label="買い物リスト一覧" tabIndex={0}>
       <table className="table">
         <thead>
           <tr>
@@ -179,6 +180,7 @@ export function ShoppingListPanel({
           )}
         </tbody>
       </table>
+      </div>
       <button type="button" className="btn btn-primary" onClick={handleUpdate} disabled={submitting}>
         更新
       </button>

@@ -49,6 +49,9 @@ npm test -- tests/zaiko.spec.ts
 | 2 | `warikan.spec.ts` | A 割り勘登録 → B 支払報告 → A 受領確認で精算済み |
 | 2 | `fixed-costs.spec.ts` | 固定費の登録・一覧表示・削除 |
 | 2 | `zaiko.spec.ts` | 閾値以下の在庫が買い物リストに載る → 購入で在庫反映・リストから消える |
+| 2 | `zaiko-price-api.spec.ts` | Workersへの直接HTTP要求で値段の省略互換・上書き・0・null・両一覧の共有・購入後保持・自動再追加を検証。1280／390／320pxの既存画面幅も確認 |
 | 3 | `kondate.spec.ts` | レシピ手動登録 → 献立にレシピ・自由メモを追加 |
 | 3 | `events.spec.ts` | イベント登録 → 一覧表示 |
 | 3 | `accounts.spec.ts` | 口座登録 → 口座指定の支出が残高・取引履歴に反映 |
+
+`zaiko-price-api.spec.ts` の画面画像はPlaywrightのテスト別出力先（`test-results/` 配下）へ保存する。値段の入力・表示UIは後続Issueのため、このspecの画面検証は既存一覧の表示と横幅を対象とする。

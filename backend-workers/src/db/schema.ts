@@ -86,6 +86,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
     .notNull()
     .references(() => zaikoCategories.id),
   storeId: integer('store_id').references(() => stores.id),
+  price: integer('price'),
   // 数量・閾値はSQLiteのfloat演算誤差(0.1の加減算の繰り返し等)を避けるため、
   // 「小数点第一位までの値を10倍した整数」として保持する。API入出力時にのみ10で除算/乗算する。
   quantityTenths: integer('quantity_tenths').notNull(),
