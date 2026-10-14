@@ -163,12 +163,12 @@ export function MenuPage() {
       <div className="panel" data-testid="menu-panel">
         <div className="toolbar">
           <h2>献立表</h2>
-          <button type="button" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, -1))}>
-            ◀ 前週
+          <button type="button" aria-label="先週" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, -1))}>
+            <span aria-hidden="true">◀</span>
           </button>
           <span>{weekStartDate} の週</span>
-          <button type="button" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, 1))}>
-            次週 ▶
+          <button type="button" aria-label="次週" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, 1))}>
+            <span aria-hidden="true">▶</span>
           </button>
         </div>
 
