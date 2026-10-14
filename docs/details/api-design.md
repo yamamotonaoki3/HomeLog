@@ -297,8 +297,8 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
   "householdExpenseTotal": 45300,
   "todayBalance": -500,
   "weeklyMenuEntries": [
-    { "recipeTitle": "カレー", "freeTextMemo": null },
-    { "recipeTitle": null, "freeTextMemo": "外食" }
+    { "recipeId": 1, "recipeTitle": "カレー", "freeTextMemo": null },
+    { "recipeId": null, "recipeTitle": null, "freeTextMemo": "外食" }
   ],
   "todayEvents": [
     { "name": "学習", "recurrenceType": "daily" }
@@ -312,6 +312,7 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 }
 ```
 
+- `weeklyMenuEntries` はJST基準の今週（月曜始まり）の同一世帯の献立を登録順に返す。`recipeId` はレシピID（number）で、自由メモはnull。同名レシピもIDで区別できる。レシピ削除後は献立行を残し、`recipeId`・`recipeTitle` はnullになる。献立がなければ空配列を返す。
 - `eventPeriod=year|month` でイベント別支出の集計期間を指定する。未指定時は `year`、不正値は400。
 - `monthlyPersonalExpense` はJST当月の本人支出、未精算サマリーは精算済みを除いた本人の受取予定／支払予定。イベント別支出は表示対象かつ閲覧可能なイベントを0円を含めて返す。
 

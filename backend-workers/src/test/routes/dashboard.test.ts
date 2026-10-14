@@ -325,7 +325,7 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.todayBalance).toBe(1800)
   })
 
-  it('今週の献立は同じ世帯のレシピ名と自由メモだけを返す', async () => {
+  it('今週の献立は同じ世帯のレシピID・名前と自由メモを返す', async () => {
     const { householdId, userId, headers } = await createUserWithHousehold('taro@example.com')
     const recipe = await env.DB.prepare('INSERT INTO recipes (household_id, created_by_user_id, title) VALUES (?, ?, ?) RETURNING id')
       .bind(householdId, userId, '肉じゃが')
@@ -340,14 +340,47 @@ describe('GET /api/dashboard/summary', () => {
       .bind(householdId, '先週の献立', '2000-01-03')
       .run()
 
+    const duplicate = await env.DB.prepare('INSERT INTO recipes (household_id, created_by_user_id, title) VALUES (?, ?, ?) RETURNING id')
+      .bind(householdId, userId, '肉じゃが').first<{ id: number }>()
+    if (!duplicate) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, recipe_id, week_start_date) VALUES (?, ?, ?)')
+      .bind(householdId, duplicate.id, weekStartDate).run()
+    const other = await createUserWithHousehold('testuser_other_menu@example.com')
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, free_text_memo, week_start_date) VALUES (?, ?, ?)')
+      .bind(other.householdId, '[E2E_TEST] 別世帯', weekStartDate).run()
+
     const res = await app.request('/api/dashboard/summary', { headers }, env)
 
     expect(res.status).toBe(200)
-    const body = await res.json<{ weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[] }>()
+    const body = await res.json<{ weeklyMenuEntries: { recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null }[] }>()
     expect(body.weeklyMenuEntries).toEqual([
-      { recipeTitle: '肉じゃが', freeTextMemo: null },
-      { recipeTitle: null, freeTextMemo: '外食' },
+      { recipeId: recipe.id, recipeTitle: '肉じゃが', freeTextMemo: null },
+      { recipeId: null, recipeTitle: null, freeTextMemo: '外食' },
+      { recipeId: duplicate.id, recipeTitle: '肉じゃが', freeTextMemo: null },
     ])
+  })
+
+  it('レシピ削除後も献立を残してIDと名前をnullで返す', async () => {
+    const { householdId, userId, headers } = await createUserWithHousehold('testuser_deleted_menu@example.com')
+    const recipe = await env.DB.prepare('INSERT INTO recipes (household_id, created_by_user_id, title) VALUES (?, ?, ?) RETURNING id')
+      .bind(householdId, userId, '[E2E_TEST] 削除レシピ').first<{ id: number }>()
+    if (!recipe) throw new Error('test setup error')
+    await env.DB.prepare('INSERT INTO menu_entries (household_id, recipe_id, week_start_date) VALUES (?, ?, ?)')
+      .bind(householdId, recipe.id, currentWeekStart()).run()
+    await env.DB.prepare('DELETE FROM recipes WHERE id = ?').bind(recipe.id).run()
+    const res = await app.request('/api/dashboard/summary', { headers }, env)
+    expect(res.status).toBe(200)
+    expect((await res.json<{ weeklyMenuEntries: unknown[] }>()).weeklyMenuEntries).toEqual([
+      { recipeId: null, recipeTitle: null, freeTextMemo: null },
+    ])
+  })
+
+  it('献立が空なら空配列を返し、未認証を拒否する', async () => {
+    const { headers } = await createUserWithHousehold('testuser_empty_menu@example.com')
+    const res = await app.request('/api/dashboard/summary', { headers }, env)
+    expect(res.status).toBe(200)
+    expect((await res.json<{ weeklyMenuEntries: unknown[] }>()).weeklyMenuEntries).toEqual([])
+    expect((await app.request('/api/dashboard/summary', {}, env)).status).toBe(401)
   })
 
   it('当日発生する閲覧可能な繰り返しイベントだけを返す', async () => {

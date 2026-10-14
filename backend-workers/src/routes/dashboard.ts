@@ -75,9 +75,9 @@ dashboardRoute.get('/summary', async (c) => {
       .first<{ total: number }>(),
   ])
 
-  // 献立は世帯共有の情報のため、当週の全エントリをレシピ名と自由メモの形で返す。
+  // 献立は世帯共有の情報のため、当週の全エントリをレシピID・名前と自由メモの形で返す。
   const weeklyMenuEntries = await db
-    .select({ recipeTitle: recipes.title, freeTextMemo: menuEntries.freeTextMemo })
+    .select({ recipeId: menuEntries.recipeId, recipeTitle: recipes.title, freeTextMemo: menuEntries.freeTextMemo })
     .from(menuEntries)
     .leftJoin(recipes, eq(menuEntries.recipeId, recipes.id))
     .where(and(eq(menuEntries.householdId, householdId), eq(menuEntries.weekStartDate, currentWeekStart(jstToday))))

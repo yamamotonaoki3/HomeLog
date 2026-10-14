@@ -3,7 +3,7 @@ export interface DashboardSummary {
   lowStockCount: number
   householdExpenseTotal: number
   todayBalance: number
-  weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[]
+  weeklyMenuEntries: { recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null }[]
   todayEvents: { name: string; recurrenceType: string }[]
   monthlyPersonalExpense: number
   unsettledReceivable: { count: number; total: number }
