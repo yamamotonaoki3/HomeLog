@@ -94,7 +94,7 @@ export function EventModal({ event, onClose, onSaved }: Props) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div className="modal event-modal">
         <h2>{isEdit ? 'イベントを編集' : 'イベントを登録'}</h2>
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="event-name">イベント名</label>
