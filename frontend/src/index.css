@@ -99,6 +99,24 @@ a:hover { text-decoration: underline; }
 .table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
 .table th, .table td { padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 14px; text-align: left; }
 .table th { background: #f1f5f9; }
+
+/* 口座と配下カードは4列を保ち、長い名前・残高もセル内で折り返す。 */
+.accounts-toolbar { justify-content: space-between; }
+.accounts-actions { display: flex; gap: 8px; }
+.accounts-actions .btn { white-space: nowrap; }
+.accounts-table { table-layout: fixed; overflow: visible; }
+.accounts-table col:nth-child(1) { width: 25%; }
+.accounts-table col:nth-child(2) { width: 16%; }
+.accounts-table col:nth-child(3) { width: 22%; }
+.accounts-table col:nth-child(4) { width: 37%; }
+.accounts-table th, .accounts-table td { vertical-align: top; overflow-wrap: anywhere; }
+.accounts-table .link-button { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+.accounts-card-list { margin: 0; padding: 0; list-style: none; }
+.accounts-card-list li + li { margin-top: 8px; }
+@media (max-width: 480px) {
+  .accounts-actions .btn { padding: 8px 12px; }
+  .accounts-table th, .accounts-table td { padding: 8px 4px; }
+}
 .qty-value { display: inline-block; width: 34px; text-align: center; }
 .step-select { width: 55px; margin-left: 6px; }
 
