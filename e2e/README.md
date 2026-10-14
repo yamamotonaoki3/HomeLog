@@ -32,6 +32,14 @@ npm test -- tests/zaiko.spec.ts
 
 ## テストデータ規約
 
+### PCレシピ登録（#222）
+
+`npm test -- tests/recipe-bookmarklet.spec.ts --workers=3` で、1280／390／320pxの案内・共有モーダル、別originの閲覧ページでの生成コード実行、元ページ保持、未ログインから失敗・再試行後の復帰、明示的な保存・キャンセルを検証する。メタ取得APIだけをモックし、URLの保存契約はWorkersテストで担保する。
+
+Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeがインストール済みの場合だけ、それぞれ `bookmarklet-firefox` / `bookmarklet-edge` projectでこのspecを追加実行する。Playwright用Firefoxの別バージョンを既にインストールしている場合は `RECIPE_BOOKMARKLET_FIREFOX_EXECUTABLE` で実行ファイルを指定できる。追加ブラウザのダウンロードは行わない。スクリーンショット保存先は `RECIPE_BOOKMARKLET_SCREENSHOT_DIR` で指定できる（リポジトリ外を指定する）。
+
+実ブックマークバーへのドラッグと設置後のクリックは、ユーザーの最終確認で行う。通常のHTTP(S)ページで試し、実行できないページではWEBタブへのURL貼り付けを使う。
+
 `tests/support/test-data.ts` を使う。
 
 - メール：`e2euser_<label>_<ランダム>@example.com`

@@ -1,4 +1,6 @@
-import { defineConfig } from '@playwright/test'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineConfig, firefox } from '@playwright/test'
 
 // E2E専用のローカルD1保存先。開発用データ(.wrangler/state)とは分離し、実行ごとに作り直す。
 // 接続先は常にローカル(wrangler dev)であり、本番・ステージングのDBには接続しない。
@@ -6,6 +8,7 @@ import { defineConfig } from '@playwright/test'
 const E2E_PERSIST_DIR = '.wrangler/e2e-state'
 const BACKEND_PORT = 8787
 const FRONTEND_PORT = 5173
+const BOOKMARKLET_FIREFOX = process.env.RECIPE_BOOKMARKLET_FIREFOX_EXECUTABLE ?? firefox.executablePath()
 
 export default defineConfig({
   testDir: './tests',
@@ -14,6 +17,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   globalSetup: './tests/support/global-setup.ts',
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+    // 追加ダウンロードなしで実行できるブラウザだけ、新specに限定して追加する。
+    ...(existsSync(BOOKMARKLET_FIREFOX) ? [{ name: 'bookmarklet-firefox', testMatch: '**/recipe-bookmarklet.spec.ts', use: { browserName: 'firefox' as const, launchOptions: { executablePath: BOOKMARKLET_FIREFOX } } }] : []),
+    ...([process.env['ProgramFiles(x86)'], process.env.ProgramFiles].some((root) => root && existsSync(join(root, 'Microsoft/Edge/Application/msedge.exe')))
+      ? [{ name: 'bookmarklet-edge', testMatch: '**/recipe-bookmarklet.spec.ts', use: { browserName: 'chromium' as const, channel: 'msedge' } }] : []),
+  ],
   use: {
     baseURL: `http://localhost:${FRONTEND_PORT}`,
     trace: 'on-first-retry',
