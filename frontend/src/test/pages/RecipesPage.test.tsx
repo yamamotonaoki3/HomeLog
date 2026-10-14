@@ -91,6 +91,30 @@ function renderRecipesPage(initialPath = '/recipes') {
 }
 
 describe('RecipesPage', () => {
+  it('一覧にPCから登録する案内を表示する', async () => {
+    setupApi()
+    renderRecipesPage()
+    expect(await screen.findByRole('link', { name: 'HomeLogに登録' })).toBeInTheDocument()
+  })
+
+  it('複雑な共有URLを明示的な登録操作まで保存せず、そのままPOSTする', async () => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    const url = `https://recipe.example.com/日本語?q=a&eq=x=y&plus=+&pct=%25&quote="'#手順`
+    renderRecipesPage(`/recipes/share?url=${encodeURIComponent(url)}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue(url)
+    expect(screen.getByRole('tab', { name: 'WEB', selected: true })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await screen.findByText('WEBレシピタイトル')
+    expect(calls.find((c) => c.url === '/api/recipes/from-url')?.body).toEqual({ url, memo: null })
+  })
+
+  it('text共有のURLフォールバックを維持する', async () => {
+    setupApi()
+    renderRecipesPage(`/recipes/share?text=${encodeURIComponent('[E2E_TEST] https://recipe.example.com/text?q=1&b=2#steps')}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/text?q=1&b=2#steps')
+  })
   it('レシピがない場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderRecipesPage()

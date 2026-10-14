@@ -304,3 +304,8 @@ input[type="checkbox"], input[type="radio"] {
 .price-cell { white-space: nowrap; }
 .inventory-table-scroll .price-cell, .shopping-table-scroll .price-cell { width: 160px; }
 .inventory-table-scroll th:nth-child(6), .shopping-table-scroll th:nth-child(4) { width: 160px; }
+.recipe-bookmarklet-guide { min-width: 0; overflow-wrap: anywhere; }
+.recipe-bookmarklet-guide ol { padding-left: 1.5rem; }
+.recipe-bookmarklet-guide li + li { margin-top: .4rem; }
+.recipe-bookmarklet-link { display: inline-block; max-width: 100%; padding: .6rem .9rem; border: 1px solid currentColor; border-radius: .5rem; cursor: grab; }
+.recipe-bookmarklet-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

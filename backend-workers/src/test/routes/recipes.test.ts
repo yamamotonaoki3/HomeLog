@@ -248,6 +248,20 @@ describe('POST /api/recipes/from-url', () => {
     return new Response(html, { status: 200, headers: { 'content-type': contentType } })
   }
 
+  it('クエリ・percent encoding・fragmentを含む共有URLをそのまま保存する', async () => {
+    const { headers } = await createUserWithHousehold('testuser_bookmarklet@example.com')
+    stubFetch(htmlResponse('<html><head><title>[E2E_TEST] WEBレシピ</title></head></html>'))
+    const url = 'https://recipe.example.com/%E6%96%99%E7%90%86?q=a&eq=x=y&plus=+&pct=%25&quote=%22%27#steps'
+    const res = await app.request('/api/recipes/from-url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ url, memo: '[E2E_TEST] 共有URL契約' }),
+    }, env)
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ sourceType: 'web', url })
+    const list = await app.request('/api/recipes', { headers }, env)
+    expect(await list.json()).toEqual(expect.arrayContaining([expect.objectContaining({ sourceType: 'web', url })]))
+  })
+
   it('og:titleとog:imageを抽出して201で保存できる', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     stubFetch(
