@@ -14,7 +14,7 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
       await page.getByLabel('在庫個数').fill(quantity)
       await page.getByLabel('買い物リスト追加閾値').fill('1')
       await page.getByRole('button', { name: '保存' }).click()
-      await expect(page.getByTestId('inventory-panel').getByRole('row').filter({ hasText: name })).toBeVisible()
+      await expect(page.getByTestId('inventory-panel').getByRole('button', { name: `${name}の詳細`, exact: true })).toBeVisible()
     }
 
     const eventName = '[E2E_TEST] カード期間イベント'

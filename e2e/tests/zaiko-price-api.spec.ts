@@ -53,7 +53,7 @@ for (const width of [1280, 390, 320]) {
     expect((await get('shopping-list-items'))[0].price).toBeNull()
     for (const [path, panel, label] of [['/zaiko', 'inventory-panel', 'inventory'], ['/zaiko/shopping', 'shopping-panel', 'shopping']]) {
       await page.goto(path)
-      await expect(page.getByTestId(panel).getByRole('row').filter({ hasText: body.name })).toBeVisible()
+      await expect(panel === 'inventory-panel' ? page.getByRole('button', { name: `${body.name}の詳細` }) : page.getByTestId(panel).getByRole('row').filter({ hasText: body.name })).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       if (panel === 'shopping-panel') {
         const scroll = page.getByRole('region', { name: '買い物リスト一覧' })

@@ -55,6 +55,8 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
+`inventory-detail.spec.ts` は1280／390／320pxで在庫3列の行全域、Enter/Space、詳細のTab巡回とフォーカス復帰、編集の保存／キャンセルを検証する。390／320pxはタッチ対応コンテキストで実行する。`INVENTORY_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・編集・登録の画像を保存する。既存の数量・値段E2Eも在庫詳細経由で操作する。
+
 | Tier | ファイル | 内容 |
 |---|---|---|
 | 1 | `auth.spec.ts` | 登録（確認欄不一致）・ログイン/ログアウト・未ログインリダイレクト |

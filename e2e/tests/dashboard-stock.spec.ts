@@ -23,7 +23,7 @@ for (const width of [1280, 390, 320]) {
       await page.getByLabel('買い物リスト追加閾値').fill(item.threshold)
       await page.getByLabel('値段（円・任意）').fill(item.price)
       await page.getByRole('button', { name: '保存', exact: true }).click()
-      await expect(page.getByTestId('inventory-panel').getByRole('row').filter({ hasText: item.name })).toBeVisible()
+      await expect(page.getByTestId('inventory-panel').getByRole('button', { name: `${item.name}の詳細`, exact: true })).toBeVisible()
     }
     await page.goto('/')
     const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: '買い物・在庫', exact: true }) })
@@ -76,10 +76,12 @@ for (const width of [1280, 390, 320]) {
       await card.screenshot({ path: join(shots, `stock-${width}.png`), style: '.primary-nav { visibility: hidden; }' })
     }
     await page.goto('/zaiko')
-    await page.getByTestId('inventory-panel').getByRole('row').filter({ hasText: items[0].name }).getByRole('button', { name: `${items[0].name}を編集`, exact: true }).click()
+    await page.getByTestId('inventory-panel').getByRole('button', { name: `${items[0].name}の詳細`, exact: true }).click()
+    const detail = page.getByRole('dialog', { name: '在庫詳細' })
+    await detail.getByRole('button', { name: `${items[0].name}を編集`, exact: true }).click()
     await page.getByLabel('値段（円・任意）').fill('980')
     await page.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(page.getByTestId('inventory-panel').getByRole('row').filter({ hasText: items[0].name }).locator('.price-cell')).toHaveText('980円')
+    await expect(detail.locator('dd').last()).toHaveText('980円')
     await page.goto('/')
     await expect(shopping.getByRole('listitem').filter({ hasText: items[0].name }).locator('.dashboard-stock-value')).toHaveText('980円')
   })
