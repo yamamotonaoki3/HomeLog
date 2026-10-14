@@ -242,6 +242,7 @@ erDiagram
         bigint store_id FK
         numeric quantity
         numeric threshold
+        integer price "nullable・整数円（Workers/D1）"
     }
     shopping_list_items {
         bigserial id PK
@@ -634,6 +635,10 @@ erDiagram
 
 ### inventory_items（在庫アイテム）
 
+値段は在庫ID単位の最後に登録した参考値のみを保持する（#235）。同名の別IDを統合しない。
+Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレーション0014でNULLとなる。
+買い物リストには値段列を追加せず、在庫へJOINして現在値を参照する。履歴・比較・更新日時は追加しない。
+
 | カラム名 | 型 | 必須 | 備考 |
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
@@ -643,6 +648,7 @@ erDiagram
 | store_id | BIGINT | — | FK → stores.id（任意） |
 | quantity | NUMERIC(6,1) | ○ | 在庫個数（小数点第一位まで） |
 | threshold | NUMERIC(6,1) | ○ | 買い物リスト追加閾値 |
+| price | INTEGER（D1） | — | 日本円の整数0〜9,999,999,999。NULLは未設定。数量とは独立し購入・削除・再追加後も在庫に保持 |
 
 ### shopping_list_items（買い物リスト）
 

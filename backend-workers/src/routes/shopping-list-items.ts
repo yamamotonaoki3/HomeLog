@@ -7,6 +7,7 @@ import { fromTenths, isOneDecimalPlace, MAX_VALUE, toTenths } from '../lib/decim
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
+import { priceSchema } from '../lib/price'
 import type { AppEnv } from '../index'
 
 const NOT_FOUND_MESSAGE = '買い物リスト品目が見つかりません'
@@ -17,6 +18,7 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
 const createSchema = z.object({
   inventoryItemId: z.number().int(),
+  price: priceSchema,
 })
 
 const purchaseLineSchema = z.object({
@@ -67,6 +69,7 @@ shoppingListItemsRoute.get('/', async (c) => {
       id: shoppingListItems.id,
       inventoryItemId: shoppingListItems.inventoryItemId,
       name: inventoryItems.name,
+      price: inventoryItems.price,
       isManual: shoppingListItems.isManual,
       purchased: shoppingListItems.purchased,
       purchasedQuantityTenths: shoppingListItems.purchasedQuantityTenths,
@@ -84,6 +87,7 @@ shoppingListItemsRoute.get('/', async (c) => {
       id: row.id,
       inventoryItemId: row.inventoryItemId,
       name: row.name,
+      price: row.price,
       isManual: row.isManual,
       purchased: row.purchased,
       purchasedQuantity: fromTenths(row.purchasedQuantityTenths),
@@ -97,7 +101,7 @@ shoppingListItemsRoute.post('/', async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
-  const { inventoryItemId } = parsed.data
+  const { inventoryItemId, price } = parsed.data
 
   const db = drizzle(c.env.DB)
   const householdId = await resolveHouseholdId(db, c.get('userId'))
@@ -125,27 +129,35 @@ shoppingListItemsRoute.post('/', async (c) => {
 
   // 事前チェックと挿入の間に同時に別リクエストが同じ在庫アイテムを追加した場合の競合を防ぐ
   // (shopping_list_items.inventory_item_idのUNIQUE制約を最終防衛線とする)。
-  const inserted = await db
-    .insert(shoppingListItems)
-    .values({
-      householdId,
-      inventoryItemId,
-      isManual: true,
-      purchased: false,
-      purchasedQuantityTenths: 0,
-    })
-    .onConflictDoNothing()
-    .returning()
-    .get()
-  if (!inserted) {
-    return c.json(errorResponse('VALIDATION_ERROR', ALREADY_ADDED_MESSAGE), 400)
+  // INSERTのUNIQUE違反でバッチ全体をロールバックし、競合の敗者がpriceを更新しない。
+  // ON CONFLICT DO NOTHINGでは後続のUPDATEだけが成功してしまう。
+  const statements = [c.env.DB.prepare(
+    `INSERT INTO shopping_list_items
+       (household_id, inventory_item_id, is_manual, purchased, purchased_quantity_tenths)
+     VALUES (?, ?, 1, 0, 0) RETURNING id`,
+  ).bind(householdId, inventoryItemId)]
+  if (price !== undefined) {
+    statements.push(c.env.DB.prepare('UPDATE inventory_items SET price = ? WHERE id = ? AND household_id = ?')
+      .bind(price, inventoryItemId, householdId))
   }
+  let insertedId: number
+  try {
+    const results = await c.env.DB.batch<{ id: number }>(statements)
+    insertedId = results[0].results[0].id
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed: shopping_list_items.inventory_item_id')) {
+      return c.json(errorResponse('VALIDATION_ERROR', ALREADY_ADDED_MESSAGE), 400)
+    }
+    throw error
+  }
+  const currentItem = await db.select().from(inventoryItems).where(eq(inventoryItems.id, inventoryItemId)).get()
 
   return c.json(
     {
-      id: inserted.id,
+      id: insertedId,
       inventoryItemId: item.id,
       name: item.name,
+      price: currentItem!.price,
       isManual: true,
       purchased: false,
       purchasedQuantity: 0,

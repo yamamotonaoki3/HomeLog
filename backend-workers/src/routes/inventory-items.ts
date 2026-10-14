@@ -7,6 +7,7 @@ import { fromTenths, isOneDecimalPlace, MAX_VALUE, toTenths } from '../lib/decim
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
+import { priceSchema } from '../lib/price'
 import type { AppEnv } from '../index'
 
 const NOT_FOUND_MESSAGE = '在庫アイテムが見つかりません'
@@ -26,10 +27,12 @@ const createItemSchema = z.object({
   categoryId: z.number().int(),
   storeId: z.number().int().nullable(),
   quantity: quantityValueSchema,
+  price: priceSchema,
   threshold: quantityValueSchema,
 })
 
 const updateItemSchema = z.object({
+  price: priceSchema,
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: '品名を入力してください' }),
   categoryId: z.number().int(),
   storeId: z.number().int().nullable(),
@@ -115,6 +118,7 @@ function toResponse(item: typeof inventoryItems.$inferSelect) {
     storeId: item.storeId,
     quantity: fromTenths(item.quantityTenths),
     threshold: fromTenths(item.thresholdTenths),
+    price: item.price,
   }
 }
 
@@ -139,7 +143,7 @@ inventoryItemsRoute.post('/', async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
-  const { name, categoryId, storeId, quantity, threshold } = parsed.data
+  const { name, categoryId, storeId, quantity, threshold, price } = parsed.data
 
   const db = drizzle(c.env.DB)
   const householdId = await resolveHouseholdId(db, c.get('userId'))
@@ -162,6 +166,7 @@ inventoryItemsRoute.post('/', async (c) => {
       storeId,
       quantityTenths: toTenths(quantity),
       thresholdTenths: toTenths(threshold),
+      price: price ?? null,
     })
     .returning()
     .get()
@@ -177,7 +182,7 @@ inventoryItemsRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const itemId = Number(c.req.param('id'))
-  const { name, categoryId, storeId, threshold } = parsed.data
+  const { name, categoryId, storeId, threshold, price } = parsed.data
 
   const db = drizzle(c.env.DB)
   const householdId = await resolveHouseholdId(db, c.get('userId'))
@@ -200,11 +205,12 @@ inventoryItemsRoute.patch('/:id', async (c) => {
   }
 
   const thresholdTenths = toTenths(threshold)
-  await db
+  const updatedItem = await db
     .update(inventoryItems)
-    .set({ name, categoryId, storeId, thresholdTenths })
+    .set({ name, categoryId, storeId, thresholdTenths, ...(price === undefined ? {} : { price }) })
     .where(eq(inventoryItems.id, itemId))
-  const updatedItem = { ...item, name, categoryId, storeId, thresholdTenths }
+    .returning()
+    .get()
   await syncShoppingList(db, updatedItem)
 
   return c.json(toResponse(updatedItem))

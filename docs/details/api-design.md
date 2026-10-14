@@ -216,7 +216,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | --- | --- | --- |
 | GET | `/api/inventory-items` | 在庫一覧取得 |
 | POST | `/api/inventory-items` | 在庫アイテム登録 |
-| PATCH | `/api/inventory-items/{id}` | 在庫アイテム編集（品名・カテゴリー・店舗・閾値） |
+| PATCH | `/api/inventory-items/{id}` | 在庫アイテム編集（品名・カテゴリー・店舗・閾値・任意の値段） |
 | PATCH | `/api/inventory-items/{id}/quantity` | 在庫個数の増減（＋/－ボタン用） |
 | DELETE | `/api/inventory-items/{id}` | 在庫アイテム削除 |
 | GET/POST/PATCH/DELETE | `/api/zaiko-categories` | カテゴリーマスタ管理 |
@@ -226,13 +226,23 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 リクエスト:
 ```json
-{ "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5 }
+{ "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280 }
 ```
 レスポンス（201 Created）:
 ```json
-{ "id": 100, "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5 }
+{ "id": 100, "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280 }
 ```
 主なエラー：400（quantity/thresholdが負数等）
+
+### 値段の共通契約（#235：バックエンド先行）
+
+- 在庫GET（配列の各行）/POST/PATCHは常に `price: number | null` を返す。
+- `price` は日本円の整数0〜9,999,999,999、null許容。文字列・負数・小数・上限超過は400で保存値を変更しない。
+- 在庫POSTの省略はNULL。PATCHの省略は維持、明示nullはクリア、数値は上書き。
+- PATCHの必須入力は従来どおりname/categoryId/storeId/threshold。quantityは数量増減APIで操作する。
+- 値段は在庫ID単位で世帯共有し、同名の別IDは独立。世帯メンバーは閲覧・編集可。未認証401、他世帯PATCHは404。
+- 数量増減・購入更新はpriceを変更・乗算しない。同時更新は最後に成功した書き込みを保持する。履歴・比較・ダッシュボードへの追加は行わない。
+- UIの値段入力・表示は後続Issue。#235では画面を変更しない。
 
 ### PATCH /api/inventory-items/{id}/quantity
 
@@ -262,9 +272,18 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 レスポンス（200 OK）:
 ```json
 [
-  { "id": 1, "inventoryItemId": 100, "name": "牛乳", "isManual": false, "purchased": false, "purchasedQuantity": 0 }
+  { "id": 1, "inventoryItemId": 100, "name": "牛乳", "isManual": false, "purchased": false, "purchasedQuantity": 0, "price": 1280 }
 ]
 ```
+
+### POST /api/shopping-list-items
+
+リクエスト例：`{ "inventoryItemId": 100, "price": 980 }`。priceは任意。
+成功時は201で、GETと同じ形の単一行（isManual=true、purchased=false、purchasedQuantity=0）を返す。priceは常にnumberまたはnull。
+price省略は保存値維持、nullはクリア、数値は在庫の値段を上書きする。
+リストINSERTと指定priceの在庫UPDATEは単一D1 batchで原子的に行う。重複・UNIQUE競合は400で値段も変更しない。
+他世帯の在庫ID・不存在ID・不正入力は400。未認証は401。その他のDB失敗は500でbatch全体をロールバックする。
+自動追加は値段をコピーせず、GETが在庫の現在priceを参照する。リスト削除・購入・再追加後も在庫の値段を保持する。
 
 ### POST /api/shopping-list-items/update
 

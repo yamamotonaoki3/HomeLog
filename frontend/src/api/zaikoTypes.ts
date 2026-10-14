@@ -16,6 +16,7 @@ export interface InventoryItem {
   storeId: number | null
   quantity: number
   threshold: number
+  price?: number | null
 }
 
 export interface ShoppingListItem {
@@ -25,6 +26,7 @@ export interface ShoppingListItem {
   isManual: boolean
   purchased: boolean
   purchasedQuantity: number
+  price?: number | null
 }
 
 export interface QuantityResult {
