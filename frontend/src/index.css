@@ -309,3 +309,9 @@ input[type="checkbox"], input[type="radio"] {
 .recipe-bookmarklet-guide li + li { margin-top: .4rem; }
 .recipe-bookmarklet-link { display: inline-block; max-width: 100%; padding: .6rem .9rem; border: 1px solid currentColor; border-radius: .5rem; cursor: grab; }
 .recipe-bookmarklet-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.recipe-iphone-guide { min-width: 0; overflow-wrap: anywhere; }
+.recipe-iphone-guide ol { padding-left: 1.5rem; }
+.recipe-iphone-guide li + li { margin-top: .8rem; }
+.recipe-iphone-guide .btn { max-width: 100%; white-space: normal; }
+.shortcut-url-label { display: block; margin-bottom: .4rem; }
+.shortcut-url { display: block; width: 100%; min-width: 0; margin-bottom: .8rem; }
