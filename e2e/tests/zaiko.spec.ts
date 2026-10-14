@@ -25,10 +25,12 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
     await expect(page).toHaveURL(/\/zaiko\/shopping$/)
 
     const shopping = page.getByTestId('shopping-panel')
-    const shoppingRow = shopping.getByRole('row').filter({ hasText: name })
+    const shoppingRow = shopping.getByRole('button', { name: `${name}の詳細`, exact: true })
     await expect(shoppingRow).toBeVisible()
 
-    await shoppingRow.getByRole('button', { name: `${name}の購入個数を増やす` }).click()
+    await shoppingRow.click()
+    await page.getByRole('dialog', { name: '買い物詳細' }).getByRole('button', { name: `${name}の購入個数を増やす` }).click()
+    await page.getByRole('button', { name: '閉じる' }).click()
     await shopping.getByRole('button', { name: '更新' }).click()
     await expect(shoppingRow).toHaveCount(0)
 
@@ -61,7 +63,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         await page.getByLabel('在庫個数', { exact: true }).fill('1')
         await page.getByLabel('買い物リスト追加閾値').fill('1')
         await page.getByRole('button', { name: '保存', exact: true }).click()
-        const row = page.getByRole('button', { name: `${name}の詳細`, exact: true })
+        const row = page.getByTestId('inventory-panel').getByRole('button', { name: `${name}の詳細`, exact: true })
         await row.click()
         const detail = page.getByRole('dialog', { name: '在庫詳細' })
         const quantity = detail.locator('.qty-value')
@@ -103,7 +105,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         const tabs = page.getByRole('navigation', { name: '在庫管理関連機能' })
         await detail.getByRole('button', { name: '閉じる' }).click()
         await tabs.getByRole('link', { name: '買い物リスト' }).click()
-        const shoppingRow = page.getByTestId('shopping-panel').getByRole('row').filter({ hasText: name })
+        const shoppingRow = page.getByTestId('shopping-panel').getByRole('button', { name: `${name}の詳細`, exact: true })
         await expect(shoppingRow).toBeVisible()
         await tabs.getByRole('link', { name: '在庫一覧' }).click()
         await press(row)
