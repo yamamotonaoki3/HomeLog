@@ -97,7 +97,8 @@ for (const width of [1280, 390, 320]) {
     await page.getByLabel('口座名').fill('[E2E_TEST] 生活口座')
     await page.getByLabel('初期残高').fill('13000')
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByTestId('accounts-panel')).toContainText('残高: 13000円')
+    const accountRow = page.getByRole('table', { name: '口座一覧' }).getByRole('row').filter({ hasText: '[E2E_TEST] 生活口座' })
+    await expect(accountRow.getByRole('cell').nth(2)).toHaveText('13000円')
     await page.goto('/')
 
     const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: '個人の財政', exact: true }) })

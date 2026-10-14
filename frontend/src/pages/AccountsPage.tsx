@@ -82,52 +82,72 @@ export function AccountsPage() {
   return (
     <div className="page">
       <div className="panel" data-testid="accounts-panel">
-        <div className="toolbar">
+        <div className="toolbar accounts-toolbar">
           <h2>口座・カード管理</h2>
-          <button type="button" className="btn btn-primary" onClick={() => setAccountModalOpen(true)}>
-            口座を登録
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setCardModalOpen(true)}
-            disabled={accounts.length === 0}
-          >
-            カードを登録
-          </button>
+          <div className="accounts-actions">
+            <button type="button" className="btn btn-primary" onClick={() => setAccountModalOpen(true)}>
+              口座を登録
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setCardModalOpen(true)}
+              disabled={accounts.length === 0}
+            >
+              カードを登録
+            </button>
+          </div>
         </div>
         {accounts.length === 0 ? (
           <p>口座はありません</p>
         ) : (
-          <ul>
-            {accounts.map((account) => (
-              <li key={account.id}>
-                <button type="button" className="link-button" onClick={() => setHistoryAccount(account)}>
-                  {account.name}
-                </button>
-                （{account.type === 'bank' ? '銀行' : '電子マネー'}） 残高: {account.balance}円
-                {account.cards.length > 0 && (
-                  <ul>
-                    {account.cards.map((card) =>
-                      card.cardType === 'charge' ? (
-                        <li key={card.id}>
-                          <button
-                            type="button"
-                            className="link-button"
-                            onClick={() => setChargeTargetCard(card)}
-                          >
-                            {card.name}（チャージ型） 残高: {card.balance}円
-                          </button>
-                        </li>
-                      ) : (
-                        <li key={card.id}>{card.name}</li>
-                      ),
-                    )}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
+          <table className="table accounts-table" aria-label="口座一覧">
+            <colgroup>
+              <col /><col /><col /><col />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">口座名</th>
+                <th scope="col">種別</th>
+                <th scope="col">残高</th>
+                <th scope="col">カード</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => (
+                <tr key={account.id}>
+                  <td>
+                    <button type="button" className="link-button" onClick={() => setHistoryAccount(account)}>
+                      {account.name}
+                    </button>
+                  </td>
+                  <td>{account.type === 'bank' ? '銀行' : '電子マネー'}</td>
+                  <td>{account.balance}円</td>
+                  <td>
+                    {account.cards.length > 0 ? (
+                      <ul className="accounts-card-list">
+                        {account.cards.map((card) =>
+                          card.cardType === 'charge' ? (
+                            <li key={card.id}>
+                              <button
+                                type="button"
+                                className="link-button"
+                                onClick={() => setChargeTargetCard(card)}
+                              >
+                                {card.name}（チャージ型） 残高: {card.balance}円
+                              </button>
+                            </li>
+                          ) : (
+                            <li key={card.id}>{card.name}</li>
+                          ),
+                        )}
+                      </ul>
+                    ) : 'なし'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
       {accountModalOpen && (

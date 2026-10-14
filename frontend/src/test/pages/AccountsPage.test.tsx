@@ -75,6 +75,35 @@ function renderAccountsPage() {
 }
 
 describe('AccountsPage', () => {
+  it('4列の表で口座ごとの種別・正負とゼロの残高・カードの親子関係を表示する', async () => {
+    setupApi({ accounts: [
+      { id: 1, name: '[E2E_TEST] 銀行', type: 'bank', balance: 123456789,
+        cards: [
+          { id: 10, name: '[E2E_TEST] credit', accountId: 1, cardType: 'credit', balance: 0 },
+          { id: 11, name: '[E2E_TEST] charge', accountId: 1, cardType: 'charge', balance: 500 },
+        ] },
+      { id: 2, name: '[E2E_TEST] 電子', type: 'e_money', balance: -123456789,
+        cards: [{ id: 12, name: '[E2E_TEST] 別カード', accountId: 2, cardType: 'credit', balance: 0 }] },
+      { id: 3, name: '[E2E_TEST] ゼロ', type: 'bank', balance: 0, cards: [] },
+    ] })
+    renderAccountsPage()
+    const table = await screen.findByRole('table', { name: '口座一覧' })
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent))
+      .toEqual(['口座名', '種別', '残高', 'カード'])
+    for (const header of within(table).getAllByRole('columnheader')) expect(header).toHaveAttribute('scope', 'col')
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(3)
+    expect(within(rows[0]).getAllByRole('cell').slice(0, 3).map((cell) => cell.textContent))
+      .toEqual(['[E2E_TEST] 銀行', '銀行', '123456789円'])
+    expect(within(rows[0]).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(rows[0]).getByText('[E2E_TEST] credit')).toHaveTextContent(/credit$/)
+    expect(within(rows[0]).queryByText('[E2E_TEST] 別カード')).not.toBeInTheDocument()
+    expect(within(rows[1]).getAllByRole('cell').map((cell) => cell.textContent))
+      .toEqual(['[E2E_TEST] 電子', '電子マネー', '-123456789円', '[E2E_TEST] 別カード'])
+    expect(within(rows[2]).getAllByRole('cell').map((cell) => cell.textContent))
+      .toEqual(['[E2E_TEST] ゼロ', '銀行', '0円', 'なし'])
+  })
+
   it('口座がない場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderAccountsPage()
@@ -97,7 +126,7 @@ describe('AccountsPage', () => {
     renderAccountsPage()
 
     await waitFor(() => expect(screen.getByText(/〇〇銀行/)).toBeInTheDocument())
-    expect(screen.getByText(/残高: 10000円/)).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '10000円' })).toHaveTextContent(/^10000円$/)
     expect(screen.getByText('〇〇カード')).toBeInTheDocument()
   })
 
@@ -318,7 +347,7 @@ describe('AccountsPage', () => {
     await user.click(screen.getByRole('button', { name: 'チャージする' }))
 
     await waitFor(() => expect(screen.getByText(/残高: 3000円/)).toBeInTheDocument())
-    expect(screen.getByText(/残高: 7000円/)).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '7000円' })).toHaveTextContent(/^7000円$/)
     const chargeCall = calls.find((c) => c.method === 'POST' && c.url === '/api/cards/50/charges')
     expect(chargeCall?.body).toMatchObject({ fromAccountId: 5, amount: 3000 })
   })
