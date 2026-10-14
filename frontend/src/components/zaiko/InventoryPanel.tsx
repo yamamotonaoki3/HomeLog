@@ -3,6 +3,7 @@ import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
+import { formatPrice } from './price'
 
 interface Props {
   inventory: InventoryItem[]
@@ -15,6 +16,7 @@ interface Props {
 
 export function InventoryPanel({ inventory, categories, stores, onStoresChange, onRefresh, onNotify }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<InventoryItem>()
   const [steps, setSteps] = useState<Record<number, number>>({})
 
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? ''
@@ -39,7 +41,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
     <div className="panel" data-testid="inventory-panel">
       <div className="toolbar">
         <h2>在庫一覧</h2>
-        <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
+        <button type="button" className="btn btn-primary" onClick={() => { setEditing(undefined); setModalOpen(true) }}>
           在庫を登録
         </button>
       </div>
@@ -52,12 +54,14 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
               <th>買う店</th>
               <th>在庫個数</th>
               <th>閾値</th>
+              <th>値段</th>
+              <th>編集</th>
             </tr>
           </thead>
           <tbody>
             {inventory.length === 0 ? (
               <tr>
-                <td colSpan={5}>在庫がありません</td>
+                <td colSpan={7}>在庫がありません</td>
               </tr>
             ) : (
               inventory.map((item) => (
@@ -96,6 +100,8 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
                     </div>
                   </td>
                   <td>{item.threshold.toFixed(1)}</td>
+                  <td className="price-cell">{formatPrice(item.price)}</td>
+                  <td><button type="button" className="btn btn-small" aria-label={`${item.name}を編集`} onClick={() => { setEditing(item); setModalOpen(true) }}>編集</button></td>
                 </tr>
               ))
             )}
@@ -104,6 +110,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
       </div>
       {modalOpen && (
         <InventoryModal
+          item={editing}
           categories={categories}
           stores={stores}
           onStoresChange={onStoresChange}
@@ -111,7 +118,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
           onSaved={async () => {
             setModalOpen(false)
             await onRefresh()
-            onNotify('在庫を登録しました')
+            onNotify(editing ? '在庫を編集しました' : '在庫を登録しました')
           }}
         />
       )}

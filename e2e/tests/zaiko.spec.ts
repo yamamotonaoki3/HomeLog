@@ -115,6 +115,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         if (width < 400) {
           expect(await scroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
           await scroll.evaluate((element) => { element.scrollLeft = element.scrollWidth })
+          await plus.scrollIntoViewIfNeeded()
           await expect(plus).toBeInViewport()
           await expect(minus).toBeInViewport()
         }

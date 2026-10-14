@@ -122,10 +122,10 @@ a:hover { text-decoration: underline; }
 
 /* 在庫の増減は上から＋、個数、−、ステップ。狭幅では表内だけをスクロールする。 */
 .inventory-table-scroll { max-width: 100%; overflow-x: auto; }
-.inventory-table-scroll .table { min-width: 480px; table-layout: fixed; overflow: visible; }
+.inventory-table-scroll .table { min-width: 760px; table-layout: fixed; overflow: visible; }
 .inventory-table-scroll th, .inventory-table-scroll td { overflow-wrap: anywhere; }
 .shopping-table-scroll { max-width: 100%; overflow-x: auto; }
-.shopping-table-scroll .table { min-width: 480px; table-layout: fixed; overflow: visible; }
+.shopping-table-scroll .table { min-width: 720px; table-layout: fixed; overflow: visible; }
 .shopping-table-scroll th, .shopping-table-scroll td { overflow-wrap: anywhere; }
 .inventory-quantity-controls { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .inventory-quantity-controls .btn { min-width: 40px; min-height: 40px; }
@@ -291,3 +291,11 @@ input[type="checkbox"], input[type="radio"] {
   .events-table th, .events-table td { padding: 8px 4px; }
   .event-modal { padding: 16px; }
 }
+/* S-10 値段入力と編集 */
+.inventory-modal { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.inventory-modal input, .inventory-modal select { min-width: 0; max-width: 100%; }
+.shopping-add-form { flex-wrap: wrap; }
+.shopping-add-form input, .shopping-add-form select { min-width: 0; max-width: 100%; }
+.price-cell { white-space: nowrap; }
+.inventory-table-scroll .price-cell, .shopping-table-scroll .price-cell { width: 160px; }
+.inventory-table-scroll th:nth-child(6), .shopping-table-scroll th:nth-child(4) { width: 160px; }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
+import { formatPrice, validPrice, PRICE_ERROR } from './price'
 import type { Category, InventoryItem, ShoppingListItem, ShoppingSort, Store } from '../../api/zaikoTypes'
 
 interface Props {
@@ -30,6 +31,7 @@ export function ShoppingListPanel({
 }: Props) {
   const [addFormOpen, setAddFormOpen] = useState(false)
   const [addItemId, setAddItemId] = useState('')
+  const [addPrice, setAddPrice] = useState('')
   const [purchases, setPurchases] = useState<Record<number, PurchaseState>>({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -46,12 +48,15 @@ export function ShoppingListPanel({
   }
 
   const handleManualAdd = async () => {
+    if (!validPrice(addPrice)) { onNotify(PRICE_ERROR); return }
     if (addItemId === '') {
       return
     }
     try {
-      await apiClient.post('/shopping-list-items', { inventoryItemId: Number(addItemId) })
+      await apiClient.post('/shopping-list-items', { inventoryItemId: Number(addItemId), ...(addPrice.trim() === '' ? {} : { price: Number(addPrice) }) })
       setAddFormOpen(false)
+      setAddItemId('')
+      setAddPrice('')
       await onRefresh()
     } catch (err) {
       onNotify(getApiErrorMessage(err, '買い物リストへの追加に失敗しました'))
@@ -106,8 +111,8 @@ export function ShoppingListPanel({
         </button>
       </div>
       {addFormOpen && (
-        <div className="inline-form">
-          <select aria-label="追加する品目" value={addItemId} onChange={(e) => setAddItemId(e.target.value)}>
+        <div className="inline-form shopping-add-form">
+          <select aria-label="追加する品目" value={addItemId} onChange={(e) => { setAddItemId(e.target.value); const price = inventoryOf(Number(e.target.value))?.price; setAddPrice(price == null ? '' : String(price)) }}>
             <option value="">選択してください</option>
             {inventory.map((i) => (
               <option key={i.id} value={i.id}>
@@ -115,6 +120,8 @@ export function ShoppingListPanel({
               </option>
             ))}
           </select>
+          <label htmlFor="shopping-price">値段（円・任意）</label>
+          <input id="shopping-price" type="text" inputMode="numeric" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} />
           <button type="button" className="btn btn-primary" onClick={handleManualAdd}>
             追加
           </button>
@@ -127,6 +134,7 @@ export function ShoppingListPanel({
             <th>品名</th>
             <th>カテゴリー</th>
             <th>買う店</th>
+            <th>値段</th>
             <th>購入個数</th>
             <th></th>
           </tr>
@@ -134,7 +142,7 @@ export function ShoppingListPanel({
         <tbody>
           {shopping.length === 0 ? (
             <tr>
-              <td colSpan={5}>買い物リストは空です</td>
+              <td colSpan={6}>買い物リストは空です</td>
             </tr>
           ) : (
             shopping.map((item) => {
@@ -145,6 +153,7 @@ export function ShoppingListPanel({
                   <td>{item.name}</td>
                   <td>{categoryName(inv?.categoryId)}</td>
                   <td>{storeName(inv?.storeId)}</td>
+                  <td className="price-cell">{formatPrice(item.price)}</td>
                   <td>
                     <button
                       type="button"
