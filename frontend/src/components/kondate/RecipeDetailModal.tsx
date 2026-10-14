@@ -25,7 +25,7 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   )
 }
 
-// レシピ一覧のタイトルから開く詳細モーダル(S-12)。編集・削除もここから行う。
+// レシピ一覧(S-12)とダッシュボード(S-04)から開く詳細。操作はハンドラーがある場合のみ表示する。
 export function RecipeDetailModal({
   recipe,
   onClose,
@@ -34,8 +34,8 @@ export function RecipeDetailModal({
 }: {
   recipe: Recipe
   onClose: () => void
-  onEdit: () => void
-  onDelete: () => void
+  onEdit?: () => void
+  onDelete?: () => void
 }) {
   useEffect(() => {
     const onKeyDown = (keyEvent: KeyboardEvent) => {
@@ -107,12 +107,12 @@ export function RecipeDetailModal({
         )}
 
         <div className="modal-actions">
-          <button type="button" className="btn btn-primary" onClick={onEdit}>
+          {onEdit && <button type="button" className="btn btn-primary" onClick={onEdit}>
             編集
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={onDelete}>
+          </button>}
+          {onDelete && <button type="button" className="btn btn-secondary" onClick={onDelete}>
             削除
-          </button>
+          </button>}
           <button type="button" className="btn btn-secondary" onClick={onClose} autoFocus>
             閉じる
           </button>
