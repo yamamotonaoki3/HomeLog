@@ -12,6 +12,7 @@ import type { HouseholdMember } from '../components/kakeibo/SplitFields'
 import { Toast } from '../components/Toast'
 import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
 import { TransactionModal } from '../components/kakeibo/TransactionModal'
+import { TransactionDetailModal, type TransactionSelection } from '../components/kakeibo/TransactionDetailModal'
 
 interface HouseholdMe {
   members: HouseholdMember[]
@@ -51,13 +52,27 @@ export function KakeiboPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [members, setMembers] = useState<HouseholdMember[]>([])
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
+  const [splitStatus, setSplitStatus] = useState<'loading' | 'error' | 'ok'>('loading')
+  const [selected, setSelected] = useState<{ kind: 'expense' | 'income'; id: number } | null>(null)
+  const detailTrigger = useRef<HTMLButtonElement | null>(null)
+  const closeDetail = useCallback(() => {
+    setSelected(null)
+    detailTrigger.current?.focus()
+  }, [])
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null)
   const [eventPeriod, setEventPeriod] = useState<SummaryPeriod>('year')
   const [eventSummaries, setEventSummaries] = useState<Record<number, EventSummaryState>>({})
 
   const fetchSplits = useCallback(async () => {
-    const response = await apiClient.get<ExpenseSplit[]>('/expense-splits')
-    setSplits(response.data)
+    setSplitStatus('loading')
+    try {
+      const response = await apiClient.get<ExpenseSplit[]>('/expense-splits')
+      setSplits(response.data)
+      setSplitStatus('ok')
+    } catch (error) {
+      setSplitStatus('error')
+      throw error
+    }
   }, [])
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -280,11 +295,12 @@ export function KakeiboPage() {
     apiClient
       .get<ExpenseSplit[]>('/expense-splits')
       .then((response) => {
-        if (!cancelled) setSplits(response.data)
+        if (!cancelled) { setSplits(response.data); setSplitStatus('ok') }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           showToast(getApiErrorMessage(err, '割り勘の取得に失敗しました。時間をおいて再度お試しください'))
+          setSplitStatus('error')
         }
       })
 
@@ -404,9 +420,17 @@ export function KakeiboPage() {
     .filter((income) => isInMonth(income.incomeDate, currentYear, currentMonth))
     .reduce((sum, income) => sum + income.amount, 0)
   const dashboardEvents = events.filter((event) => event.showOnDashboard)
+  let detail: TransactionSelection | null = null
+  if (selected?.kind === 'expense') {
+    const data = expenses.find((expense) => expense.id === selected.id)
+    if (data) detail = { kind: 'expense', data }
+  } else if (selected?.kind === 'income') {
+    const data = incomes.find((income) => income.id === selected.id)
+    if (data) detail = { kind: 'income', data }
+  }
 
   return (
-    <div className="page">
+    <div className="page kakeibo-page">
       <div className="panel" data-testid="monthly-summary">
         <p>
           今月支出：{monthlyExpenseTotal}円　今月収入：{monthlyIncomeTotal}円　世帯合計対象額：
@@ -453,9 +477,7 @@ export function KakeiboPage() {
       <TransactionListPanel
         expenses={expenses}
         incomes={incomes}
-        expenseCategories={categories}
-        incomeCategories={incomeCategories}
-        accounts={accounts}
+        onSelectTransaction={(kind, id, trigger) => { detailTrigger.current = trigger; setSelected({ kind, id }) }}
         typeFilter={typeFilter}
         onTypeFilterChange={handleTypeFilterChange}
         activeCategoryFilter={activeCategoryFilter}
@@ -464,6 +486,7 @@ export function KakeiboPage() {
         onAddClick={() => setModalOpen(true)}
         addDisabled={addDisabled}
       />
+      {detail && <TransactionDetailModal transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} />}
       {modalOpen && (
         <TransactionModal
           expenseCategories={categories}

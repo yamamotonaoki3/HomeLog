@@ -1,27 +1,21 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
+import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type TypeFilter = 'all' | 'expense' | 'income'
 
 interface TransactionRow {
-  id: string
+  id: number
   kind: 'expense' | 'income'
   date: string
   description: string
-  categoryName: string
   amount: number
-  includeInHouseholdTotal: boolean | null
-  accountName: string
-  memo: string | null
 }
 
 interface Props {
   expenses: Expense[]
   incomes: Income[]
-  expenseCategories: KakeiboCategory[]
-  incomeCategories: IncomeCategory[]
-  accounts: Account[]
+  onSelectTransaction: (kind: 'expense' | 'income', id: number, trigger: HTMLButtonElement) => void
   typeFilter: TypeFilter
   onTypeFilterChange: (value: TypeFilter) => void
   activeCategoryFilter: string
@@ -40,9 +34,7 @@ function emptyMessage(typeFilter: TypeFilter) {
 export function TransactionListPanel({
   expenses,
   incomes,
-  expenseCategories,
-  incomeCategories,
-  accounts,
+  onSelectTransaction,
   typeFilter,
   onTypeFilterChange,
   activeCategoryFilter,
@@ -52,39 +44,24 @@ export function TransactionListPanel({
   addDisabled,
 }: Props) {
   const rows = useMemo<TransactionRow[]>(() => {
-    const findExpenseCategoryName = (id: number) => expenseCategories.find((c) => c.id === id)?.name ?? ''
-    const findIncomeCategoryName = (id: number) => incomeCategories.find((c) => c.id === id)?.name ?? ''
-    const findAccountName = (id: number | null) => accounts.find((a) => a.id === id)?.name ?? ''
-    const findCardName = (id: number | null) =>
-      accounts.flatMap((a) => a.cards).find((c) => c.id === id)?.name ?? ''
-
     const expenseRows: TransactionRow[] = expenses.map((expense) => ({
-      id: `expense-${expense.id}`,
+      id: expense.id,
       kind: 'expense',
       date: expense.expenseDate,
       description: expense.purpose,
-      categoryName: findExpenseCategoryName(expense.categoryId),
       amount: expense.amount,
-      includeInHouseholdTotal: expense.includeInHouseholdTotal,
-      accountName: expense.accountId !== null ? findAccountName(expense.accountId) : findCardName(expense.cardId),
-      memo: expense.memo,
     }))
     const incomeRows: TransactionRow[] = incomes.map((income) => ({
-      id: `income-${income.id}`,
+      id: income.id,
       kind: 'income',
       date: income.incomeDate,
       description: income.content,
-      categoryName: findIncomeCategoryName(income.categoryId),
       amount: income.amount,
-      includeInHouseholdTotal: null,
-      accountName: '',
-      memo: income.memo,
     }))
 
-    if (typeFilter === 'expense') return expenseRows
-    if (typeFilter === 'income') return incomeRows
-    return [...expenseRows, ...incomeRows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [expenses, incomes, expenseCategories, incomeCategories, accounts, typeFilter])
+    const filtered = typeFilter === 'expense' ? expenseRows : typeFilter === 'income' ? incomeRows : [...expenseRows, ...incomeRows]
+    return filtered.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [expenses, incomes, typeFilter])
 
   return (
     <div className="panel" data-testid="transaction-panel">
@@ -123,35 +100,31 @@ export function TransactionListPanel({
           カテゴリー管理
         </Link>
       </div>
-      <table className="table">
+      <table className="table transaction-table">
         <thead>
           <tr>
-            <th>日時</th>
-            <th>種別</th>
+            <th>日付</th>
             <th>内容</th>
-            <th>カテゴリー</th>
             <th>金額</th>
-            <th>世帯合算対象</th>
-            <th>口座</th>
-            <th>メモ</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={8}>{emptyMessage(typeFilter)}</td>
+              <td colSpan={3}>{emptyMessage(typeFilter)}</td>
             </tr>
           ) : (
             rows.map((row) => (
-              <tr key={row.id}>
+              <tr key={`${row.kind}-${row.id}`} onClick={(event) => {
+                const trigger = event.currentTarget.querySelector('button')!
+                onSelectTransaction(row.kind, row.id, trigger)
+              }}>
                 <td>{row.date}</td>
-                <td>{row.kind === 'expense' ? '支出' : '収入'}</td>
-                <td>{row.description}</td>
-                <td>{row.categoryName}</td>
-                <td>{row.amount}</td>
-                <td>{row.includeInHouseholdTotal ? '○' : ''}</td>
-                <td>{row.accountName}</td>
-                <td>{row.memo}</td>
+                <td><button type="button" className="event-name-button" onClick={(event) => {
+                  event.stopPropagation()
+                  onSelectTransaction(row.kind, row.id, event.currentTarget)
+                }}>{row.description || '内容なし'}</button></td>
+                <td className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</td>
               </tr>
             ))
           )}
