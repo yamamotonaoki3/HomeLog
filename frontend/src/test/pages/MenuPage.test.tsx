@@ -1,11 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { MenuPage } from '../../pages/MenuPage'
-import { getMondayOf } from '../../lib/week'
+import { addWeeks, getMondayOf } from '../../lib/week'
 import type { MenuEntry, Recipe } from '../../api/kondateTypes'
 
 function setupApi(initial: { entries?: Record<string, MenuEntry[]>; recipes?: Recipe[] } = {}) {
@@ -56,6 +56,55 @@ function renderMenuPage() {
 }
 
 describe('MenuPage', () => {
+  it('週ボタンは矢印のみで読み上げ名を持つ', async () => {
+    setupApi()
+    renderMenuPage()
+    for (const [name, arrow] of [['先週', '◀'], ['次週', '▶']]) {
+      const button = await screen.findByRole('button', { name })
+      expect(button).toHaveAccessibleName(name)
+      expect(button.textContent?.trim()).toBe(arrow)
+      expect(within(button).getByText(arrow)).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
+
+  it.each([false, true])('週ごとの一覧・取得日・復帰を検証する（年境界: %s）', async (yearBoundary) => {
+    if (yearBoundary) vi.setSystemTime(new Date(2026, 11, 30, 12))
+    try {
+      const monday = getMondayOf(new Date())
+      const previous = addWeeks(monday, -1)
+      const next = addWeeks(monday, 1)
+      const entries = Object.fromEntries([previous, monday, next].map((week, i) => [week, [{
+        id: i + 1, recipeId: null, recipeTitle: null, freeTextMemo: `[E2E_TEST] ${week}`, weekStartDate: week,
+      }]]))
+      const { calls } = setupApi({ entries })
+      const user = userEvent.setup()
+      renderMenuPage()
+      await screen.findByText(`[E2E_TEST] ${monday}`)
+      for (const [name, week] of [['先週', previous], ['次週', monday], ['次週', next], ['先週', monday]]) {
+        await user.click(screen.getByRole('button', { name }))
+        await screen.findByText(`[E2E_TEST] ${week}`)
+        expect(screen.getByText(`${week} の週`)).toBeInTheDocument()
+        expect(screen.getAllByRole('listitem')).toHaveLength(1)
+        expect(calls.at(-1)?.url).toBe(`/api/menu-entries?weekStartDate=${week}`)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('EnterとSpaceで週を切り替える', async () => {
+    const monday = getMondayOf(new Date())
+    setupApi()
+    const user = userEvent.setup()
+    renderMenuPage()
+    const previous = await screen.findByRole('button', { name: '先週' })
+    previous.focus()
+    await user.keyboard('{Enter}')
+    await screen.findByText(`${addWeeks(monday, -1)} の週`)
+    screen.getByRole('button', { name: '次週' }).focus()
+    await user.keyboard(' ')
+    await screen.findByText(`${monday} の週`)
+  })
   it('今週の献立が無い場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderMenuPage()
@@ -98,10 +147,10 @@ describe('MenuPage', () => {
     renderMenuPage()
     await waitFor(() => expect(calls.some((c) => c.url.includes(monday))).toBe(true))
 
-    await user.click(screen.getByRole('button', { name: '次週 ▶' }))
+    await user.click(screen.getByRole('button', { name: '次週' }))
 
     await waitFor(() => {
-      const nextWeekCalls = calls.filter((c) => c.method === 'GET' && !c.url.includes(monday))
+      const nextWeekCalls = calls.filter((c) => c.method === 'GET' && c.url === `/api/menu-entries?weekStartDate=${addWeeks(monday, 1)}`)
       expect(nextWeekCalls.length).toBeGreaterThan(0)
     })
   })
@@ -113,10 +162,10 @@ describe('MenuPage', () => {
     renderMenuPage()
     await waitFor(() => expect(screen.getByText(`${monday} の週`)).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: '◀ 前週' }))
-    await waitFor(() => expect(screen.queryByText(`${monday} の週`)).not.toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '先週' }))
+    await screen.findByText(`${addWeeks(monday, -1)} の週`)
 
-    await user.click(screen.getByRole('button', { name: '次週 ▶' }))
+    await user.click(screen.getByRole('button', { name: '次週' }))
     await waitFor(() => expect(screen.getByText(`${monday} の週`)).toBeInTheDocument())
   })
 
