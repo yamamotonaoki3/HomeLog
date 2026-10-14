@@ -225,20 +225,58 @@ describe('DashboardPage', () => {
     await screen.findByText('口座残高合計: 0円')
   })
 
-  it('買い物リスト（未購入のみ）と在庫リストの実項目を表示し、各項目から在庫管理画面へ移動できる', async () => {
+  it('買い物リスト（未購入のみ）と在庫の残数・不足を非リンクで表示する', async () => {
     setupApi({ inventory, shoppingList })
     renderDashboardPage()
 
     const shopping = await screen.findByRole('list', { name: '買い物リスト' })
-    expect(within(shopping).getAllByRole('link').map((link) => link.textContent)).toEqual(['醤油', 'トイレットペーパー'])
-    expect(within(shopping).getByRole('link', { name: '醤油' })).toHaveAttribute('href', '/zaiko')
+    expect(within(shopping).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['醤油未設定', 'トイレットペーパー未設定'])
     const stock = await screen.findByRole('list', { name: '在庫リスト' })
     expect(within(stock).getAllByRole('listitem')).toHaveLength(4)
-    expect(within(stock).getByRole('link', { name: '卵' })).toHaveAttribute('href', '/zaiko')
+    expect(within(stock).getByText('卵').closest('li')).toHaveTextContent('残2')
+    expect(within(stock).getByText('醤油').closest('li')).toHaveTextContent('残0.5')
+    expect(within(screen.getByRole('heading', { name: '買い物・在庫' }).parentElement!).queryAllByRole('link')).toHaveLength(0)
     expect(within(stock).getByText('醤油').closest('li')).toHaveTextContent('（不足）')
     expect(within(stock).getByText('卵').closest('li')).not.toHaveTextContent('（不足）')
     expect(screen.queryByText(/よく使う品目/)).not.toBeInTheDocument()
     expect(screen.queryByText(/在庫不足:/)).not.toBeInTheDocument()
+  })
+
+  it('同名の別IDも各行の参考値段を表示し、購入済みを除外する', async () => {
+    const prices = [1280, 0, null, undefined, 9999999999]
+    setupApi({ shoppingList: prices.map((price, index) => ({ id: index + 1, inventoryItemId: index + 1, name: '[E2E_TEST] 同名', price, isManual: true, purchased: false, purchasedQuantity: 3 })).concat([{ id: 6, inventoryItemId: 6, name: '[E2E_TEST] 購入済み', price: 100, isManual: true, purchased: true, purchasedQuantity: 1 }]) })
+    renderDashboardPage()
+    const list = await screen.findByRole('list', { name: '買い物リスト' })
+    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 同名1,280円', '[E2E_TEST] 同名0円', '[E2E_TEST] 同名未設定', '[E2E_TEST] 同名未設定', '[E2E_TEST] 同名9,999,999,999円'])
+    expect(screen.queryByText('[E2E_TEST] 購入済み')).not.toBeInTheDocument()
+    expect(screen.getByText('値段')).toBeInTheDocument()
+  })
+
+  it('在庫は参考値段を表示せず、残数と閾値未満だけ不足を表示する', async () => {
+    setupApi({ inventory: [0, 0.5, 2].map((quantity, index) => ({ id: index + 1, name: `[E2E_TEST] 在庫${index}`, quantity, threshold: 0.5, categoryId: 1, storeId: null, price: 1280 })) })
+    renderDashboardPage()
+    const list = await screen.findByRole('list', { name: '在庫リスト' })
+    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 在庫0残0（不足）', '[E2E_TEST] 在庫1残0.5', '[E2E_TEST] 在庫2残2'])
+    expect(within(list).queryByText('1,280円')).not.toBeInTheDocument()
+    expect(screen.getByText('残数')).toBeInTheDocument()
+  })
+
+  it.each(['loading', 'empty', 'error'] as const)('%sでも買い物・在庫カードにはリンクがない', async (state) => {
+    setupApi({ shoppingListError: state === 'error' })
+    if (state === 'loading') server.use(http.get('/api/shopping-list-items', async () => { await delay(100); return HttpResponse.json([]) }))
+    renderDashboardPage()
+    if (state === 'error') await screen.findByText('買い物リストを取得できませんでした')
+    if (state === 'empty') await screen.findByText('買い物リストは空です')
+    const card = screen.getByRole('heading', { name: '買い物・在庫' }).parentElement!
+    expect(within(card).queryAllByRole('link')).toHaveLength(0)
+    if (state === 'loading') await screen.findByText('買い物リストは空です')
+  })
+
+  it('長い品名の全文を保持する', async () => {
+    const name = '[E2E_TEST]' + '長'.repeat(41)
+    setupApi({ inventory: [{ id: 1, name, quantity: 2, threshold: 1, categoryId: 1, storeId: null }] })
+    renderDashboardPage()
+    expect(within(await screen.findByRole('list', { name: '在庫リスト' })).getByText(name)).toHaveTextContent(name)
   })
 
   it('買い物リスト・在庫が空のときは空である旨を表示し、多い場合は先頭8件と残件数を表示する', async () => {

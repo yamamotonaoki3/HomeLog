@@ -39,8 +39,8 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
     await page.goto('/')
     await expect(page.getByText('よく使う品目')).toHaveCount(0)
     const shopping = page.getByRole('list', { name: '買い物リスト' })
-    await expect(shopping.getByRole('link', { name: '[E2E_TEST] 牛乳' })).toBeVisible()
-    await expect(shopping.getByRole('link', { name: '[E2E_TEST] 米' })).toHaveCount(0)
+    await expect(shopping.getByText('[E2E_TEST] 牛乳', { exact: true })).toBeVisible()
+    await expect(shopping.getByText('[E2E_TEST] 米', { exact: true })).toHaveCount(0)
     const stock = page.getByRole('list', { name: '在庫リスト' })
     await expect(stock.getByRole('listitem').filter({ hasText: '[E2E_TEST] 牛乳' })).toContainText('（不足）')
     await expect(stock.getByRole('listitem').filter({ hasText: '[E2E_TEST] 米' })).not.toContainText('（不足）')
@@ -53,8 +53,7 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
     await period.selectOption('month')
     await expect(page.getByRole('list', { name: 'イベント別支出（今月）' })).toContainText(`${eventName}: 700円`)
 
-    await shopping.getByRole('link', { name: '[E2E_TEST] 牛乳' }).click()
-    await expect(page).toHaveURL(/\/zaiko$/)
+    await expect(page.locator('.card').filter({ has: page.getByRole('heading', { name: '買い物・在庫', exact: true }) }).getByRole('link')).toHaveCount(0)
 
     await page.goto('/settings/display')
     await page.getByRole('group', { name: '買い物・在庫' }).getByLabel('在庫リスト').uncheck()
