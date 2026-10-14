@@ -15,6 +15,7 @@ import { LoginPage } from './pages/LoginPage'
 import { MenuPage } from './pages/MenuPage'
 import { PasswordResetPage } from './pages/PasswordResetPage'
 import { RecipesPage } from './pages/RecipesPage'
+import { RecipeIphoneShortcutPage } from './pages/RecipeIphoneShortcutPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { WarikanPage } from './pages/WarikanPage'
 import { ZaikoPage } from './pages/ZaikoPage'
@@ -46,6 +47,7 @@ function App() {
                 <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/recipes" element={<RecipesPage />} />
                 <Route path="/recipes/share" element={<RecipesPage />} />
+                <Route path="/recipes/iphone-shortcut" element={<RecipeIphoneShortcutPage />} />
                 <Route path="/menu" element={<MenuPage />} />
                 <Route path="/events" element={<EventsPage />} />
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />

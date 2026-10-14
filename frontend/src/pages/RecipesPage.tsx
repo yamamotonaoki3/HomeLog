@@ -10,6 +10,7 @@ import { Toast } from '../components/Toast'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import { RecipeModal } from '../components/kondate/RecipeModal'
 import { RecipeBookmarkletGuide } from '../components/kondate/RecipeBookmarkletGuide'
+import { RecipeIphoneShortcutGuide } from '../components/kondate/RecipeIphoneShortcutGuide'
 
 // 本文中のURLらしき文字列を1つ抽出する(Web Share Targetの`text`パラメータ用のフォールバック)。
 const URL_PATTERN = /https?:\/\/\S+/
@@ -170,6 +171,7 @@ export function RecipesPage() {
         )}
       </div>
       <RecipeBookmarkletGuide />
+      <RecipeIphoneShortcutGuide />
       {/* 編集・削除は詳細モーダルから。押したら詳細を閉じて、編集モーダル/削除確認へ切り替える。 */}
       {detailTarget && (
         <RecipeDetailModal
