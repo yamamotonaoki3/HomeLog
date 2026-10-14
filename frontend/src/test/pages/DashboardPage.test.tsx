@@ -14,7 +14,7 @@ function setupApi(options: {
     lowStockCount: number
     householdExpenseTotal: number
     todayBalance?: number
-    weeklyMenuEntries?: { recipeTitle: string | null; freeTextMemo: string | null }[]
+    weeklyMenuEntries?: { recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null }[]
     todayEvents?: { name: string; recurrenceType: string }[]
     monthlyPersonalExpense?: number
     unsettledReceivable?: { count: number; total: number }
@@ -248,8 +248,8 @@ describe('DashboardPage', () => {
         householdExpenseTotal: 45300,
         todayBalance: -500,
         weeklyMenuEntries: [
-          { recipeTitle: 'カレー', freeTextMemo: null },
-          { recipeTitle: null, freeTextMemo: '外食' },
+          { recipeId: 1, recipeTitle: 'カレー', freeTextMemo: null },
+          { recipeId: null, recipeTitle: null, freeTextMemo: '外食' },
         ],
         todayEvents: [{ name: '学習', recurrenceType: 'daily' }],
         monthlyPersonalExpense: 32000,

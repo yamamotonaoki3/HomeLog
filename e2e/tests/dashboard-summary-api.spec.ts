@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { expect, test } from './console-guard'
 import { addTransaction, setupUserWithHousehold } from './support/flows'
 
@@ -28,7 +30,14 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await page.getByRole('button', { name: '登録', exact: true }).click()
     await page.goto('/menu')
     await page.getByLabel('レシピ', { exact: true }).selectOption({ label: '[E2E_TEST] ダッシュボード献立' })
+    const recipeId = Number(await page.getByLabel('レシピ', { exact: true }).inputValue())
+    expect(recipeId).toBeGreaterThan(0)
     await page.getByRole('button', { name: '追加' }).click()
+    await expect(page.getByRole('listitem').filter({ hasText: '[E2E_TEST] ダッシュボード献立' })).toBeVisible()
+    await page.getByLabel('自由メモ', { exact: true }).check()
+    await page.getByLabel('自由メモの内容').fill('[E2E_TEST] 外食')
+    await page.getByRole('button', { name: '追加' }).click()
+    await expect(page.getByRole('listitem').filter({ hasText: '[E2E_TEST] 外食' })).toBeVisible()
 
     await page.goto('/events')
     await page.getByRole('button', { name: 'イベントを登録' }).click()
@@ -42,20 +51,23 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await expect.poll(async () => {
       const summaryResponse = await page.request.get('/api/dashboard/summary', { headers: { Authorization: `Bearer ${accessToken}` } })
       if (!summaryResponse.ok()) return []
-      const summary = await summaryResponse.json<{ weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[] }>()
+      const summary = await summaryResponse.json<{ weeklyMenuEntries: { recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null }[] }>()
       return summary.weeklyMenuEntries
-    }, { timeout: 5_000 }).toContainEqual({ recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null })
+    }, { timeout: 5_000 }).toContainEqual({ recipeId, recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null })
     const response = await page.request.get('/api/dashboard/summary', { headers: { Authorization: `Bearer ${accessToken}` } })
     expect(response.ok()).toBeTruthy()
     const body = await response.json<{
       todayBalance: number
       monthlyPersonalExpense: number
-      weeklyMenuEntries: { recipeTitle: string | null; freeTextMemo: string | null }[]
+      weeklyMenuEntries: { recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null }[]
       todayEvents: { name: string; recurrenceType: string }[]
     }>()
     expect(body.todayBalance).toBe(-1200)
     expect(body.monthlyPersonalExpense).toBe(1200)
-    expect(body.weeklyMenuEntries).toContainEqual({ recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null })
+    expect(body.weeklyMenuEntries).toEqual([
+      { recipeId, recipeTitle: '[E2E_TEST] ダッシュボード献立', freeTextMemo: null },
+      { recipeId: null, recipeTitle: null, freeTextMemo: '[E2E_TEST] 外食' },
+    ])
     expect(body.todayEvents).toContainEqual({ name: '[E2E_TEST] ダッシュボードイベント', recurrenceType: 'none' })
 
     await page.goto('/')
@@ -68,6 +80,16 @@ test.describe('S-04 ダッシュボード集計API', () => {
     await expect(eventPeriod).toHaveValue('year')
     await eventPeriod.selectOption('month')
     await expect(eventPeriod).toHaveValue('month')
+
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })
+      await expect(page.getByRole('list', { name: '今週の献立' })).toContainText('[E2E_TEST] 外食')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+      if (process.env.ISSUE_230_SHOTS_DIR) {
+        await mkdir(process.env.ISSUE_230_SHOTS_DIR, { recursive: true })
+        await page.screenshot({ path: join(process.env.ISSUE_230_SHOTS_DIR, `dashboard-${width}.png`), fullPage: true })
+      }
+    }
 
     await page.getByRole('link', { name: '精算一覧を見る' }).click()
     await expect(page).toHaveURL(/\/warikan$/)
