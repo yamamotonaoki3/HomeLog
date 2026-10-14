@@ -53,17 +53,18 @@ for (const width of [1280, 390, 320]) {
     expect((await get('shopping-list-items'))[0].price).toBeNull()
     for (const [path, panel, label] of [['/zaiko', 'inventory-panel', 'inventory'], ['/zaiko/shopping', 'shopping-panel', 'shopping']]) {
       await page.goto(path)
-      await expect(panel === 'inventory-panel' ? page.getByRole('button', { name: `${body.name}の詳細` }) : page.getByTestId(panel).getByRole('row').filter({ hasText: body.name })).toBeVisible()
+      const row = page.getByTestId(panel).getByRole('button', { name: `${body.name}の詳細`, exact: true })
+      await expect(row).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       if (panel === 'shopping-panel') {
-        const scroll = page.getByRole('region', { name: '買い物リスト一覧' })
-        await scroll.focus()
-        await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth })
-        const remove = scroll.getByRole('button', { name: `${body.name}を削除`, exact: true })
+        await row.click()
+        const detail = page.getByRole('dialog', { name: '買い物詳細' })
+        const remove = detail.getByRole('button', { name: `${body.name}を削除`, exact: true })
+        await remove.scrollIntoViewIfNeeded()
         await expect(remove).toBeInViewport()
         await expect(remove).toBeEnabled()
-        const row = scroll.getByRole('row').filter({ hasText: body.name })
-        await expect(row.locator('.qty-value')).toHaveText('0')
+        await expect(detail.locator('.qty-value')).toHaveText('0')
+        await detail.getByRole('button', { name: '閉じる' }).click()
       }
       await page.screenshot({ path: test.info().outputPath(`${label}-${width}.png`), fullPage: true })
     }

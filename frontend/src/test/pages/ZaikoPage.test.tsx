@@ -225,12 +225,13 @@ describe('ZaikoPage', () => {
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await openTab(user, '在庫一覧')
     await openTab(user, '買い物リスト')
 
-    const eggRow = screen.getByRole('button', { name: '卵の購入個数を増やす' }).closest('tr')!
+    const eggRow = screen.getByRole('dialog', { name: '買い物詳細' })
     expect(within(eggRow).getByText('2')).toBeInTheDocument()
   })
 
@@ -381,6 +382,7 @@ describe('ZaikoPage', () => {
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵を削除' }))
 
     await waitFor(() => expect(screen.getByText('買い物リストは空です')).toBeInTheDocument())
@@ -449,8 +451,10 @@ describe('ZaikoPage', () => {
 
     expect(screen.queryByRole('checkbox', { name: '卵を購入済にする' })).not.toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
     await user.click(screen.getByRole('button', { name: '更新' }))
 
     // 卵のみ送信され（牛乳は個数未入力）、在庫2.0に更新・閾値1.0を上回るためリストから除外される

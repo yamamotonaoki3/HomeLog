@@ -134,9 +134,6 @@ a:hover { text-decoration: underline; }
 .inventory-detail-modal dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .inventory-modal .modal-actions { flex-wrap: wrap; }
 .inventory-modal h2 { overflow-wrap: anywhere; }
-.shopping-table-scroll { max-width: 100%; overflow-x: auto; }
-.shopping-table-scroll .table { min-width: 720px; table-layout: fixed; overflow: visible; }
-.shopping-table-scroll th, .shopping-table-scroll td { overflow-wrap: anywhere; }
 .inventory-quantity-controls { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .inventory-quantity-controls .btn { min-width: 40px; min-height: 40px; }
 .inventory-quantity-controls .qty-value { width: auto; min-width: 40px; }
@@ -312,8 +309,6 @@ input[type="checkbox"], input[type="radio"] {
 .shopping-add-form { flex-wrap: wrap; }
 .shopping-add-form input, .shopping-add-form select { min-width: 0; max-width: 100%; }
 .price-cell { white-space: nowrap; }
-.shopping-table-scroll .price-cell { width: 160px; }
-.shopping-table-scroll th:nth-child(4) { width: 160px; }
 .recipe-bookmarklet-guide { min-width: 0; overflow-wrap: anywhere; }
 .recipe-bookmarklet-guide ol { padding-left: 1.5rem; }
 .recipe-bookmarklet-guide li + li { margin-top: .4rem; }
@@ -325,3 +320,5 @@ input[type="checkbox"], input[type="radio"] {
 .recipe-iphone-guide .btn { max-width: 100%; white-space: normal; }
 .shortcut-url-label { display: block; margin-bottom: .4rem; }
 .shortcut-url { display: block; width: 100%; min-width: 0; margin-bottom: .8rem; }
+
+.shopping-list-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr); gap: 0.5rem; }

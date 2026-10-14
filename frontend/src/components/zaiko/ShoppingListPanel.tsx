@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
-import { formatPrice, validPrice, PRICE_ERROR } from './price'
+import { validPrice, PRICE_ERROR } from './price'
+import { ShoppingListDetailModal } from './ShoppingListDetailModal'
 import type { Category, InventoryItem, ShoppingListItem, ShoppingSort, Store } from '../../api/zaikoTypes'
 
 interface Props {
@@ -34,6 +35,22 @@ export function ShoppingListPanel({
   const [addPrice, setAddPrice] = useState('')
   const [purchases, setPurchases] = useState<Record<number, PurchaseState>>({})
   const [submitting, setSubmitting] = useState(false)
+  const pending = useRef(false)
+  const origin = useRef<HTMLButtonElement | null>(null)
+  const addButton = useRef<HTMLButtonElement>(null)
+  const [selectedId, setSelectedId] = useState<number>()
+  const selected = shopping.find((item) => item.id === selectedId)
+  const closeDetail = () => {
+    setSelectedId(undefined)
+    ;(origin.current?.isConnected ? origin.current : addButton.current)?.focus()
+  }
+  useEffect(() => {
+    if (selectedId !== undefined && !selected) {
+      setSelectedId(undefined)
+      addButton.current?.focus()
+    }
+    setPurchases((previous) => Object.fromEntries(Object.entries(previous).filter(([id]) => shopping.some((item) => item.id === Number(id)))))
+  }, [shopping, selected, selectedId])
 
   const inventoryOf = (id: number) => inventory.find((i) => i.id === id)
   const categoryName = (id: number | undefined) =>
@@ -64,15 +81,22 @@ export function ShoppingListPanel({
   }
 
   const handleDelete = async (item: ShoppingListItem) => {
+    if (pending.current) return
+    pending.current = true
+    setSubmitting(true)
     try {
       await apiClient.delete(`/shopping-list-items/${item.id}`)
-      await onRefresh()
+      setPurchases((previous) => { const next = { ...previous }; delete next[item.id]; return next })
+      setSelectedId(undefined)
+      addButton.current?.focus()
+      try { await onRefresh() } catch { onNotify('削除しました。一覧の再取得に失敗しました') }
     } catch (err) {
       onNotify(getApiErrorMessage(err, '買い物リストからの削除に失敗しました'))
-    }
+    } finally { pending.current = false; setSubmitting(false) }
   }
 
   const handleUpdate = async () => {
+    if (pending.current) return
     const items = shopping
       .map((s) => ({ id: s.id, purchasedQuantity: purchaseOf(s.id).quantity }))
       .filter((line) => line.purchasedQuantity > 0)
@@ -80,15 +104,19 @@ export function ShoppingListPanel({
       onNotify('購入個数を入力してください')
       return
     }
+    pending.current = true
     setSubmitting(true)
     try {
       await apiClient.post('/shopping-list-items/update', { items })
       setPurchases({})
-      await onRefresh()
-      onNotify('在庫に反映しました')
+      try {
+        await onRefresh()
+        onNotify('在庫に反映しました')
+      } catch { onNotify('在庫に反映しました。一覧の再取得に失敗しました') }
     } catch (err) {
       onNotify(getApiErrorMessage(err, '在庫への反映に失敗しました'))
     } finally {
+      pending.current = false
       setSubmitting(false)
     }
   }
@@ -106,7 +134,7 @@ export function ShoppingListPanel({
           <option value="category">カテゴリー順</option>
           <option value="store">買う店順</option>
         </select>
-        <button type="button" className="btn btn-secondary" onClick={() => setAddFormOpen((open) => !open)}>
+        <button ref={addButton} type="button" className="btn btn-secondary" onClick={() => setAddFormOpen((open) => !open)}>
           品目を手動追加
         </button>
       </div>
@@ -127,69 +155,13 @@ export function ShoppingListPanel({
           </button>
         </div>
       )}
-      <div className="shopping-table-scroll" role="region" aria-label="買い物リスト一覧" tabIndex={0}>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>品名</th>
-            <th>カテゴリー</th>
-            <th>買う店</th>
-            <th>値段</th>
-            <th>購入個数</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {shopping.length === 0 ? (
-            <tr>
-              <td colSpan={6}>買い物リストは空です</td>
-            </tr>
-          ) : (
-            shopping.map((item) => {
-              const inv = inventoryOf(item.inventoryItemId)
-              const purchase = purchaseOf(item.id)
-              return (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>{categoryName(inv?.categoryId)}</td>
-                  <td>{storeName(inv?.storeId)}</td>
-                  <td className="price-cell">{formatPrice(item.price)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-tiny"
-                      aria-label={`${item.name}の購入個数を減らす`}
-                      onClick={() => updatePurchase(item.id, { quantity: Math.max(0, purchase.quantity - 1) })}
-                    >
-                      －
-                    </button>
-                    <span className="qty-value">{purchase.quantity}</span>
-                    <button
-                      type="button"
-                      className="btn btn-tiny"
-                      aria-label={`${item.name}の購入個数を増やす`}
-                      onClick={() => updatePurchase(item.id, { quantity: purchase.quantity + 1 })}
-                    >
-                      ＋
-                    </button>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-tiny"
-                      aria-label={`${item.name}を削除`}
-                      onClick={() => handleDelete(item)}
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              )
-            })
-          )}
-        </tbody>
-      </table>
+      <div aria-label="買い物リスト一覧">
+        <div className="shopping-list-grid list-row-heading"><span>品名</span><span>買う店</span><span>購入個数</span></div>
+        {shopping.length === 0 ? <p>買い物リストは空です</p> : shopping.map((item) => <button type="button" key={item.id} className="list-row-button shopping-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
+          <span>{item.name}</span><span>{storeName(inventoryOf(item.inventoryItemId)?.storeId) || 'なし'}</span><span>{purchaseOf(item.id).quantity}</span>
+        </button>)}
       </div>
+      {selected && <ShoppingListDetailModal item={selected} category={categoryName(inventoryOf(selected.inventoryItemId)?.categoryId)} store={storeName(inventoryOf(selected.inventoryItemId)?.storeId)} quantity={purchaseOf(selected.id).quantity} busy={submitting} onQuantity={(quantity) => { if (!pending.current) updatePurchase(selected.id, { quantity }) }} onDelete={() => { void handleDelete(selected) }} onClose={closeDetail} />}
       <button type="button" className="btn btn-primary" onClick={handleUpdate} disabled={submitting}>
         更新
       </button>
