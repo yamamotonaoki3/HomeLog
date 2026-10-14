@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
-import { formatPrice } from './price'
+import { InventoryDetailModal } from './InventoryDetailModal'
 
 interface Props {
   inventory: InventoryItem[]
@@ -15,113 +15,62 @@ interface Props {
 }
 
 export function InventoryPanel({ inventory, categories, stores, onStoresChange, onRefresh, onNotify }: Props) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<InventoryItem>()
+  const [selectedId, setSelectedId] = useState<number>()
+  const [formOpen, setFormOpen] = useState(false)
   const [steps, setSteps] = useState<Record<number, number>>({})
-
-  const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? ''
-  const storeName = (id: number | null) => (id === null ? '' : (stores.find((s) => s.id === id)?.name ?? ''))
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
+  const origin = useRef<HTMLButtonElement | null>(null)
+  const register = useRef<HTMLButtonElement>(null)
+  const selected = inventory.find((item) => item.id === selectedId)
+  const restoreFocus = () => (origin.current?.isConnected ? origin.current : register.current)?.focus()
+  const closeDetail = () => { setSelectedId(undefined); restoreFocus() }
+  useEffect(() => {
+    if (selectedId !== undefined && !selected) {
+      setSelectedId(undefined)
+      setFormOpen(false)
+      register.current?.focus()
+    }
+  }, [selected, selectedId])
 
   const adjustQuantity = async (item: InventoryItem, sign: 1 | -1) => {
-    const step = steps[item.id] ?? 1
-    const delta = sign * step
-    if (item.quantity + delta < 0) {
-      onNotify('在庫個数は0未満にできません')
-      return
-    }
+    if (pending.current) return
+    const delta = sign * (steps[item.id] ?? 1)
+    if (Math.round((item.quantity + delta) * 10) < 0) { onNotify('在庫個数は0未満にできません'); return }
+    pending.current = true
+    setBusy(true)
     try {
       await apiClient.patch(`/inventory-items/${item.id}/quantity`, { delta })
       await onRefresh()
-    } catch (err) {
-      onNotify(getApiErrorMessage(err, '在庫個数の更新に失敗しました'))
-    }
+    } catch (err) { onNotify(getApiErrorMessage(err, '在庫個数の更新に失敗しました')) }
+    finally { pending.current = false; setBusy(false) }
   }
 
-  return (
-    <div className="panel" data-testid="inventory-panel">
-      <div className="toolbar">
-        <h2>在庫一覧</h2>
-        <button type="button" className="btn btn-primary" onClick={() => { setEditing(undefined); setModalOpen(true) }}>
-          在庫を登録
-        </button>
-      </div>
-      <div className="inventory-table-scroll" role="region" aria-label="在庫一覧（横スクロール可能）" tabIndex={0}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>品名</th>
-              <th>カテゴリー</th>
-              <th>買う店</th>
-              <th>在庫個数</th>
-              <th>閾値</th>
-              <th>値段</th>
-              <th>編集</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inventory.length === 0 ? (
-              <tr>
-                <td colSpan={7}>在庫がありません</td>
-              </tr>
-            ) : (
-              inventory.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>{categoryName(item.categoryId)}</td>
-                  <td>{storeName(item.storeId)}</td>
-                  <td>
-                    <div className="inventory-quantity-controls">
-                      <button
-                        type="button"
-                        className="btn btn-tiny"
-                        aria-label={`${item.name}を増やす`}
-                        onClick={() => adjustQuantity(item, 1)}
-                      >
-                        ＋
-                      </button>
-                      <span className="qty-value">{item.quantity.toFixed(1)}</span>
-                      <button
-                        type="button"
-                        className="btn btn-tiny"
-                        aria-label={`${item.name}を減らす`}
-                        onClick={() => adjustQuantity(item, -1)}
-                      >
-                        －
-                      </button>
-                      <select
-                        className="step-select"
-                        aria-label={`${item.name}の増減ステップ`}
-                        value={String(steps[item.id] ?? 1)}
-                        onChange={(e) => setSteps((prev) => ({ ...prev, [item.id]: Number(e.target.value) }))}
-                      >
-                        <option value="1">1</option>
-                        <option value="0.1">0.1</option>
-                      </select>
-                    </div>
-                  </td>
-                  <td>{item.threshold.toFixed(1)}</td>
-                  <td className="price-cell">{formatPrice(item.price)}</td>
-                  <td><button type="button" className="btn btn-small" aria-label={`${item.name}を編集`} onClick={() => { setEditing(item); setModalOpen(true) }}>編集</button></td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      {modalOpen && (
-        <InventoryModal
-          item={editing}
-          categories={categories}
-          stores={stores}
-          onStoresChange={onStoresChange}
-          onClose={() => setModalOpen(false)}
-          onSaved={async () => {
-            setModalOpen(false)
-            await onRefresh()
-            onNotify(editing ? '在庫を編集しました' : '在庫を登録しました')
-          }}
-        />
-      )}
+  return <div className="panel" data-testid="inventory-panel">
+    <div className="toolbar"><h2>在庫一覧</h2><button ref={register} type="button" className="btn btn-primary" onClick={() => { origin.current = register.current; setFormOpen(true) }}>在庫を登録</button></div>
+    <div className="inventory-list" aria-label="在庫一覧">
+      <div className="inventory-list-grid list-row-heading"><span>品名</span><span>在庫数</span><span>閾値</span></div>
+      {inventory.length === 0 ? <p>在庫がありません</p> : inventory.map((item) =>
+        <button type="button" key={item.id} className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
+          <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
+        </button>)}
     </div>
-  )
+    {selected && !formOpen && <InventoryDetailModal item={selected} category={categories.find((category) => category.id === selected.categoryId)?.name ?? ''} store={stores.find((store) => store.id === selected.storeId)?.name ?? ''} step={steps[selected.id] ?? 1} busy={busy} onStep={(step) => setSteps((previous) => ({ ...previous, [selected.id]: step }))} onAdjust={(sign) => { void adjustQuantity(selected, sign) }} onEdit={() => setFormOpen(true)} onClose={closeDetail} />}
+    {formOpen && <InventoryModal item={selected} categories={categories} stores={stores} onStoresChange={onStoresChange} onClose={() => { setFormOpen(false); if (!selected) restoreFocus() }} onSaved={async () => {
+      pending.current = true
+      setBusy(true)
+      setFormOpen(false)
+      if (!selected) restoreFocus()
+      const message = selected ? '在庫を編集しました' : '在庫を登録しました'
+      try {
+        await onRefresh()
+        onNotify(message)
+      } catch {
+        onNotify(`${message}。一覧の再取得に失敗しました`)
+      } finally {
+        pending.current = false
+        setBusy(false)
+      }
+    }} />}
+  </div>
 }

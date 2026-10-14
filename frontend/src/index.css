@@ -120,10 +120,20 @@ a:hover { text-decoration: underline; }
 .qty-value { display: inline-block; width: 34px; text-align: center; }
 .step-select { width: 55px; margin-left: 6px; }
 
-/* 在庫の増減は上から＋、個数、−、ステップ。狭幅では表内だけをスクロールする。 */
-.inventory-table-scroll { max-width: 100%; overflow-x: auto; }
-.inventory-table-scroll .table { min-width: 760px; table-layout: fixed; overflow: visible; }
-.inventory-table-scroll th, .inventory-table-scroll td { overflow-wrap: anywhere; }
+/* 一覧の共通行ボタン。列配置は利用画面側で指定する。 */
+.list-row-button { width: 100%; min-height: 44px; padding: 12px 8px; border: 0; border-bottom: 1px solid #ddd; background: white; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.list-row-button:hover { background: #f0f6ff; }
+.list-row-button { -webkit-tap-highlight-color: transparent; }
+.list-row-button:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; background: #f0f6ff; }
+.list-row-button > span { min-width: 0; overflow-wrap: anywhere; }
+.list-row-heading { padding: 12px 8px; font-weight: bold; border-bottom: 1px solid #ddd; }
+.inventory-list-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(3.5rem, .3fr) minmax(3.5rem, .3fr); gap: 8px; align-items: center; }
+.inventory-list { min-width: 0; }
+.inventory-modal-overlay { -webkit-tap-highlight-color: transparent; }
+.inventory-detail-modal dl { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 12px; }
+.inventory-detail-modal dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.inventory-modal .modal-actions { flex-wrap: wrap; }
+.inventory-modal h2 { overflow-wrap: anywhere; }
 .shopping-table-scroll { max-width: 100%; overflow-x: auto; }
 .shopping-table-scroll .table { min-width: 720px; table-layout: fixed; overflow: visible; }
 .shopping-table-scroll th, .shopping-table-scroll td { overflow-wrap: anywhere; }
@@ -302,8 +312,8 @@ input[type="checkbox"], input[type="radio"] {
 .shopping-add-form { flex-wrap: wrap; }
 .shopping-add-form input, .shopping-add-form select { min-width: 0; max-width: 100%; }
 .price-cell { white-space: nowrap; }
-.inventory-table-scroll .price-cell, .shopping-table-scroll .price-cell { width: 160px; }
-.inventory-table-scroll th:nth-child(6), .shopping-table-scroll th:nth-child(4) { width: 160px; }
+.shopping-table-scroll .price-cell { width: 160px; }
+.shopping-table-scroll th:nth-child(4) { width: 160px; }
 .recipe-bookmarklet-guide { min-width: 0; overflow-wrap: anywhere; }
 .recipe-bookmarklet-guide ol { padding-left: 1.5rem; }
 .recipe-bookmarklet-guide li + li { margin-top: .4rem; }

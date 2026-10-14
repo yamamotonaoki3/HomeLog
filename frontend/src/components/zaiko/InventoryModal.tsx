@@ -3,6 +3,7 @@ import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, Store, InventoryItem } from '../../api/zaikoTypes'
 import { validPrice, PRICE_ERROR } from './price'
+import { useInventoryDialog } from './useInventoryDialog'
 
 interface Props {
   item?: InventoryItem
@@ -24,6 +25,8 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
   const [newStoreName, setNewStoreName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const close = () => { if (!submitting) onClose() }
+  const dialogRef = useInventoryDialog(close, '#inv-name')
 
   const handleAddStore = async () => {
     const trimmed = newStoreName.trim()
@@ -83,8 +86,8 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal inventory-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
+    <div className="modal-overlay inventory-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) close() }}>
+      <div ref={dialogRef} className="modal inventory-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
         <h2 id="inventory-modal-title">{item ? '在庫を編集' : '在庫を登録'}</h2>
         <form onSubmit={handleSubmit}>
           <label htmlFor="inv-name">品名</label>
@@ -136,7 +139,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          {item && <p className="hint">在庫個数は一覧の＋/－で変更できます</p>}
+          {item && <p className="hint">在庫個数は詳細の＋/－で変更できます</p>}
           <label htmlFor="inv-price">値段（円・任意）</label>
           <input id="inv-price" type="text" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
           <label htmlFor="inv-threshold">買い物リスト追加閾値</label>
@@ -154,7 +157,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               保存
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button type="button" className="btn btn-secondary" disabled={submitting} onClick={close}>
               キャンセル
             </button>
           </div>

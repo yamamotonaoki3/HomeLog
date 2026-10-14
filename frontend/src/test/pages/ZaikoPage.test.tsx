@@ -152,8 +152,9 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }, { ...egg, quantity: 2 }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    const plus = await screen.findByRole('button', { name: '牛乳を増やす' })
-    const row = plus.closest('tr')!
+    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
+    const plus = screen.getByRole('button', { name: '牛乳を増やす' })
+    const row = screen.getByRole('dialog', { name: '在庫詳細' })
     const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value, select')]
     expect(controls).toEqual([
       plus, row.querySelector('.qty-value'),
@@ -163,11 +164,15 @@ describe('ZaikoPage', () => {
     await user.selectOptions(screen.getByLabelText('牛乳の増減ステップ'), '0.1')
     await user.click(plus)
     await waitFor(() => expect(row.querySelector('.qty-value')).toHaveTextContent(/^2\.1$/))
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵を減らす' }))
-    const eggRow = screen.getByRole('button', { name: '卵を増やす' }).closest('tr')!
+    const eggRow = screen.getByRole('dialog', { name: '在庫詳細' })
     await waitFor(() => expect(eggRow.querySelector('.qty-value')).toHaveTextContent(/^1\.0$/))
-    expect(screen.getByLabelText('牛乳の増減ステップ')).toHaveValue('0.1')
     expect(screen.getByLabelText('卵の増減ステップ')).toHaveValue('1')
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
+    expect(screen.getByLabelText('牛乳の増減ステップ')).toHaveValue('0.1')
     expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
       { method: 'PATCH', url: '/api/inventory-items/1/quantity', body: { delta: 0.1 } },
       { method: 'PATCH', url: '/api/inventory-items/2/quantity', body: { delta: -1 } },
@@ -184,8 +189,11 @@ describe('ZaikoPage', () => {
 
     await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
     const inventoryPanel = screen.getByTestId('inventory-panel')
-    expect(within(inventoryPanel).getByText('乳製品')).toBeInTheDocument()
-    expect(within(inventoryPanel).getByText('スーパーA')).toBeInTheDocument()
+    expect(within(inventoryPanel).queryByText('乳製品')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
+    expect(screen.getByText('乳製品')).toBeInTheDocument()
+    expect(screen.getByText('スーパーA')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
     expect(screen.getByTestId('shopping-panel')).not.toBeVisible()
 
     await openTab(user, '買い物リスト')
@@ -240,11 +248,11 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
 
     await user.click(screen.getByRole('button', { name: '牛乳を増やす' }))
 
-    await waitFor(() => expect(screen.getByText('3.0')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('dialog').querySelector('.qty-value')).toHaveTextContent(/^3\.0$/))
     const patchCall = calls.find((c) => c.method === 'PATCH')
     expect(patchCall?.body).toEqual({ delta: 1 })
   })
@@ -253,12 +261,12 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
 
     await user.selectOptions(screen.getByLabelText('牛乳の増減ステップ'), '0.1')
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
 
-    await waitFor(() => expect(screen.getByText('1.9')).toBeInTheDocument())
+    await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('1.9')).toBeInTheDocument())
     const patchCall = calls.find((c) => c.method === 'PATCH')
     expect(patchCall?.body).toEqual({ delta: -0.1 })
   })
@@ -267,11 +275,12 @@ describe('ZaikoPage', () => {
     setupApi({ inventory: [{ id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 1.0, threshold: 0.5 }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
+    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
 
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
-    await waitFor(() => expect(screen.getByText('0.0')).toBeInTheDocument())
+    await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('0.0')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
     // タブを切り替えたときに、在庫の増減で自動追加された最新の買い物リストが表示される
     await openTab(user, '買い物リスト')
     const shoppingPanel = screen.getByTestId('shopping-panel')
@@ -404,7 +413,7 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...egg }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await waitFor(() => expect(screen.getByText('卵')).toBeInTheDocument())
+    await user.click(await screen.findByRole('button', { name: '卵の詳細' }))
 
     await user.click(screen.getByRole('button', { name: '卵を減らす' }))
 
@@ -454,7 +463,8 @@ describe('ZaikoPage', () => {
 
     // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
     await openTab(user, '在庫一覧')
-    const eggRow = screen.getByRole('button', { name: '卵を増やす' }).closest('tr')!
+    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
+    const eggRow = screen.getByRole('dialog', { name: '在庫詳細' })
     expect(within(eggRow).getByText('2.0')).toBeInTheDocument()
   })
 })
