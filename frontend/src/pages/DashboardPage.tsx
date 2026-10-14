@@ -7,6 +7,7 @@ import type { Recipe } from '../api/kondateTypes'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import type { Account } from '../api/kakeiboTypes'
 import type { InventoryItem, ShoppingListItem } from '../api/zaikoTypes'
+import { formatPrice } from '../components/zaiko/price'
 import { Toast } from '../components/Toast'
 import { CalendarPanel } from '../components/dashboard/CalendarPanel'
 import { DayDetailModal } from '../components/dashboard/DayDetailModal'
@@ -20,14 +21,15 @@ type Loadable<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status:
 const EVENT_PERIOD_LABELS: Record<EventSummaryPeriod, string> = { today: '今日', month: '今月', year: '今年' }
 
 // カード内の一覧を取得状態ごとに出し分ける(読み込み中・取得失敗・空・先頭N件+残件数)。
-function PreviewList<T>({ label, state, emptyText, render }: { label: string; state: Loadable<T[]>; emptyText: string; render: (item: T) => ReactNode }) {
+function PreviewList<T>({ label, state, emptyText, valueLabel, render }: { label: string; state: Loadable<T[]>; emptyText: string; valueLabel: string; render: (item: T) => ReactNode }) {
   if (state.status === 'loading') return <p>読み込み中...</p>
   if (state.status === 'error') return <p className="error">{label}を取得できませんでした</p>
   if (state.data.length === 0) return <p>{emptyText}</p>
   const rest = state.data.length - LIST_PREVIEW_COUNT
   return (
     <>
-      <ul className="dashboard-list" aria-label={label}>{state.data.slice(0, LIST_PREVIEW_COUNT).map(render)}</ul>
+      <div className="dashboard-stock-row dashboard-stock-heading"><span>品名</span><span>{valueLabel}</span></div>
+      <ul className="dashboard-list dashboard-stock-list" aria-label={label}>{state.data.slice(0, LIST_PREVIEW_COUNT).map(render)}</ul>
       {rest > 0 && <p className="dashboard-list-more">ほか{rest}件</p>}
     </>
   )
@@ -209,7 +211,8 @@ export function DashboardPage() {
               label="買い物リスト"
               state={shoppingList}
               emptyText="買い物リストは空です"
-              render={(item) => <li key={item.id}><Link to="/zaiko">{item.name}</Link></li>}
+              valueLabel="値段"
+              render={(item) => <li className="dashboard-stock-row" key={item.id}><span className="dashboard-stock-name">{item.name}</span><span className="dashboard-stock-value">{formatPrice(item.price)}</span></li>}
             />
           </>
         )}
@@ -220,16 +223,18 @@ export function DashboardPage() {
               label="在庫リスト"
               state={inventory}
               emptyText="在庫は登録されていません"
+              valueLabel="残数"
               render={(item) => (
-                <li key={item.id}>
-                  <Link to="/zaiko">{item.name}</Link> 残{item.quantity}
+                <li className="dashboard-stock-row" key={item.id}>
+                  <span className="dashboard-stock-name">{item.name}</span>
+                  <span className="dashboard-stock-value">残{item.quantity}
                   {item.quantity < item.threshold && <span className="dashboard-low-stock">（不足）</span>}
+                  </span>
                 </li>
               )}
             />
           </>
         )}
-        <Link to="/zaiko">在庫・買い物リストを見る</Link>
       </div>
     ),
     finance: (

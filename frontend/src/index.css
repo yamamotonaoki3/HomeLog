@@ -221,6 +221,11 @@ input[type="checkbox"], input[type="radio"] {
 .dashboard-recipe-button:hover { text-decoration: underline; }
 .dashboard-recipe-button:disabled { opacity: 0.6; cursor: wait; }
 .dashboard-list li { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-stock-list { padding-left: 0; list-style: none; gap: 6px; }
+.dashboard-stock-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 8.5rem); gap: 12px; align-items: start; }
+.dashboard-stock-heading { color: #64748b; font-size: 13px; }
+.dashboard-stock-name, .dashboard-stock-value { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-stock-value, .dashboard-stock-heading > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .dashboard-low-stock { color: #b91c1c; font-size: 13px; }
 
 /* トースト */

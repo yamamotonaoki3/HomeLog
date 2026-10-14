@@ -18,6 +18,12 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   await expect(cards.nth(3).getByRole('heading', { name: '今月のお金' })).toBeVisible()
   await expect(cards.nth(4).getByRole('heading', { name: 'イベント別支出' })).toBeVisible()
 
+  // 見出しは取得中にも表示される。取得完了後の高さでスクロール位置と座標を検証する。
+  await expect(cards.nth(1).getByText('買い物リストは空です', { exact: true })).toBeVisible()
+  await expect(cards.nth(1).getByText('在庫は登録されていません', { exact: true })).toBeVisible()
+  await expect(cards.nth(2).getByText('口座残高合計: 0円', { exact: true })).toBeVisible()
+  await expect(cards.nth(4).getByText('イベント別支出: なし', { exact: true })).toBeVisible()
+
   const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
     calendar.boundingBox(),
     cards.nth(0).boundingBox(),
