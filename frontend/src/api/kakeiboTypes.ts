@@ -30,6 +30,7 @@ export interface Income {
   content: string
   categoryId: number
   memo: string | null
+  accountId: number | null
 }
 
 export interface Card {

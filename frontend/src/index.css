@@ -166,6 +166,24 @@ input[type="checkbox"], input[type="radio"] {
 .calendar-day-date span, .calendar-event { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-income { color: #15803d; }
 .calendar-expense { color: #b91c1c; }
+
+/* 家計簿は3列のまま狭幅にも収め、詳細の長文はセル内で折り返す。 */
+.kakeibo-page { overflow-wrap: anywhere; }
+.kakeibo-page .toolbar select { min-width: 0; max-width: 100%; }
+.transaction-table { table-layout: fixed; overflow: visible; }
+.transaction-table th:first-child { width: 25%; }
+.transaction-table th:last-child { width: 30%; }
+.transaction-table th, .transaction-table td { overflow-wrap: anywhere; vertical-align: middle; }
+.transaction-table tbody tr { cursor: pointer; }
+.transaction-table td:last-child { font-variant-numeric: tabular-nums; }
+.transaction-detail-memo { white-space: pre-wrap; }
+.transaction-split-list { margin: 0; padding: 0; list-style: none; }
+.transaction-split-list li + li { margin-top: 12px; }
+@media (max-width: 480px) {
+  .kakeibo-page { padding: 12px; }
+  .kakeibo-page .panel { padding: 10px; }
+  .transaction-table th, .transaction-table td { padding: 8px 4px; }
+}
 .calendar-event { text-align: left; background: #eef2ff; color: #3730a3; border: none; border-radius: 4px; padding: 2px 4px; cursor: pointer; max-width: 100%; }
 .event-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
 .event-detail-list dt { color: #555; }
