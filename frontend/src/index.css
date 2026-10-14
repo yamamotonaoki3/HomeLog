@@ -196,6 +196,10 @@ input[type="checkbox"], input[type="radio"] {
 .card h3 { margin: 12px 0 4px; font-size: 14px; color: #475569; }
 .dashboard-list { margin: 4px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
 .dashboard-list-more { margin: 0 0 8px; font-size: 13px; color: #64748b; }
+.dashboard-recipe-button { max-width: 100%; min-height: 44px; padding: 4px 0; border: none; background: none; color: #1d4ed8; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.dashboard-recipe-button:hover { text-decoration: underline; }
+.dashboard-recipe-button:disabled { opacity: 0.6; cursor: wait; }
+.dashboard-list li { min-width: 0; overflow-wrap: anywhere; }
 .dashboard-low-stock { color: #b91c1c; font-size: 13px; }
 
 /* トースト */

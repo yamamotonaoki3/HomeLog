@@ -101,6 +101,99 @@ const shoppingList: ShoppingListItem[] = [
 ]
 
 describe('DashboardPage', () => {
+  function setupMenu() {
+    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0,
+      weeklyMenuEntries: [
+        { recipeId: 2, recipeTitle: '[E2E_TEST] 同名', freeTextMemo: null },
+        { recipeId: null, recipeTitle: null, freeTextMemo: '[E2E_TEST] 外食' },
+        { recipeId: 3, recipeTitle: null, freeTextMemo: null },
+      ],
+    } })
+  }
+
+  it('献立のIDで同名レシピを選び閲覧専用で開き、閉じるとフォーカスを戻す', async () => {
+    setupMenu()
+    server.use(http.get('/api/recipes', () => HttpResponse.json([1, 2].map((id) => ({
+      id, title: '[E2E_TEST] 同名', ingredients: `材料${id}`, steps: `手順${id}`,
+      sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false,
+    })))))
+    renderDashboardPage()
+    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
+    const list = screen.getByRole('list', { name: '今週の献立' })
+    expect(within(list).getAllByRole('button')).toHaveLength(1)
+    expect(within(list).getByText('削除されたレシピ')).toBeInTheDocument()
+    for (const close of ['button', 'escape', 'overlay']) {
+      fireEvent.click(button)
+      const dialog = await screen.findByRole('dialog', { name: 'レシピ詳細' })
+      expect(within(dialog).getByText('材料2')).toBeInTheDocument()
+      expect(within(dialog).getByText('手順2')).toBeInTheDocument()
+      expect(within(dialog).queryByText('材料1')).not.toBeInTheDocument()
+      expect(within(dialog).queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+      expect(within(dialog).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+      fireEvent.click(within(dialog).getByText('材料2'))
+      expect(dialog).toBeInTheDocument()
+      if (close === 'button') fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+      else if (close === 'escape') fireEvent.keyDown(document, { key: 'Escape' })
+      else fireEvent.click(dialog)
+      expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
+      expect(button).toHaveFocus()
+    }
+  })
+
+  it.each(['error', 'missing'])('取得%sでは詳細を開かず通知し再試行できる', async (state) => {
+    setupMenu()
+    server.use(http.get('/api/recipes', () => state === 'error'
+      ? HttpResponse.json({ message: 'レシピ取得失敗' }, { status: 500 }) : HttpResponse.json([])))
+    renderDashboardPage()
+    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
+    fireEvent.click(button)
+    expect(await screen.findByText(state === 'error' ? 'レシピ取得失敗' : 'レシピが見つかりませんでした')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
+    expect(button).toBeEnabled()
+  })
+
+  it.each(['ocr', 'web'])('献立の%sレシピも既存詳細表示を再利用する', async (sourceType) => {
+    setupMenu()
+    server.use(http.get('/api/recipes', () => HttpResponse.json([{
+      id: 2, title: '[E2E_TEST] 同名', sourceType, ingredients: '[E2E_TEST] 材料', steps: '[E2E_TEST] 手順',
+      url: 'https://recipe.example.com/test', thumbnailUrl: null, memo: '[E2E_TEST] メモ', isFavorite: false,
+    }])))
+    renderDashboardPage()
+    fireEvent.click(await screen.findByRole('button', { name: '[E2E_TEST] 同名' }))
+    const dialog = await screen.findByRole('dialog', { name: 'レシピ詳細' })
+    if (sourceType === 'web') {
+      expect(within(dialog).getByRole('link', { name: '元ページを開く' })).toHaveAttribute('href', 'https://recipe.example.com/test')
+      expect(within(dialog).getByText('[E2E_TEST] メモ')).toBeInTheDocument()
+      expect(within(dialog).queryByRole('list', { name: '材料' })).not.toBeInTheDocument()
+    } else {
+      expect(within(dialog).getByText('画像解析')).toBeInTheDocument()
+      expect(within(dialog).getByText('[E2E_TEST] 材料')).toBeInTheDocument()
+      expect(within(dialog).getByText('[E2E_TEST] 手順')).toBeInTheDocument()
+    }
+  })
+
+  it('読み込み中は多重取得を防ぎ、離脱後の応答を破棄する', async () => {
+    setupMenu()
+    let requests = 0
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.get('/api/recipes', async () => {
+      requests++
+      await pending
+      return HttpResponse.json([])
+    }))
+    const view = renderDashboardPage()
+    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(requests).toBe(1))
+    expect(button).toBeDisabled()
+    view.unmount()
+    release()
+    await delay(10)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it.each([
     { state: '口座あり', accounts: [{ id: 1, name: '[E2E_TEST] 口座', type: 'bank', balance: 13000, cards: [] }], balance: '13000円' },
     { state: '口座なし', accounts: [], balance: '0円' },

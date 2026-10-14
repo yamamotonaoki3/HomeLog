@@ -35,6 +35,19 @@ function renderModal(recipe: Recipe) {
 }
 
 describe('RecipeDetailModal', () => {
+  it('操作ハンドラーを省略すると閲覧専用になる', () => {
+    render(<RecipeDetailModal recipe={manualRecipe} onClose={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeInTheDocument()
+  })
+
+  it.each(['onEdit', 'onDelete'] as const)('%sだけ指定した場合はその操作だけ表示する', (handler) => {
+    render(<RecipeDetailModal recipe={manualRecipe} onClose={vi.fn()} {...{ [handler]: vi.fn() }} />)
+    expect(screen.queryByRole('button', { name: '編集' }) !== null).toBe(handler === 'onEdit')
+    expect(screen.queryByRole('button', { name: '削除' }) !== null).toBe(handler === 'onDelete')
+  })
+
   it('タイトルを見出しに、種別を表示する', () => {
     renderModal({ ...manualRecipe, sourceType: 'ocr' })
 
