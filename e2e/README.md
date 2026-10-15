@@ -55,6 +55,8 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
+`fixed-cost-external-ui.spec.ts` は1280／390／320px（390／320はタッチ対応）で、1人世帯の外部2人登録、世帯内外の混在編集、割合／金額、外部ID保持、名称変更による差し替えと既存マスタ不変、追加・削除・割り勘OFF、キャンセル、再読込後の永続化、他者非公開を実ローカルWorkersで確認する。ページ・モーダル・fieldset・内訳行の横はみ出し、詳細の初期位置・Tab巡回・Escape復帰、フォーム末尾の操作到達も検証する。`FIXED_EXTERNAL_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると登録（世帯外入力）・編集・詳細とフォーム末尾の画像を保存する。
+
 `events.spec.ts` と `kakeibo-detail.spec.ts` は#246の共通行buttonを1280／390／320pxで検証する（390／320はタッチ対応）。3列と左右の余白、Enter／Space、1行1Tab停止、44px以上の高さ、hover／focus-visible、詳細の巡回と起点復帰、長文と上限金額の横はみ出し、イベントの編集保存後の詳細復帰を確認する。`ISSUE_246_SHOTS_DIR` にリポジトリ外の保存先を指定すると、一覧とイベント・支出・収入詳細、家計簿ダーク設定の画像を保存する。
 
 `income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。

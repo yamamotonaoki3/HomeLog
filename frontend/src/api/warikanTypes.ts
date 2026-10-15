@@ -43,6 +43,7 @@ export interface ExpenseSplitComment {
 // POST /api/expenses に添えて送る割り勘の相手(支払者=自分は含めない)1人分。
 export interface SplitInput {
   debtorUserId?: number
+  debtorExternalId?: number
   debtorExternalName?: string
   ratio?: number
   amountDue?: number

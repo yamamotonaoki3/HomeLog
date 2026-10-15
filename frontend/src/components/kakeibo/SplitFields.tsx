@@ -15,7 +15,9 @@ export interface SplitFieldsResult {
 }
 
 export interface InitialSplit {
-  debtorUserId: number
+  debtorUserId: number | null
+  debtorExternalId?: number | null
+  debtorExternalName?: string | null
   ratio?: number
   amountDue?: number
 }
@@ -25,8 +27,11 @@ interface Props {
   amount: number
   members: HouseholdMember[]
   onChange: (result: SplitFieldsResult) => void
-  // false のとき「世帯外の人」を選べなくする(固定費の割り勘は世帯内メンバーのみ)。
+  // false のとき「世帯外の人」を選べなくする。
   allowExternal?: boolean
+  maxRows?: number
+  // 固定費では全内訳を削除して保存できる。
+  allowEmpty?: boolean
   // 親側の世帯メンバー取得が完了しているか。false の間は「退出済みメンバー」判定を保留する
   // (取得前の空配列を「相手がいない」と誤判定しないため)。未指定なら取得済みとみなす。
   membersLoaded?: boolean
@@ -42,6 +47,8 @@ interface Row {
   kind: RowKind
   memberId: string
   externalName: string
+  externalId?: number | null
+  originalExternalName?: string
   // 入力モードに応じて「％」または「円」の文字列。
   value: string
 }
@@ -63,6 +70,8 @@ export function SplitFields({
   members,
   onChange,
   allowExternal = true,
+  maxRows,
+  allowEmpty = false,
   membersLoaded = true,
   initialSplits,
   initialSplitInputType,
@@ -73,9 +82,11 @@ export function SplitFields({
   const [rows, setRows] = useState<Row[]>(() =>
     (initialSplits ?? []).map((s) => ({
       key: rowKeySeq++,
-      kind: 'member' as RowKind,
-      memberId: String(s.debtorUserId),
-      externalName: '',
+      kind: s.debtorUserId == null ? 'external' as RowKind : 'member' as RowKind,
+      memberId: s.debtorUserId == null ? '' : String(s.debtorUserId),
+      externalName: s.debtorExternalName ?? '',
+      externalId: s.debtorExternalId,
+      originalExternalName: s.debtorExternalName ?? '',
       value: String((initialSplitInputType ?? 'ratio') === 'ratio' ? (s.ratio ?? '') : (s.amountDue ?? '')),
     })),
   )
@@ -129,8 +140,8 @@ export function SplitFields({
       const numeric = Number(row.value)
       if (row.value.trim() === '' || !Number.isFinite(numeric) || numeric < 0) {
         invalid = '割り勘の負担分を正しく入力してください'
-      } else if (inputType === 'amount' && !Number.isInteger(numeric)) {
-        invalid = '負担額は整数(円)で入力してください'
+      } else if (inputType === 'amount' && (!Number.isInteger(numeric) || numeric > 9_999_999_999)) {
+        invalid = '負担額は0〜9,999,999,999の整数(円)で入力してください'
       } else if (inputType === 'ratio' && numeric > 100) {
         invalid = '負担割合は0〜100%で入力してください'
       }
@@ -151,25 +162,32 @@ export function SplitFields({
         const name = row.externalName.trim()
         if (name === '') {
           invalid = '割り勘の相手(世帯外の人)の名前を入力してください'
+        } else if (name.length > 50) {
+          invalid = '世帯外の人の名前は1〜50文字で入力してください'
         } else {
+          const identity = row.externalId != null && name === row.originalExternalName?.trim()
+            ? { debtorExternalId: row.externalId }
+            : { debtorExternalName: name }
           splits.push(
             inputType === 'ratio'
-              ? { debtorExternalName: name, ratio: numeric }
-              : { debtorExternalName: name, amountDue: numeric },
+              ? { ...identity, ratio: numeric }
+              : { ...identity, amountDue: numeric },
           )
         }
       }
       othersTotal += Number.isFinite(numeric) && numeric >= 0 ? numeric : 0
     }
 
-    if (rows.length === 0) {
+    if (rows.length === 0 && !allowEmpty) {
       invalid = '割り勘の相手を1人以上追加してください'
     }
+    if (maxRows !== undefined && rows.length > maxRows) invalid = `割り勘の相手は${maxRows}人以内で指定してください`
 
     // 重複チェック(世帯メンバーの二重指定・同名の世帯外の人)。
     const seen = new Set<string>()
     for (const row of rows) {
-      const id = row.kind === 'member' ? `m:${row.memberId}` : `e:${row.externalName.trim().toLowerCase()}`
+      const retainedId = row.externalId != null && row.externalName.trim() === row.originalExternalName?.trim()
+      const id = row.kind === 'member' ? `m:${row.memberId}` : retainedId ? `e:${row.externalId}` : `name:${row.externalName.trim().toLowerCase()}`
       if (row.kind === 'member' ? row.memberId !== '' : row.externalName.trim() !== '') {
         if (seen.has(id)) invalid = '同じ相手を複数回指定することはできません'
         seen.add(id)
@@ -195,7 +213,7 @@ export function SplitFields({
       } as SplitFieldsResult,
       myShareLabel: myShare,
     }
-  }, [enabled, inputType, rows, amount, members, membersLoaded])
+  }, [enabled, inputType, rows, amount, members, membersLoaded, maxRows, allowEmpty])
 
   useEffect(() => {
     onChange(result)
@@ -268,7 +286,7 @@ export function SplitFields({
                   <select
                     aria-label="割り勘の相手の種別"
                     value={row.kind}
-                    onChange={(e) => updateRow(row.key, { kind: e.target.value as RowKind })}
+                    onChange={(e) => updateRow(row.key, { kind: e.target.value as RowKind, memberId: '', externalName: '', externalId: null, originalExternalName: undefined })}
                   >
                     <option value="member">世帯メンバー</option>
                     <option value="external">世帯外の人</option>

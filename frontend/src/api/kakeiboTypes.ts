@@ -66,7 +66,9 @@ export interface FixedCost {
 }
 
 export interface FixedCostSplit {
-  debtorUserId: number
+  debtorUserId: number | null
+  debtorExternalId: number | null
+  debtorExternalName: string | null
   splitRatio: number
   amountDue: number
 }

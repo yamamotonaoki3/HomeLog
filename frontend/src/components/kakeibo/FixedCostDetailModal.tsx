@@ -26,8 +26,10 @@ export function FixedCostDetailModal({ fixedCost: cost, paymentSource, members, 
         <dt>引き落とし元</dt><dd>{paymentSource}</dd>
         <dt>割り勘設定</dt><dd>{!cost.editable ? '非公開' : cost.splits.length === 0 ? 'なし' : <>
           <div>{cost.splitInputType === 'amount' ? '金額入力' : '％入力'}</div>
-          {cost.splits.map((split) => <div key={split.debtorUserId}>
-            {members.find((member) => member.userId === split.debtorUserId)?.displayName ?? (membersLoaded ? '世帯を退出したメンバー' : '相手の名前を確認できません')}
+          {cost.splits.map((split) => <div key={split.debtorExternalId != null ? `external:${split.debtorExternalId}` : `member:${split.debtorUserId}`}>
+            {split.debtorExternalId != null
+              ? (split.debtorExternalName || '相手の名前を確認できません')
+              : members.find((member) => member.userId === split.debtorUserId)?.displayName ?? (membersLoaded ? '世帯を退出したメンバー' : '相手の名前を確認できません')}
             ：{split.splitRatio}% / {split.amountDue}円
           </div>)}
         </>}</dd>

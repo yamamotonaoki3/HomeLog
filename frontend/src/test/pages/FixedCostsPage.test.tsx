@@ -6,11 +6,25 @@ import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { FixedCostsPage } from '../../pages/FixedCostsPage'
 import type { Account, FixedCost } from '../../api/kakeiboTypes'
+import type { SplitInput } from '../../api/warikanTypes'
 
 function setupApi(initial: { fixedCosts?: FixedCost[]; accounts?: Account[] } = {}) {
   const state = { fixedCosts: initial.fixedCosts ?? [], accounts: initial.accounts ?? [] }
   const calls: { method: string; url: string; body?: unknown }[] = []
   let nextId = 100
+  const externalPeople = new Map<number, string>()
+  for (const cost of state.fixedCosts) for (const split of cost.splits) {
+    if (split.debtorExternalId != null && split.debtorExternalName != null) externalPeople.set(split.debtorExternalId, split.debtorExternalName)
+  }
+  let nextExternalId = 1000
+  const resolveSplits = (body: Record<string, unknown>) => ((body.splits as SplitInput[] | undefined) ?? []).map((split) => {
+    const externalId = split.debtorExternalName !== undefined ? nextExternalId++ : split.debtorExternalId ?? null
+    if (split.debtorExternalName !== undefined) externalPeople.set(externalId!, split.debtorExternalName.trim())
+    const amount = body.amount as number
+    const ratio = body.splitInputType === 'ratio' ? split.ratio! : Math.round(split.amountDue! / amount * 10000) / 100
+    return { debtorUserId: split.debtorUserId ?? null, debtorExternalId: externalId, debtorExternalName: externalId == null ? null : externalPeople.get(externalId) ?? null,
+      splitRatio: ratio, amountDue: body.splitInputType === 'ratio' ? Math.floor(amount * ratio / 100) : split.amountDue! }
+  })
 
   server.use(
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
@@ -35,11 +49,7 @@ function setupApi(initial: { fixedCosts?: FixedCost[]; accounts?: Account[] } = 
         includeInHouseholdTotal: body.includeInHouseholdTotal as boolean,
         editable: true,
         splitInputType: (body.splitInputType as 'ratio' | 'amount' | null) ?? null,
-        splits: ((body.splits as { debtorUserId: number }[] | undefined) ?? []).map((s) => ({
-          debtorUserId: s.debtorUserId,
-          splitRatio: 0,
-          amountDue: 0,
-        })),
+        splits: resolveSplits(body),
         accountId: (body.accountId as number | null) ?? null,
         cardId: (body.cardId as number | null) ?? null,
       }
@@ -58,6 +68,8 @@ function setupApi(initial: { fixedCosts?: FixedCost[]; accounts?: Account[] } = 
         target.includeInHouseholdTotal = body.includeInHouseholdTotal as boolean
         target.accountId = (body.accountId as number | null) ?? null
         target.cardId = (body.cardId as number | null) ?? null
+        target.splitInputType = (body.splitInputType as 'ratio' | 'amount' | null) ?? null
+        target.splits = resolveSplits(body)
       }
       return HttpResponse.json(target)
     }),
@@ -80,6 +92,37 @@ function renderFixedCostsPage() {
 }
 
 describe('FixedCostsPage', () => {
+  it.each(['ratio', 'amount'] as const)('混在登録・編集は相手の識別を排他的に送り、外部IDを保持する (%s)', async (mode) => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    renderFixedCostsPage()
+    await user.click(await screen.findByRole('button', { name: '固定費を登録' }))
+    await user.type(screen.getByLabelText('固定費名'), 'testuser_混在固定費')
+    await user.type(screen.getByLabelText('金額'), '1000')
+    await user.click(screen.getByLabelText('割り勘する'))
+    await user.selectOptions(screen.getByLabelText('世帯メンバー'), '2')
+    await user.click(screen.getByRole('button', { name: '相手を追加' }))
+    await user.selectOptions(screen.getAllByLabelText('割り勘の相手の種別')[1], 'external')
+    await user.type(screen.getByLabelText('世帯外の人の名前'), ' testuser_external ')
+    if (mode === 'amount') await user.click(screen.getByRole('tab', { name: '金額入力' }))
+    const valueLabel = mode === 'ratio' ? '負担割合（％）' : '負担額（円）'
+    for (const input of screen.getAllByLabelText(valueLabel)) {
+      await user.clear(input)
+      await user.type(input, mode === 'ratio' ? '20' : '200')
+    }
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(await screen.findByRole('button', { name: 'testuser_混在固定費の詳細' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('testuser_external：20% / 200円')
+    const burden = mode === 'ratio' ? { ratio: 20 } : { amountDue: 200 }
+    const postBody = calls.find(c => c.method === 'POST')?.body as { splits: SplitInput[] } | undefined
+    expect(postBody?.splits).toEqual([{ debtorUserId: 2, ...burden }, { debtorExternalName: 'testuser_external', ...burden }])
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    expect(screen.getByLabelText('世帯外の人の名前')).toHaveValue('testuser_external')
+    await user.click(screen.getByRole('button', { name: '更新' }))
+    await screen.findByRole('dialog', { name: '固定費詳細' })
+    const patchBody = calls.find(c => c.method === 'PATCH')?.body as { splits: SplitInput[] } | undefined
+    expect(patchBody?.splits).toEqual([{ debtorUserId: 2, ...burden }, { debtorExternalId: 1000, ...burden }])
+  })
   it('固定費がない場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderFixedCostsPage()
@@ -300,7 +343,7 @@ describe('FixedCostsPage', () => {
           includeInHouseholdTotal: true,
           editable: true,
           splitInputType: 'ratio',
-          splits: [{ debtorUserId: 2, splitRatio: 50, amountDue: 40000 }],
+          splits: [{ debtorUserId: 2, debtorExternalId: null, debtorExternalName: null, splitRatio: 50, amountDue: 40000 }],
           accountId: null,
           cardId: null,
         },
@@ -331,8 +374,7 @@ describe('FixedCostsPage', () => {
 
     await user.click(screen.getByLabelText('割り勘する'))
     await waitFor(() => expect(screen.getByLabelText('世帯メンバー')).toBeInTheDocument())
-    // 世帯外の種別セレクトは固定費では表示しない
-    expect(screen.queryByLabelText('割り勘の相手の種別')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('割り勘の相手の種別')).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('世帯メンバー'), '2')
 
     await user.click(screen.getByRole('button', { name: '登録' }))
@@ -359,7 +401,7 @@ describe('FixedCostsPage', () => {
           editable: true,
           splitInputType: 'ratio',
           // userId 99 は現在の世帯メンバー一覧に存在しない（退出済み）。
-          splits: [{ debtorUserId: 99, splitRatio: 50, amountDue: 40000 }],
+          splits: [{ debtorUserId: 99, debtorExternalId: null, debtorExternalName: null, splitRatio: 50, amountDue: 40000 }],
           accountId: null,
           cardId: null,
         },
