@@ -1,20 +1,22 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { AuthProvider } from '../../context/AuthContext'
 import { AppLayout } from '../../components/AppLayout'
 import { SettingsPage } from '../../pages/SettingsPage'
+import { LoginPage } from '../../pages/LoginPage'
+import { apiClient } from '../../api/client'
 import { clearTokens, getAccessToken, setTokens } from '../../api/tokenStorage'
 
-function renderWithLayout(initialPath: string) {
+function renderWithLayout(initialPath: string, realLogin = false) {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<div>ログイン画面</div>} />
+          <Route path="/login" element={realLogin ? <LoginPage /> : <div>ログイン画面</div>} />
           <Route element={<AppLayout />}>
             <Route path="/" element={<div>ダッシュボード本体</div>} />
             <Route path="/zaiko" element={<div>在庫画面本体</div>} />
@@ -32,6 +34,31 @@ function renderWithLayout(initialPath: string) {
 }
 
 describe('AppLayout', () => {
+  it('本人名をログアウトより前に表示する', async () => {
+    setTokens('access-token', 'refresh-token')
+    const name = 'testuser_' + '名'.repeat(41)
+    server.use(http.get('/api/auth/me', () => HttpResponse.json({ id: 1, displayName: name })))
+    renderWithLayout('/')
+    const label = await screen.findByText(name)
+    expect(screen.getByRole('banner')).toContainElement(label)
+    expect(label.compareDocumentPosition(screen.getByRole('button', { name: 'ログアウト' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('取得中と失敗を表示しログアウトを維持する', async () => {
+    setTokens('access-token', 'refresh-token')
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.get('/api/auth/me', async () => {
+      await pending
+      return new HttpResponse(null, { status: 500 })
+    }))
+    renderWithLayout('/')
+    expect(screen.getByText('読み込み中…')).toBeInTheDocument()
+    release()
+    expect(await screen.findByText('アカウント名を取得できません')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toBeEnabled()
+  })
+
   afterEach(() => {
     clearTokens()
   })
@@ -137,6 +164,41 @@ describe('AppLayout', () => {
     expect(screen.getByRole('navigation', { name: '献立表関連機能' })).toContainElement(
       screen.getByRole('link', { name: 'レシピ' }),
     )
+  })
+
+  it('遅延ログアウトの完了が別ユーザーの新セッションを中断しない', async () => {
+    setTokens('access-token', 'refresh-token')
+    let release!: () => void
+    const pending = new Promise<Awaited<ReturnType<typeof apiClient.post>>>((resolve) => {
+      release = () => resolve({ data: null, status: 204 } as Awaited<ReturnType<typeof apiClient.post>>)
+    })
+    const request = vi.spyOn(apiClient, 'post').mockImplementationOnce(() => pending)
+    server.use(
+      http.post('/api/auth/login', () => HttpResponse.json({
+        accessToken: 'testuser_b_access', refreshToken: 'testuser_b_refresh', expiresIn: 900,
+      })),
+      http.get('/api/auth/me', ({ request }) => HttpResponse.json({
+        id: request.headers.get('Authorization') === 'Bearer testuser_b_access' ? 2 : 1,
+        displayName: request.headers.get('Authorization') === 'Bearer testuser_b_access' ? 'testuser_B' : 'testuser_A',
+      })),
+    )
+    const user = userEvent.setup()
+    renderWithLayout('/', true)
+    try {
+      await screen.findByText('testuser_A')
+      await user.click(screen.getByRole('button', { name: 'ログアウト' }))
+      await user.type(await screen.findByLabelText('メールアドレス'), 'testuser_b@example.com')
+      await user.type(screen.getByLabelText('パスワード', { exact: true }), 'TestPass123!')
+      await user.click(screen.getByRole('button', { name: /^ログイン$/ }))
+      await screen.findByText('testuser_B')
+      await act(async () => { release(); await pending })
+      expect(screen.getByText('ダッシュボード本体')).toBeInTheDocument()
+      expect(screen.getByText('testuser_B')).toBeInTheDocument()
+      expect(getAccessToken()).toBe('testuser_b_access')
+    } finally {
+      await act(async () => { release(); await pending })
+      request.mockRestore()
+    }
   })
 
   it('ログアウトでトークンが破棄され/loginへ遷移する', async () => {

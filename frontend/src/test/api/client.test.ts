@@ -72,4 +72,43 @@ describe('apiClient', () => {
     expect(onAuthExpired).toHaveBeenCalledOnce()
     expect(getAccessToken()).toBeNull()
   })
+  it('refresh中に別アカウントでログインし直した場合、古いrefresh結果で新しいトークンを上書きしない', async () => {
+    setTokens('a-expired-access-token', 'a-refresh-token')
+    const onAuthExpired = vi.fn()
+    setOnAuthExpired(onAuthExpired)
+    server.use(
+      http.get('/api/ping', () =>
+        HttpResponse.json({ code: 'UNAUTHORIZED', message: '認証が必要です' }, { status: 401 }),
+      ),
+      http.post('/api/auth/refresh', () => {
+        setTokens('b-access-token', 'b-refresh-token')
+        return HttpResponse.json({ accessToken: 'a-new-access-token', expiresIn: 900 })
+      }),
+    )
+
+    await expect(apiClient.get('/ping')).rejects.toThrow()
+
+    expect(getAccessToken()).toBe('b-access-token')
+    expect(onAuthExpired).not.toHaveBeenCalled()
+  })
+
+  it('refresh失敗時でも別アカウントへ切り替わっていれば新しいセッションを消さない', async () => {
+    setTokens('a-expired-access-token', 'a-refresh-token')
+    const onAuthExpired = vi.fn()
+    setOnAuthExpired(onAuthExpired)
+    server.use(
+      http.get('/api/ping', () =>
+        HttpResponse.json({ code: 'UNAUTHORIZED', message: '認証が必要です' }, { status: 401 }),
+      ),
+      http.post('/api/auth/refresh', () => {
+        setTokens('b-access-token', 'b-refresh-token')
+        return HttpResponse.json({ code: 'UNAUTHORIZED', message: '無効です' }, { status: 401 })
+      }),
+    )
+
+    await expect(apiClient.get('/ping')).rejects.toThrow()
+
+    expect(getAccessToken()).toBe('b-access-token')
+    expect(onAuthExpired).not.toHaveBeenCalled()
+  })
 })
