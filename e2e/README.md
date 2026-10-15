@@ -55,6 +55,8 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
+`events.spec.ts` と `kakeibo-detail.spec.ts` は#246の共通行buttonを1280／390／320pxで検証する（390／320はタッチ対応）。3列と左右の余白、Enter／Space、1行1Tab停止、44px以上の高さ、hover／focus-visible、詳細の巡回と起点復帰、長文と上限金額の横はみ出し、イベントの編集保存後の詳細復帰を確認する。`ISSUE_246_SHOTS_DIR` にリポジトリ外の保存先を指定すると、一覧とイベント・支出・収入詳細、家計簿ダーク設定の画像を保存する。
+
 `income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。
 
 `income-account-ui.spec.ts` は1280／390／320px（390／320はタッチ対応）で、口座0件の案内、未選択の登録防止、キーボードによる口座選択、UI収入登録、選択口座だけの残高増加と履歴、削除後の詳細名と選択肢除外、長文・上限金額での横はみ出しと操作ボタンへの到達を実ローカルWorkersで検証する。`INCOME_UI_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると登録・詳細・削除後詳細を撮影する。`kakeibo.spec.ts` も収入をUIで登録する。`addTransaction` に収入の入金先を明示する `accountId` を渡す。表示専用の既存シナリオでは `addIncomeViaApi` を利用できる。

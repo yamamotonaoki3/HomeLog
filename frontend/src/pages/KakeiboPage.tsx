@@ -56,10 +56,12 @@ export function KakeiboPage() {
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
   const [splitStatus, setSplitStatus] = useState<'loading' | 'error' | 'ok'>('loading')
   const [selected, setSelected] = useState<{ kind: 'expense' | 'income'; id: number } | null>(null)
+  const addButton = useRef<HTMLButtonElement>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const closeDetail = useCallback(() => {
     setSelected(null)
-    detailTrigger.current?.focus()
+    const trigger = detailTrigger.current?.isConnected ? detailTrigger.current : addButton.current
+    trigger?.focus({ preventScroll: true })
   }, [])
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null)
   const [eventPeriod, setEventPeriod] = useState<SummaryPeriod>('year')
@@ -486,6 +488,7 @@ export function KakeiboPage() {
         </Link>
       </div>
       <TransactionListPanel
+        addButtonRef={addButton}
         expenses={expenses}
         incomes={incomes}
         onSelectTransaction={(kind, id, trigger) => { detailTrigger.current = trigger; setSelected({ kind, id }) }}

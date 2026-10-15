@@ -292,7 +292,7 @@ describe('KakeiboPage', () => {
     }))
     const user = userEvent.setup()
     renderKakeiboPage()
-    await user.click(await screen.findByRole('button', { name: 'ランチ' }))
+    await user.click(await screen.findByRole('button', { name: '支出：ランチの詳細' }))
     const dialog = screen.getByRole('dialog')
     expect(dialog).toHaveTextContent('読み込み中...')
     expect(dialog).not.toHaveTextContent('割り勘内訳なし')
@@ -304,9 +304,9 @@ describe('KakeiboPage', () => {
     setupApi({ expenses: [lunchExpense], incomes: [salaryIncome] })
     const user = userEvent.setup()
     renderKakeiboPage()
-    const button = await screen.findByRole('button', { name: 'ランチ' })
-    const row = button.closest('tr')!
-    await user.click(within(row).getAllByRole('cell')[0])
+    const button = await screen.findByRole('button', { name: '支出：ランチの詳細' })
+    const row = button
+    await user.click(row.querySelectorAll('span')[0])
     const detail = screen.getByRole('dialog', { name: '支出詳細' })
     expect(within(detail).getByText('食費')).toBeInTheDocument()
     expect(within(detail).getByText('対象外')).toBeInTheDocument()
@@ -316,8 +316,8 @@ describe('KakeiboPage', () => {
     await user.keyboard(' ')
     expect(screen.getByRole('dialog', { name: '支出詳細' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '閉じる' }))
-    const incomeRow = screen.getByRole('button', { name: '1月分給与' }).closest('tr')!
-    await user.click(within(incomeRow).getAllByRole('cell')[2])
+    const incomeRow = screen.getByRole('button', { name: '収入：1月分給与の詳細' })
+    await user.click(incomeRow.querySelectorAll('span')[2])
     const incomeDetail = screen.getByRole('dialog', { name: '収入詳細' })
     expect(within(incomeDetail).getByText('給与')).toBeInTheDocument()
     expect(within(incomeDetail).queryByText('世帯合計対象')).not.toBeInTheDocument()
@@ -328,17 +328,28 @@ describe('KakeiboPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('詳細の起点行が消えた場合は登録ボタンへ戻す', async () => {
+    setupApi({ expenses: [lunchExpense] })
+    const user = userEvent.setup()
+    renderKakeiboPage()
+    const row = await screen.findByRole('button', { name: '支出：ランチの詳細' })
+    await user.click(row)
+    row.remove()
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: '登録' })).toHaveFocus()
+  })
+
   it('すべての種別で3列を維持し空用途も詳細を開ける', async () => {
     setupApi({ expenses: [{ ...lunchExpense, purpose: '' }], incomes: [salaryIncome] })
     const user = userEvent.setup()
     renderKakeiboPage()
-    const button = await screen.findByRole('button', { name: '内容なし' })
+    const button = await screen.findByRole('button', { name: '支出：内容なしの詳細' })
     await user.click(button)
     expect(screen.getByRole('dialog')).toHaveTextContent('内容なし')
     await user.click(screen.getByRole('button', { name: '閉じる' }))
     for (const mode of ['expense', 'income', 'all']) {
       await user.selectOptions(screen.getByLabelText('種別絞り込み'), mode)
-      expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['日付', '内容', '金額'])
+      expect([...document.querySelectorAll('.transaction-grid.list-row-heading > span')].map((cell) => cell.textContent)).toEqual(['日付', '内容', '金額'])
     }
   })
   it('支出・収入が一つの一覧に混在し日時降順で表示される', async () => {
@@ -346,13 +357,13 @@ describe('KakeiboPage', () => {
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
-    const table = screen.getByRole('table')
-    const rows = within(table).getAllByRole('row').slice(1)
+    const table = screen.getByTestId('transaction-panel')
+    const rows = within(table).getAllByRole('button', { name: /の詳細$/ })
     expect(rows[0]).toHaveTextContent('1月分給与')
     expect(rows[0]).toHaveTextContent('+300,000円')
     expect(rows[1]).toHaveTextContent('ランチ')
     expect(rows[1]).toHaveTextContent('-1,200円')
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['日付', '内容', '金額'])
+    expect([...table.querySelectorAll('.list-row-heading > span')].map((cell) => cell.textContent)).toEqual(['日付', '内容', '金額'])
   })
 
   it('収支の記録が0件のときプレースホルダーを表示する', async () => {
@@ -360,7 +371,7 @@ describe('KakeiboPage', () => {
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
-    expect(screen.getByText('収支の記録はありません')).toHaveAttribute('colspan', '3')
+    expect(document.querySelectorAll('.list-row-button')).toHaveLength(0)
   })
 
   it('種別を支出に切り替えるとカテゴリー絞り込みが表示され支出のみ表示される', async () => {
@@ -751,7 +762,7 @@ describe('KakeiboPage', () => {
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
-    await userEvent.setup().click(screen.getByRole('button', { name: 'ランチ' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: '支出：ランチの詳細' }))
     expect(within(screen.getByRole('dialog', { name: '支出詳細' })).getByText('〇〇銀行')).toBeInTheDocument()
   })
 
@@ -771,7 +782,7 @@ describe('KakeiboPage', () => {
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('ランチ')).toBeInTheDocument())
-    await userEvent.setup().click(screen.getByRole('button', { name: 'ランチ' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: '支出：ランチの詳細' }))
     expect(within(screen.getByRole('dialog', { name: '支出詳細' })).getByText('Suica')).toBeInTheDocument()
   })
 

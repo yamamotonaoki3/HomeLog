@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { apiClient } from '../../api/client'
+import { useDialog } from '../../hooks/useDialog'
 import { RECURRENCE_LABELS, timeRangeLabel, type Event, type SummaryPeriod } from '../../api/eventTypes'
 
 type Summary = { status: 'loading' | 'excluded' | 'error' } | { status: 'ok'; total: number }
@@ -18,13 +19,7 @@ export function EventDetailModal({ event, onClose, onEdit, onDelete, onToggle, t
   const [result, setResult] = useState<{ key: string; summary: Summary } | null>(null)
   const summary: Summary = result?.key === requestKey ? result.summary : { status: 'loading' }
 
-  useEffect(() => {
-    const onKeyDown = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  const dialogRef = useDialog(onClose, '[data-close]')
 
   useEffect(() => {
     let cancelled = false
@@ -39,7 +34,7 @@ export function EventDetailModal({ event, onClose, onEdit, onDelete, onToggle, t
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="イベント詳細"
       onClick={(clickEvent) => { if (clickEvent.target === clickEvent.currentTarget) onClose() }}>
-      <div className="modal event-modal">
+      <div ref={dialogRef} className="modal event-modal">
         <h2>{event.name}</h2>
         <dl className="event-detail-list">
           <dt>日時</dt><dd>{event.eventDate}（{timeRangeLabel(event)}）</dd>
@@ -64,7 +59,7 @@ export function EventDetailModal({ event, onClose, onEdit, onDelete, onToggle, t
             <button type="button" className="btn btn-primary" onClick={onEdit} disabled={toggling}>編集</button>
             <button type="button" className="btn btn-secondary" onClick={onDelete} disabled={toggling}>削除</button>
           </>}
-          <button type="button" className="btn btn-secondary" onClick={onClose} autoFocus>閉じる</button>
+          <button data-close type="button" className="btn btn-secondary" onClick={onClose}>閉じる</button>
         </div>
       </div>
     </div>

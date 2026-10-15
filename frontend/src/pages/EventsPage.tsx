@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import { RECURRENCE_LABELS, timeRangeLabel, type Event } from '../api/eventTypes'
@@ -13,6 +13,12 @@ export function EventsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Event | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
+  const detailTrigger = useRef<HTMLButtonElement | null>(null)
+  const addButton = useRef<HTMLButtonElement>(null)
+  const restoreFocus = useCallback(() => {
+    (detailTrigger.current?.isConnected ? detailTrigger.current : addButton.current)?.focus({ preventScroll: true })
+  }, [])
+  const closeDetail = useCallback(() => { setDetailId(null); restoreFocus() }, [restoreFocus])
   const [toggling, setToggling] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
@@ -44,12 +50,16 @@ export function EventsPage() {
   const handleSaved = async () => {
     const wasEdit = modalTarget != null
     try {
-      await fetchEvents()
+      const latest = await fetchEvents()
+      if (wasEdit && !latest.some((event) => event.id === modalTarget.id)) {
+        setDetailId(null)
+        requestAnimationFrame(restoreFocus)
+      }
     } catch (err) {
       showToast(getApiErrorMessage(err, 'イベント一覧の取得に失敗しました'))
       throw err
     }
-    setDetailId(null)
+    if (!wasEdit) setDetailId(null)
     setModalTarget(undefined)
     showToast(wasEdit ? 'イベントを更新しました' : 'イベントを登録しました')
   }
@@ -85,6 +95,7 @@ export function EventsPage() {
     setDeleting(false)
     setDeleteTarget(null)
     setDetailId(null)
+    requestAnimationFrame(restoreFocus)
     showToast('イベントを削除しました')
   }
 
@@ -99,39 +110,30 @@ export function EventsPage() {
       <div className="panel" data-testid="events-panel">
         <div className="toolbar">
           <h2>イベント一覧</h2>
-          <button type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
+          <button ref={addButton} type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
             イベントを登録
           </button>
         </div>
-        <table className="table events-table">
-          <thead>
-            <tr>
-              <th>イベント名</th>
-              <th>日時</th>
-              <th>繰り返し</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div className="events-list">
+          <div className="list-row-heading events-grid"><span>イベント名</span><span>日時</span><span>繰り返し</span></div>
             {events.length === 0 ? (
-              <tr>
-                <td colSpan={3}>イベントはありません</td>
-              </tr>
+              <p>イベントはありません</p>
             ) : (
               events.map((event) => (
-                <tr key={event.id}>
-                  <td><button type="button" className="event-name-button" onClick={() => setDetailId(event.id)}>{event.name}</button></td>
-                  <td>{event.eventDate}（{timeRangeLabel(event)}）</td>
-                  <td>{RECURRENCE_LABELS[event.recurrenceType]}</td>
-                </tr>
+                <button key={event.id} type="button" className="list-row-button events-grid" aria-label={`${event.name}の詳細`}
+                  onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; setDetailId(event.id) }}>
+                  <span>{event.name}</span>
+                  <span>{event.eventDate}（{timeRangeLabel(event)}）</span>
+                  <span>{RECURRENCE_LABELS[event.recurrenceType]}</span>
+                </button>
               ))
             )}
-          </tbody>
-        </table>
+        </div>
       </div>
       {detailEvent && modalTarget === undefined && !deleteTarget && (
         <EventDetailModal
           event={detailEvent}
-          onClose={() => setDetailId(null)}
+          onClose={closeDetail}
           onEdit={() => setModalTarget(detailEvent)}
           onDelete={() => setDeleteTarget(detailEvent)}
           onToggle={handleToggleShowOnDashboard}

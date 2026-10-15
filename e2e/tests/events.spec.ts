@@ -1,3 +1,4 @@
+import { checkRow } from './support/list-row'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -7,7 +8,7 @@ import { newUser } from './support/test-data'
 
 async function fits(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  for (const selector of ['[data-testid="events-panel"]', '.events-table', '.event-name-button', '.event-modal']) {
+  for (const selector of ['[data-testid="events-panel"]', '.events-grid', '.events-list .list-row-button', '.event-modal']) {
     for (const element of await page.locator(selector).all()) {
       const rect = await element.boundingBox()
       if (rect) { expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(page.viewportSize()!.width) }
@@ -16,6 +17,8 @@ async function fits(page: Page) {
 }
 
 for (const width of [1280, 390, 320]) {
+  test.describe(`${width}px イベント行操作`, () => {
+  test.use({ viewport: { width, height: 844 }, hasTouch: width < 500 })
   test('イベントの一覧・詳細・編集・表示切替・削除 ' + width + 'px', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
     // 非表示イベントのsummaryは既存契約で404となる。
@@ -36,26 +39,29 @@ for (const width of [1280, 390, 320]) {
     await page.getByLabel('通知する', { exact: true }).check()
     await page.getByLabel('デフォルト金額（任意）').fill('1200')
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: `${name}の詳細`, exact: true })).toBeVisible()
     const japaneseName = '[E2E_TEST]' + 'あ'.repeat(40)
     await page.getByRole('button', { name: 'イベントを登録' }).click()
     await page.getByLabel('イベント名').fill(japaneseName)
     await page.getByLabel('日付', { exact: true }).fill('2030-02-01')
     await page.getByLabel('繰り返し', { exact: true }).selectOption('yearly')
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByRole('button', { name: japaneseName, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: `${japaneseName}の詳細`, exact: true })).toBeVisible()
     const panel = page.getByTestId('events-panel')
-    await expect(panel.getByRole('columnheader')).toHaveText(['イベント名', '日時', '繰り返し'])
-    await expect(panel.getByRole('row').filter({ hasText: name })).toContainText('2030-01-15（20:00〜21:00）')
+    await expect(panel.locator('.list-row-heading > span')).toHaveText(['イベント名', '日時', '繰り返し'])
+    await expect(panel.locator('.list-row-button').filter({ hasText: name })).toContainText('2030-01-15（20:00〜21:00）')
     await expect(panel.getByLabel('集計対象期間')).toHaveCount(0)
     await fits(page)
     await expect(page.locator('.toast.is-visible')).toHaveCount(0)
-    const shots = process.env.ISSUE_215_SHOTS_DIR
+    const shots = process.env.ISSUE_246_SHOTS_DIR
     if (shots) { await mkdir(shots, { recursive: true }); await page.screenshot({ path: join(shots, 'events-' + width + '.png'), fullPage: true }) }
-    const button = page.getByRole('button', { name, exact: true })
+    const button = page.getByRole('button', { name: `${name}の詳細`, exact: true })
+    await checkRow(page, button, width, 'イベント詳細')
     await button.focus()
     await button.press('Enter')
     const detail = page.getByRole('dialog', { name: 'イベント詳細' })
+    await expect(detail.getByRole('heading')).toBeInViewport()
+    expect(await detail.locator('.event-modal').evaluate(el => el.scrollTop)).toBe(0)
     await expect(detail).toContainText('世帯共有')
     await expect(detail).toContainText('通知する')
     await expect(detail).toContainText('1200円')
@@ -65,12 +71,15 @@ for (const width of [1280, 390, 320]) {
     if (shots) await page.screenshot({ path: join(shots, 'events-detail-' + width + '.png'), fullPage: true })
     await detail.getByRole('button', { name: '閉じる' }).click()
     await expect(detail).toBeHidden()
+    await expect(button).toBeFocused()
     await button.click()
     await page.keyboard.press('Escape')
     await expect(detail).toBeHidden()
+    await expect(button).toBeFocused()
     await button.click()
     await detail.click({ position: { x: 2, y: 2 } })
     await expect(detail).toBeHidden()
+    await expect(button).toBeFocused()
     await button.click()
     await detail.getByRole('button', { name: '編集', exact: true }).click()
     await expect(page.getByLabel('通知する', { exact: true })).toBeChecked()
@@ -78,7 +87,8 @@ for (const width of [1280, 390, 320]) {
     await fits(page)
     await page.getByLabel('イベント名').fill('[E2E_TEST] 編集済み')
     await page.getByRole('button', { name: '更新', exact: true }).click()
-    await page.getByRole('button', { name: '[E2E_TEST] 編集済み', exact: true }).click()
+    await expect(detail).toBeVisible()
+    await expect(detail.getByRole('heading')).toHaveText('[E2E_TEST] 編集済み')
     await detail.getByLabel('集計対象期間').selectOption('month')
     await expect(detail).toContainText('支出合計：0円')
     await detail.getByRole('button', { name: '表示する', exact: true }).click()
@@ -92,13 +102,15 @@ for (const width of [1280, 390, 320]) {
     await expect(detail).toBeVisible()
     await detail.getByRole('button', { name: '削除', exact: true }).click()
     await page.getByRole('button', { name: '削除する', exact: true }).click()
-    await expect(panel.getByRole('button', { name: '[E2E_TEST] 編集済み', exact: true })).toHaveCount(0)
-    await panel.getByRole('button', { name: japaneseName, exact: true }).click()
+    await expect(panel.getByRole('button', { name: '[E2E_TEST] 編集済みの詳細', exact: true })).toHaveCount(0)
+    await panel.getByRole('button', { name: `${japaneseName}の詳細`, exact: true }).click()
     await expect(detail).toContainText('2030-02-01（終日）')
     await detail.getByRole('button', { name: '削除', exact: true }).click()
     await page.getByRole('button', { name: '削除する', exact: true }).click()
     await expect(panel).toContainText('イベントはありません')
+    await expect(page.getByRole('button', { name: 'イベントを登録' })).toBeFocused()
     await fits(page)
+  })
   })
 }
 
@@ -111,12 +123,12 @@ test('共有イベントは別メンバーが詳細を閲覧でき変更操作�
   await page.getByLabel('イベント名').fill('[E2E_TEST] 共有イベント')
   await page.getByLabel('日付', { exact: true }).fill('2030-01-15')
   await page.getByRole('button', { name: '登録', exact: true }).click()
-  await expect(page.getByRole('button', { name: '[E2E_TEST] 共有イベント', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '[E2E_TEST] 共有イベントの詳細', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'ログアウト' }).click()
   await register(page, newUser('event_member'))
   await joinHousehold(page, code)
   await page.goto('/events')
-  await page.getByRole('button', { name: '[E2E_TEST] 共有イベント', exact: true }).click()
+  await page.getByRole('button', { name: '[E2E_TEST] 共有イベントの詳細', exact: true }).click()
   const detail = page.getByRole('dialog', { name: 'イベント詳細' })
   await expect(detail).toContainText('世帯共有')
   await expect(detail).toContainText('表示する')
