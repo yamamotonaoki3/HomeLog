@@ -326,7 +326,7 @@ erDiagram
 
     users ||--o{ incomes : "得る(earner)"
     income_categories ||--o{ incomes : "分類する"
-    accounts ||--o{ incomes : "入金先になる(割り勘精算)"
+    accounts ||--o{ incomes : "入金先になる(通常収入・割り勘精算)"
 
     zaiko_categories ||--o{ inventory_items : "分類する"
     stores ||--o{ inventory_items : "紐付く"

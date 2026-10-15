@@ -45,7 +45,7 @@ export async function joinHousehold(page: Page, inviteCode: string): Promise<voi
   await expect(page).toHaveURL(/\/$/)
 }
 
-/** #244のAPI契約。口座選択UIは#245で対応するため、収入の表示検証用データは実APIで作る。 */
+/** 表示検証専用の収入データを実APIで作る。UI登録そのものはaddTransactionで検証する。 */
 export async function addIncomeViaApi(page: Page, amount: number, content: string, date?: string): Promise<void> {
   const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
   const headers = { Authorization: `Bearer ${token}` }
@@ -66,13 +66,17 @@ export async function addTransaction(
   kind: '支出' | '収入',
   amount: number,
   text: string,
-  options: { date?: string; splitWith?: string; splitRatio?: number } = {},
+  options: { date?: string; splitWith?: string; splitRatio?: number; accountId?: number } = {},
 ): Promise<void> {
   await page.getByRole('button', { name: '登録', exact: true }).first().click()
   const modal = page.getByTestId('transaction-modal')
   await modal.getByRole('tab', { name: kind }).click()
   await modal.getByLabel('金額').fill(String(amount))
   await modal.getByLabel(kind === '支出' ? '使用用途（任意）' : '収入内容').fill(text)
+  if (kind === '収入') {
+    if (options.accountId === undefined) throw new Error('収入登録には明示的なaccountIdが必要です')
+    await modal.getByLabel('入金先口座（必須）').selectOption(String(options.accountId))
+  }
   if (options.date) {
     await modal.getByLabel('日時').fill(options.date)
   }

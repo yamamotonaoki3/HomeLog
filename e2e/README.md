@@ -55,7 +55,9 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
-`income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。#245で口座選択UIを実装するまで、既存の収入表示シナリオは`addIncomeViaApi`で実API登録する。
+`income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。
+
+`income-account-ui.spec.ts` は1280／390／320px（390／320はタッチ対応）で、口座0件の案内、未選択の登録防止、キーボードによる口座選択、UI収入登録、選択口座だけの残高増加と履歴、削除後の詳細名と選択肢除外、長文・上限金額での横はみ出しと操作ボタンへの到達を実ローカルWorkersで検証する。`INCOME_UI_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると登録・詳細・削除後詳細を撮影する。`kakeibo.spec.ts` も収入をUIで登録する。`addTransaction` に収入の入金先を明示する `accountId` を渡す。表示専用の既存シナリオでは `addIncomeViaApi` を利用できる。
 
 `fixed-cost-detail.spec.ts` は1280／390／320pxで固定費4列の各セル・余白・Enter/Space、詳細のフォーカス巡回と復帰、編集保存／キャンセル・削除確認／キャンセル・登録導線、上限金額と長い名前・口座名の横はみ出しを実ローカルAPIで検証する。390／320pxはタッチ対応。`FIXED_COST_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・編集・削除確認・登録を保存する。
 

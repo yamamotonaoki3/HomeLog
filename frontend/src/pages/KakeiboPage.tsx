@@ -48,6 +48,8 @@ export function KakeiboPage() {
   const latestIncomeRequestId = useRef(0)
 
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [accountsStatus, setAccountsStatus] = useState<'loading' | 'error' | 'ok'>('loading')
+  const latestAccountRequestId = useRef(0)
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [members, setMembers] = useState<HouseholdMember[]>([])
@@ -165,6 +167,21 @@ export function KakeiboPage() {
     return response.data
   }, [])
 
+  const fetchAccounts = useCallback(async () => {
+    const requestId = ++latestAccountRequestId.current
+    setAccountsStatus('loading')
+    try {
+      const response = await apiClient.get<Account[]>('/accounts')
+      if (requestId === latestAccountRequestId.current) {
+        setAccounts(response.data)
+        setAccountsStatus('ok')
+      }
+    } catch (error) {
+      if (requestId === latestAccountRequestId.current) setAccountsStatus('error')
+      throw error
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     const expenseRequestId = ++latestExpenseRequestId.current
@@ -242,11 +259,7 @@ export function KakeiboPage() {
         if (!cancelled) setIncomeLoading(false)
       })
 
-    apiClient
-      .get<Account[]>('/accounts')
-      .then((response) => {
-        if (!cancelled) setAccounts(response.data)
-      })
+    fetchAccounts()
       .catch((err: unknown) => {
         if (!cancelled) {
           showToast(getApiErrorMessage(err, '口座の取得に失敗しました。時間をおいて再度お試しください'))
@@ -307,7 +320,7 @@ export function KakeiboPage() {
     return () => {
       cancelled = true
     }
-  }, [fetchDashboardSummary, showToast])
+  }, [fetchAccounts, fetchDashboardSummary, showToast])
 
   // イベント一覧が取得できた後、または期間セレクトが切り替えられたときに集計を取り直す。
   useEffect(() => {
@@ -378,18 +391,16 @@ export function KakeiboPage() {
       showToast('支出を登録しました')
       return
     }
-    try {
-      if (incomeCategoryFilter === '') {
-        await fetchIncomes('')
-      } else {
-        await Promise.all([fetchIncomes(incomeCategoryFilter), fetchAllIncomes()])
-      }
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '収入の取得に失敗しました'))
-      throw err
-    }
     setModalOpen(false)
     showToast('収入を登録しました')
+    const results = await Promise.allSettled([
+      fetchIncomes(incomeCategoryFilter),
+      ...(incomeCategoryFilter === '' ? [] : [fetchAllIncomes()]),
+      fetchAccounts(),
+    ])
+    if (results.some((result) => result.status === 'rejected')) {
+      showToast('収入は登録済みです。一覧または口座の更新に失敗しました。画面を再読み込みしてください')
+    }
   }
 
   const loading =
@@ -492,6 +503,7 @@ export function KakeiboPage() {
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
+          accountsStatus={accountsStatus}
           events={events}
           members={members}
           initialKind={initialKind}

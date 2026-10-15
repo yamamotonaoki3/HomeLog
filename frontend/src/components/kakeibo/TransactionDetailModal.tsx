@@ -28,7 +28,7 @@ export function TransactionDetailModal({ transaction, accounts, expenseCategorie
   const expense = transaction.kind === 'expense' ? transaction.data : null
   const data = transaction.data
   const title = expense ? '支出詳細' : '収入詳細'
-  const account = data.accountId === null ? 'なし' : accounts.find((item) => item.id === data.accountId)?.name ?? '取得できません'
+  const account = data.accountId === null ? 'なし' : (transaction.kind === 'income' ? transaction.data.accountName : accounts.find((item) => item.id === data.accountId)?.name) ?? '取得できません'
   const card = expense?.cardId == null ? 'なし' : accounts.flatMap((item) => item.cards).find((item) => item.id === expense.cardId)?.name ?? '取得できません'
   const category = (expense ? expenseCategories : incomeCategories).find((item) => item.id === data.categoryId)?.name ?? '取得できません'
   const ownSplits = expense ? splits.filter((split) => split.expenseId === expense.id && split.role === 'payer') : []

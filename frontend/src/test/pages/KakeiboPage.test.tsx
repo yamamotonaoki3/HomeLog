@@ -37,7 +37,7 @@ function setupApi(initial: Partial<MockState> = {}) {
   const state: MockState = {
     expenses: initial.expenses ?? [],
     incomes: initial.incomes ?? [],
-    accounts: initial.accounts ?? [],
+    accounts: initial.accounts ?? [{ id: 5, name: 'testuser_bank', type: 'bank', balance: 10000, cards: [] }],
     fixedCosts: initial.fixedCosts ?? [],
     events: initial.events ?? [],
   }
@@ -83,8 +83,12 @@ function setupApi(initial: Partial<MockState> = {}) {
     http.post('/api/incomes', async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>
       calls.push({ method: 'POST', url: '/api/incomes', body })
+      const account = state.accounts.find((a) => a.id === body.accountId)
+      if (!account) return HttpResponse.json({ message: '口座を選択してください' }, { status: 400 })
+      account.balance += body.amount as number
       const income: Income = {
-        accountId: null,
+        accountId: account.id,
+        accountName: account.name,
         id: 200,
         incomeDate: body.incomeDate as string,
         amount: body.amount as number,
@@ -95,7 +99,7 @@ function setupApi(initial: Partial<MockState> = {}) {
       state.incomes.push(income)
       return HttpResponse.json(income, { status: 201 })
     }),
-    http.get('/api/accounts', () => HttpResponse.json(state.accounts)),
+    http.get('/api/accounts', () => { calls.push({ method: 'GET', url: '/api/accounts' }); return HttpResponse.json(state.accounts) }),
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
     http.get('/api/events', () => HttpResponse.json(state.events)),
     http.get('/api/households/me', () => HttpResponse.json({ members: initial.members ?? [] })),
@@ -151,6 +155,7 @@ const suppliesExpense: Expense = {
 }
 
 const salaryIncome: Income = {
+  accountName: null,
   accountId: null,
   id: 1,
   incomeDate: '2026-01-25',
@@ -160,6 +165,7 @@ const salaryIncome: Income = {
   memo: null,
 }
 const bonusIncome: Income = {
+  accountName: null,
   accountId: null,
   id: 2,
   incomeDate: '2026-06-10',
@@ -174,6 +180,80 @@ async function openModal() {
   await user.click(screen.getByRole('button', { name: '登録' }))
   return user
 }
+
+describe('収入保存後の更新 #245', () => {
+  it('口座の初期取得が遅い間は登録を防止し、取得完了後に選択できる', async () => {
+    setupApi()
+    let release: () => void = () => undefined
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.get('/api/accounts', async () => { await pending; return HttpResponse.json([{ id: 5, name: 'testuser_delayed', type: 'bank', balance: 0, cards: [] }]) }))
+    renderKakeiboPage()
+    await screen.findByText('収支の記録はありません')
+    const user = await openModal()
+    await user.click(screen.getByRole('tab', { name: '収入' }))
+    expect(screen.getByText('口座を読み込み中...')).toBeInTheDocument()
+    expect(within(screen.getByTestId('transaction-modal')).getByRole('button', { name: '登録' })).toBeDisabled()
+    release()
+    await screen.findByRole('option', { name: 'testuser_delayed' })
+    expect(screen.getByLabelText('入金先口座（必須）')).toBeEnabled()
+  })
+  it('カテゴリーで絞り込み中の登録は表示一覧と全件集計の両方を再取得する', async () => {
+    const now = new Date()
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    const { calls } = setupApi({ incomes: [{ ...bonusIncome, incomeDate: date, amount: 500 }] })
+    renderKakeiboPage()
+    await screen.findByText('夏季賞与')
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
+    await user.selectOptions(screen.getByLabelText('カテゴリー絞り込み'), '給与')
+    await waitFor(() => expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument())
+    await openModal()
+    await user.selectOptions(screen.getByLabelText('入金先口座（必須）'), '5')
+    await user.type(screen.getByLabelText('金額'), '2500')
+    await user.click(screen.getByLabelText('収入内容'))
+    await user.paste('[E2E_TEST]絞り込み給与')
+    calls.length = 0
+    await user.click(within(screen.getByTestId('transaction-modal')).getByRole('button', { name: '登録' }))
+    await screen.findByText('[E2E_TEST]絞り込み給与')
+    await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月収入：3000円'))
+    expect(screen.queryByText('夏季賞与')).not.toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'GET').map((c) => c.url)).toEqual(expect.arrayContaining(['/api/incomes?categoryId=11', '/api/incomes', '/api/accounts']))
+  })
+  it.each(['none', 'income', 'account', 'both'])('%sの再取得失敗でも登録は一度で確定する', async (failure) => {
+    const { calls, state } = setupApi()
+    let saved = false
+    let accountGets = 0
+    server.use(
+      http.get('/api/accounts', () => {
+        accountGets++
+        if (saved && ['account', 'both'].includes(failure)) return HttpResponse.json({}, { status: 500 })
+        return HttpResponse.json(saved ? [{ ...state.accounts[0], name: 'testuser_latest' }] : state.accounts)
+      }),
+      http.get('/api/incomes', () => saved && ['income', 'both'].includes(failure) ? HttpResponse.json({}, { status: 500 }) : HttpResponse.json(state.incomes)),
+    )
+    renderKakeiboPage()
+    await screen.findByText('収支の記録はありません')
+    const user = await openModal()
+    await user.click(screen.getByRole('tab', { name: '収入' }))
+    await user.selectOptions(screen.getByLabelText('入金先口座（必須）'), '5')
+    await user.type(screen.getByLabelText('金額'), '2500')
+    await user.click(screen.getByLabelText('収入内容'))
+    await user.paste('[E2E_TEST]給与')
+    saved = true
+    await user.click(within(screen.getByTestId('transaction-modal')).getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(screen.queryByTestId('transaction-modal')).not.toBeInTheDocument())
+    await waitFor(() => expect(accountGets).toBe(2))
+    expect(calls.filter((c) => c.method === 'POST' && c.url === '/api/incomes')).toHaveLength(1)
+    expect(state.accounts[0].balance).toBe(12500)
+    if (failure !== 'none') await screen.findByText(/収入は登録済み.*更新に失敗/)
+    else {
+      expect(screen.getByTestId('monthly-summary')).toHaveTextContent('今月収入：2500円')
+      await openModal()
+      await user.click(screen.getByRole('tab', { name: '収入' }))
+      expect(screen.getByRole('option', { name: 'testuser_latest' })).toBeInTheDocument()
+    }
+  })
+})
 
 describe('KakeiboPage 未精算サマリー', () => {
   it('未精算の割り勘の件数・金額を支払う/受け取るで表示する', async () => {
@@ -497,6 +577,7 @@ describe('KakeiboPage', () => {
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '250000')
     await user.type(screen.getByLabelText('収入内容'), '7月分給与')
+    await user.selectOptions(screen.getByLabelText('入金先口座（必須）'), '5')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('7月分給与')).toBeInTheDocument())
@@ -550,6 +631,7 @@ describe('KakeiboPage', () => {
     const user = await openModal()
     const modal = screen.getByTestId('transaction-modal')
     await user.click(within(modal).getByRole('tab', { name: '収入' }))
+    await user.selectOptions(screen.getByLabelText('入金先口座（必須）'), '5')
 
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '1000')

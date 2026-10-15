@@ -11,6 +11,7 @@ interface Props {
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
   accounts: Account[]
+  accountsStatus?: 'loading' | 'error' | 'ok'
   // イベント紐付けは支出のみが対象(F06ドキュメント「支出とイベントの紐付け」)。
   events: Event[]
   // 割り勘の相手候補(自分以外の世帯メンバー)。
@@ -36,6 +37,7 @@ export function TransactionModal({
   expenseCategories,
   incomeCategories,
   accounts,
+  accountsStatus = 'ok',
   events,
   members,
   initialKind,
@@ -88,6 +90,11 @@ export function TransactionModal({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
+    if (kind === 'income' && (accountsStatus !== 'ok' || !accounts.some((account) => String(account.id) === accountSelection))) {
+      setError('入金先口座を選択してください')
+      return
+    }
     const descriptionLabel = kind === 'expense' ? '使用用途' : '収入内容'
     const trimmedDescription = (kind === 'expense' ? purpose : content).trim()
     // 支出の使用用途は任意(空欄可・0〜100文字)。収入内容は必須(1〜100文字)。
@@ -131,6 +138,7 @@ export function TransactionModal({
         })
       } else {
         await apiClient.post('/incomes', {
+          accountId: Number(accountSelection),
           incomeDate: date,
           amount: amountValue,
           content: trimmedDescription,
@@ -153,7 +161,7 @@ export function TransactionModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal" data-testid="transaction-modal">
+      <div className="modal transaction-modal" data-testid="transaction-modal">
         <h2>登録</h2>
         <div className="tabs" role="tablist">
           <button
@@ -220,6 +228,16 @@ export function TransactionModal({
               </option>
             ))}
           </select>
+          {kind === 'income' && (
+            <>
+              <label htmlFor="tx-income-account">入金先口座（必須）</label>
+              <select id="tx-income-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)} disabled={accountsStatus !== 'ok' || accounts.length === 0} required>
+                <option value="">選択してください</option>
+                {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </select>
+              {accountsStatus === 'loading' ? <p>口座を読み込み中...</p> : accountsStatus === 'error' ? <p role="alert" className="error">口座の取得に失敗しました。画面を再読み込みしてください</p> : accounts.length === 0 ? <p>収入の登録には口座が必要です。<a href="/accounts">口座管理へ</a></p> : null}
+            </>
+          )}
           {kind === 'expense' && (
             <>
               <label htmlFor="tx-account">口座/カード（任意）</label>
@@ -265,7 +283,7 @@ export function TransactionModal({
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
           <p className="error">{error}</p>
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0 || (kind === 'income' && (accountsStatus !== 'ok' || accounts.length === 0))}>
               登録
             </button>
             <button type="button" className="btn btn-secondary" onClick={onClose}>
