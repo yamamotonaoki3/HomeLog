@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { errorResponse } from './lib/errors'
 import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
@@ -37,6 +38,26 @@ export type Variables = {
 export type AppEnv = { Bindings: Bindings; Variables: Variables }
 
 const app = new Hono<AppEnv>()
+
+app.onError((err, c) => {
+  // Drizzle may wrap the D1 trigger error in a cause.
+  const seen = new Set<Error>()
+  let cause: unknown = err
+  while (cause instanceof Error && !seen.has(cause)) {
+    seen.add(cause)
+    if (/\bHOMELOG_ACCOUNT_DELETED\b/.test(cause.message)) {
+      return c.json(errorResponse('VALIDATION_ERROR', '指定された口座が見つかりません'), 400)
+    }
+    cause = cause.cause
+  }
+  // Honoの既定と同じHTTP例外/500応答を維持し、privateなerrorHandlerには依存しない。
+  if ('getResponse' in err) {
+    const response = err.getResponse()
+    return c.newResponse(response.body, response)
+  }
+  console.error(err)
+  return c.text('Internal Server Error', 500)
+})
 
 // app.route('/api/xxx', xxxRoute)は「/api/xxxへのリクエストは全部xxxRoute(各機能ごとに
 // 分けて定義したルーター)に処理を任せる」という設定。例えば/api/recipesへのリクエストは

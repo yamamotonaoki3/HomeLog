@@ -112,6 +112,7 @@ erDiagram
         varchar name
         varchar type
         numeric balance
+        timestamp deleted_at
         timestamp created_at
     }
     cards {
@@ -485,14 +486,17 @@ erDiagram
 | accounts.id | BIGSERIAL | ○ | PK |
 | accounts.household_id | BIGINT | ○ | FK → households.id |
 | accounts.owner_user_id | BIGINT | ○ | FK → users.id（口座の所有者） |
+| accounts.deleted_at | TEXT（Workers/SQLite） | — | 論理削除日時（UTC）。NULLは有効。収入が参照する口座を削除した場合に設定し、名前・ID・残高は保持する。新規マイグレーション0015で追加 |
 | accounts.name | VARCHAR(50) | ○ | 口座名（例：〇〇銀行、PayPay 等） |
 | accounts.type | VARCHAR(20) | ○ | 種別（`bank`/`e_money`等） |
-| accounts.balance | NUMERIC | ○ | 残高。登録時の初期残高から、当該口座を指定した支出登録のたびに自動減算される。所有者本人のみ閲覧可能（[common-notes.md](common-notes.md) 2章） |
+| accounts.balance | NUMERIC | ○ | 残高。初期残高から、支出・チャージで減算、通常収入・精算収入で加算する。論理削除時も値は保持し、一覧・残高合計には含めない。所有者本人のみ閲覧可能（[common-notes.md](common-notes.md) 2章） |
 | cards.id | BIGSERIAL | ○ | PK |
 | cards.account_id | BIGINT | ○ | FK → accounts.id（カードは口座の子エンティティ） |
 | cards.name | VARCHAR(50) | ○ | カード名 |
 | cards.card_type | VARCHAR(10) | ○ | 種別（`credit`/`charge`、既定`credit`）。登録後は変更不可 |
 | cards.balance | NUMERIC | ○ | `charge`型カードの残高（`credit`型は常に0で未使用）。所有者本人のみ閲覧可能 |
+
+Workersの`0015_accounts_deleted_at.sql`では、削除済み口座（子カード経由を含む）への取引・カード・固定費・精算支払元の新規参照/参照変更、および残高更新をDBトリガーで拒否する。事前照合と書き込みの間に論理削除されても、D1 batch全体がロールバックされる。既存のNULL収入口座・精算履歴・残高を遡及変更するものではない。
 
 ### card_charges（カードチャージ履歴）
 
@@ -568,7 +572,7 @@ erDiagram
 | household_id | BIGINT | ○ | FK → households.id |
 | earner_user_id | BIGINT | ○ | FK → users.id（収入を得た人。常に登録者本人。[F13_kakeibo_income](features/F13_kakeibo_income.md) 6章参照） |
 | category_id | BIGINT | ○ | FK → income_categories.id |
-| account_id | BIGINT | — | FK → accounts.id（割り勘精算による収入のみ設定される入金先口座。通常の収入登録では常にNULL。[F04_kakeibo_warikan](features/F04_kakeibo_warikan.md) 8章参照） |
+| account_id | BIGINT | — | FK → accounts.id（新規の通常収入POSTでは同世帯・本人所有・未削除の口座ID必須。既存NULL行は保持し、精算収入では従来どおり任意。DB列はnullableを維持。[F13_kakeibo_income](features/F13_kakeibo_income.md)参照） |
 | amount | NUMERIC | ○ | 収入金額 |
 | content | VARCHAR(100) | ○ | 収入内容（例：〇月分給与） |
 | memo | VARCHAR(255) | — | メモ |

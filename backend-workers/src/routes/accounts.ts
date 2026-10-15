@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -50,7 +50,7 @@ accountsRoute.get('/', async (c) => {
   const ownedAccounts = await db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .where(and(eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
     .orderBy(accounts.id)
     .all()
 
@@ -104,7 +104,7 @@ accountsRoute.get('/:id/transactions', async (c) => {
   const account = await db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
     .get()
   if (!account) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
@@ -248,7 +248,7 @@ accountsRoute.patch('/:id', async (c) => {
   const account = await db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
     .get()
   if (!account) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
@@ -273,7 +273,7 @@ accountsRoute.delete('/:id', async (c) => {
   const account = await db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
     .get()
   if (!account) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
@@ -316,7 +316,27 @@ accountsRoute.delete('/:id', async (c) => {
     }
   }
 
-  await db.delete(accounts).where(eq(accounts.id, accountId))
+  // 事前チェック後の追加・残高変更も、削除と同じbatch内で再確認する。
+  const noDeletionBlockers = `
+    NOT EXISTS (SELECT 1 FROM expenses WHERE account_id = accounts.id
+      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
+    AND NOT EXISTS (SELECT 1 FROM card_charges WHERE from_account_id = accounts.id
+      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
+    AND NOT EXISTS (SELECT 1 FROM fixed_costs WHERE account_id = accounts.id
+      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
+    AND NOT EXISTS (SELECT 1 FROM cards WHERE account_id = accounts.id AND balance <> 0)
+  `
+  const [softDelete, physicalDelete] = await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE accounts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?
+      AND deleted_at IS NULL AND ${noDeletionBlockers}
+      AND EXISTS (SELECT 1 FROM incomes WHERE account_id = accounts.id)`).bind(accountId),
+    c.env.DB.prepare(`DELETE FROM accounts WHERE id = ? AND deleted_at IS NULL
+      AND ${noDeletionBlockers}
+      AND NOT EXISTS (SELECT 1 FROM incomes WHERE account_id = accounts.id)`).bind(accountId),
+  ])
+  if (softDelete.meta.changes === 0 && physicalDelete.meta.changes === 0) {
+    return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
+  }
 
   return c.body(null, 204)
 })

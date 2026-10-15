@@ -1,5 +1,5 @@
 import { expect, test } from './console-guard'
-import { addTransaction, setupUserWithHousehold } from './support/flows'
+import { addIncomeViaApi, addTransaction, setupUserWithHousehold } from './support/flows'
 
 test.describe('S-04 ダッシュボードカレンダーAPI', () => {
   test('実UIで登録した当日の収支・固定費・通知イベントを返す', async ({ page, consoleGuard }) => {
@@ -11,7 +11,7 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
 
     await page.goto('/kakeibo')
     await addTransaction(page, '支出', 1200, '[E2E_TEST] カレンダー支出', { date: jstToday })
-    await addTransaction(page, '収入', 3000, '[E2E_TEST] カレンダー収入', { date: jstToday })
+    await addIncomeViaApi(page, 3000, '[E2E_TEST] カレンダー収入', jstToday)
 
     await page.goto('/fixed-costs')
     await page.getByRole('button', { name: '固定費を登録' }).click()

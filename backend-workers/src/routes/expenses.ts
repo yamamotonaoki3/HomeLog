@@ -293,7 +293,7 @@ expensesRoute.post('/', async (c) => {
     const account = await db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.id, card.accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+      .where(and(eq(accounts.id, card.accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
       .get()
     if (!account) {
       return c.json(errorResponse('VALIDATION_ERROR', INVALID_CARD_MESSAGE), 400)
@@ -309,7 +309,7 @@ expensesRoute.post('/', async (c) => {
     const account = await db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+      .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
       .get()
     if (!account) {
       return c.json(errorResponse('VALIDATION_ERROR', INVALID_ACCOUNT_MESSAGE), 400)

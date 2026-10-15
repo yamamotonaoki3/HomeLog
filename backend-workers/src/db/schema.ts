@@ -139,6 +139,7 @@ export const accounts = sqliteTable('accounts', {
   ownerUserId: integer('owner_user_id')
     .notNull()
     .references(() => users.id),
+  deletedAt: text('deleted_at'),
   name: text('name').notNull(),
   type: text('type').notNull(),
   // 金額は整数円のためSQLiteでも誤差の心配がなく、INTEGERにそのまま保持する。
@@ -220,7 +221,7 @@ export const incomes = sqliteTable('incomes', {
   categoryId: integer('category_id')
     .notNull()
     .references(() => incomeCategories.id),
-  // 割り勘精算による収入のみ設定される入金先口座(任意)。通常の収入登録では常にNULL。
+  // 通常収入の新規登録では必須。過去のNULL行・精算収入は遡及変更しない。
   accountId: integer('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   amount: integer('amount').notNull(),
   content: text('content').notNull(),

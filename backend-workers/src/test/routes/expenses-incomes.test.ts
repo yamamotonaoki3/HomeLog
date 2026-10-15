@@ -307,7 +307,7 @@ describe('POST /api/incomes', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ incomeDate: '2024-01-25', amount: 250000, content: '給与', categoryId }),
+        body: JSON.stringify({ incomeDate: '2024-01-25', amount: 250000, content: '給与', categoryId, accountId: (await createAccount(headers)).id }),
       },
       env,
     )
@@ -326,7 +326,7 @@ describe('POST /api/incomes', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ incomeDate: '2024-01-25', amount: 1000, content: 'テスト', categoryId: 99999 }),
+        body: JSON.stringify({ incomeDate: '2024-01-25', amount: 1000, content: 'テスト', categoryId: 99999, accountId: (await createAccount(headers)).id }),
       },
       env,
     )
@@ -343,12 +343,12 @@ describe('GET /api/incomes', () => {
 
     await app.request(
       '/api/incomes',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ incomeDate: '2024-01-01', amount: 1000, content: 'A', categoryId }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ incomeDate: '2024-01-01', amount: 1000, content: 'A', categoryId, accountId: (await createAccount(headers)).id }) },
       env,
     )
     await app.request(
       '/api/incomes',
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...other.headers }, body: JSON.stringify({ incomeDate: '2024-01-01', amount: 2000, content: 'B', categoryId: await getFirstIncomeCategoryId(other.headers) }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...other.headers }, body: JSON.stringify({ incomeDate: '2024-01-01', amount: 2000, content: 'B', categoryId: await getFirstIncomeCategoryId(other.headers), accountId: (await createAccount(other.headers)).id }) },
       env,
     )
 

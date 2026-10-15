@@ -1,5 +1,5 @@
 import { expect, test } from './console-guard'
-import { addTransaction, setupUserWithHousehold } from './support/flows'
+import { addIncomeViaApi, addTransaction, setupUserWithHousehold } from './support/flows'
 
 test.describe('F-03/F-13 家計簿', () => {
   test('支出・収入を登録すると一覧と今月サマリーに反映される', async ({ page, consoleGuard }) => {
@@ -8,7 +8,7 @@ test.describe('F-03/F-13 家計簿', () => {
     await page.goto('/kakeibo')
 
     await addTransaction(page, '支出', 1200, '[E2E_TEST] ランチ')
-    await addTransaction(page, '収入', 5000, '[E2E_TEST] 臨時収入')
+    await addIncomeViaApi(page, 5000, '[E2E_TEST] 臨時収入')
 
     const rows = page.getByRole('row')
     await expect(rows.filter({ hasText: '[E2E_TEST] ランチ' })).toContainText('-1,200円')

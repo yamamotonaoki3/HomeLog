@@ -79,12 +79,17 @@ describe('POST/PATCH/DELETE /api/income-categories', () => {
       env,
     )
     const category = await createRes.json<{ id: number }>()
+    const accountResponse = await app.request('/api/accounts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ name: '[E2E_TEST] income', type: 'bank', balance: 0 }),
+    }, env)
+    const account = await accountResponse.json<{ id: number }>()
     await app.request(
       '/api/incomes',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ incomeDate: '2024-01-01', amount: 5000, content: '配当', categoryId: category.id }),
+        body: JSON.stringify({ incomeDate: '2024-01-01', amount: 5000, content: '配当', categoryId: category.id, accountId: account.id }),
       },
       env,
     )
