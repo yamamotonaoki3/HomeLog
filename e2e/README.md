@@ -55,6 +55,8 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
+`fixed-cost-detail.spec.ts` は1280／390／320pxで固定費4列の各セル・余白・Enter/Space、詳細のフォーカス巡回と復帰、編集保存／キャンセル・削除確認／キャンセル・登録導線、上限金額と長い名前・口座名の横はみ出しを実ローカルAPIで検証する。390／320pxはタッチ対応。`FIXED_COST_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・編集・削除確認・登録を保存する。
+
 `shopping-detail.spec.ts` は1280／390／320pxで買い物3列の行全域、Enter/Space、詳細のフォーカス巡回と復帰、購入個数の保持・一括反映（実在庫数と自動残留・手動除外）、削除・手動追加・横はみ出しを検証する。390／320pxはタッチ対応コンテキストで実行する。`SHOPPING_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・手動追加の画像を保存する。
 
 `inventory-detail.spec.ts` は1280／390／320pxで在庫3列の行全域、Enter/Space、詳細のTab巡回とフォーカス復帰、編集の保存／キャンセルを検証する。390／320pxはタッチ対応コンテキストで実行する。`INVENTORY_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・編集・登録の画像を保存する。既存の数量・値段E2Eも在庫詳細経由で操作する。

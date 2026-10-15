@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
+import { useDialog } from '../../hooks/useDialog'
 import type { Account, FixedCost } from '../../api/kakeiboTypes'
 import { SplitFields, type HouseholdMember, type InitialSplit, type SplitFieldsResult } from './SplitFields'
 
@@ -14,7 +15,7 @@ interface Props {
   // 世帯メンバー取得が完了したか（退出済みメンバー判定の保留制御）。
   membersLoaded?: boolean
   onClose: () => void
-  onSaved: () => Promise<void>
+  onSaved: (saved: FixedCost) => Promise<void>
 }
 
 function initialAccountSelection(fixedCost: FixedCost | null): string {
@@ -47,6 +48,8 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
   const [split, setSplit] = useState<SplitFieldsResult | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const close = () => { if (!submitting) onClose() }
+  const ref = useDialog(close, '#fc-name')
 
   const handleSplitChange = useCallback((result: SplitFieldsResult) => {
     setSplit(result)
@@ -54,6 +57,7 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
     const trimmedName = name.trim()
     if (trimmedName.length < 1 || trimmedName.length > 50) {
       setError('固定費名は1〜50文字で入力してください')
@@ -87,11 +91,12 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
       splitInputType: split?.enabled ? split.splitInputType : null,
       splits: split?.enabled ? split.splits : [],
     }
+    let saved: FixedCost
     try {
       if (isEdit) {
-        await apiClient.patch(`/fixed-costs/${fixedCost.id}`, payload)
+        saved = (await apiClient.patch<FixedCost>(`/fixed-costs/${fixedCost.id}`, payload)).data
       } else {
-        await apiClient.post('/fixed-costs', payload)
+        saved = (await apiClient.post<FixedCost>('/fixed-costs', payload)).data
       }
     } catch (err) {
       setError(getApiErrorMessage(err, isEdit ? '固定費の更新に失敗しました' : '固定費の登録に失敗しました'))
@@ -100,7 +105,7 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
     }
 
     try {
-      await onSaved()
+      await onSaved(saved)
     } catch {
       // The caller is responsible for notifying the user about refresh failures.
     } finally {
@@ -109,9 +114,9 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <h2>{isEdit ? '固定費を編集' : '固定費を登録'}</h2>
+    <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) close() }}>
+      <div ref={ref} className="modal fixed-cost-modal" role="dialog" aria-modal="true" aria-labelledby="fixed-cost-form-title">
+        <h2 id="fixed-cost-form-title">{isEdit ? '固定費を編集' : '固定費を登録'}</h2>
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="fc-name">固定費名</label>
           <input
