@@ -173,6 +173,7 @@ erDiagram
         bigserial id PK
         bigint fixed_cost_id FK
         bigint debtor_user_id FK
+        bigint debtor_external_id FK
         varchar debtor_display_snapshot
         varchar split_input_type
         numeric split_ratio
@@ -295,6 +296,7 @@ erDiagram
     households ||--o{ fixed_costs : "持つ"
     fixed_costs ||--o{ fixed_cost_splits : "割り勘設定を持つ"
     users ||--o{ fixed_cost_splits : "負担する(debtor)"
+    external_persons ||--o{ fixed_cost_splits : "負担する(debtor)"
     users ||--o{ fixed_costs : "登録する(created_by)"
     fixed_costs ||--o{ expenses : "自動計上する"
     accounts ||--o{ fixed_costs : "引き落とし元(任意)"
@@ -601,12 +603,15 @@ Workersの`0015_accounts_deleted_at.sql`では、削除済み口座（子カー�
 | id | BIGSERIAL | ○ | PK |
 | fixed_cost_id | BIGINT | ○ | FK → fixed_costs.id |
 | debtor_user_id | BIGINT | — | FK → users.id（負担者。共有設定を残して負担者を削除する場合はNULL） |
+| debtor_external_id | BIGINT | — | FK → external_persons.id（自世帯の世帯外負担者） |
 | debtor_display_snapshot | VARCHAR(50) | — | 共有の固定費設定で退会した負担者を示す場合は「退会したユーザー」 |
 | split_input_type | VARCHAR(10) | ○ | 入力モード。`ratio`（％入力）/`amount`（金額入力）。デフォルト`ratio` |
 | split_ratio | NUMERIC(5,2) | ○ | 負担割合（%） |
 | amount_due | NUMERIC | ○ | 負担額 |
 
 ※ 割り勘設定付きの固定費は、毎月の自動計上（[F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md)参照）で expenses を作成する際、この設定を雛形として expense_splits も同時に生成する。
+
+Workersの#253では `debtor_user_id` をnullableにし、`debtor_external_id` を追加する。通常の保存ではどちらか一方のみをアプリ層で検証し、DB CHECKは追加しない。既存の行・index・親削除CASCADEは0016 migrationで保持する。`debtor_display_snapshot` と退会処理は将来仕様であり今回実装しない。
 
 ### events（イベント）
 

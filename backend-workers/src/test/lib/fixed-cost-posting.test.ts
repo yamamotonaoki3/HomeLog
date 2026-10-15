@@ -1,5 +1,7 @@
 import { env } from 'cloudflare:test'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import app from '../../index'
+import { signAccessToken } from '../../lib/jwt'
 import { postDueFixedCosts } from '../../lib/fixed-cost-posting'
 
 async function resetDb() {
@@ -268,5 +270,63 @@ describe('postDueFixedCosts', () => {
     // 支出は計上されるが、退出済みの相手への内訳は作られない。
     expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses').first<{ c: number }>())?.c).toBe(1)
     expect((await env.DB.prepare('SELECT COUNT(*) AS c FROM expense_splits').first<{ c: number }>())?.c).toBe(0)
+  })
+})
+
+it('posts external splits as unpaid once per month #253', async () => {
+  const { userId, householdId } = await createUserWithHousehold('testuser_post_external@example.com')
+  const id = await createFixedCost({ userId, householdId, name: '[E2E_TEST]', amount: 1001, paymentDay: 1 })
+  const person = await env.DB.prepare('INSERT INTO external_persons (household_id, name) VALUES (?, ?) RETURNING id').bind(householdId, 'testuser_friend').first<{ id: number }>()
+  await env.DB.prepare("INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_external_id, split_input_type, split_ratio, amount_due) VALUES (?, ?, 'ratio', 50, 1)").bind(id, person!.id).run()
+  await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 9, 1)))
+  await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 9, 1)))
+  const rows = await env.DB.prepare('SELECT debtor_user_id, debtor_external_id, amount_due, status FROM expense_splits').all()
+  expect(rows.results).toEqual([{ debtor_user_id: null, debtor_external_id: person!.id, amount_due: 500, status: 'unpaid' }])
+})
+
+describe('external posting invariants #253', () => {
+  it.each(['ratio', 'amount'])('posts mixed %s splits, keeps external after member leaves, and exposes settlement labels', async mode => {
+    const { userId, householdId } = await createUserWithHousehold('testuser_mix253@example.com')
+    const member = await env.DB.prepare("INSERT INTO users (email, password_hash, display_name) VALUES ('testuser_debtor253@example.com', 'dummy', 'testuser_debtor') RETURNING id").first<{ id: number }>()
+    await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(householdId, member!.id).run()
+    await env.DB.prepare("INSERT INTO external_persons (id, household_id, name) VALUES (?, ?, 'testuser_external')").bind(member!.id, householdId).run()
+    const id = await createFixedCost({ userId, householdId, name: '[E2E_TEST]', amount: 2000, paymentDay: 1 })
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_user_id, split_input_type, split_ratio, amount_due) VALUES (?, ?, ?, 25, 100)').bind(id, member!.id, mode),
+      env.DB.prepare('INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_external_id, split_input_type, split_ratio, amount_due) VALUES (?, ?, ?, 25, 100)').bind(id, member!.id, mode),
+    ])
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 9, 1)))
+    const amount = mode === 'ratio' ? 500 : 100
+    expect((await env.DB.prepare('SELECT debtor_user_id, debtor_external_id, amount_due, status FROM expense_splits ORDER BY id').all()).results).toEqual([
+      { debtor_user_id: member!.id, debtor_external_id: null, amount_due: amount, status: 'unpaid' },
+      { debtor_user_id: null, debtor_external_id: member!.id, amount_due: amount, status: 'unpaid' },
+    ])
+    const token = await signAccessToken(userId, env.JWT_SECRET, 900)
+    const res = await app.request('/api/expense-splits', { headers: { Authorization: `Bearer ${token}` } }, env)
+    expect(res.status).toBe(200)
+    expect(JSON.stringify(await res.json())).toContain('testuser_external')
+    await env.DB.prepare('DELETE FROM household_members WHERE user_id = ?').bind(member!.id).run()
+    await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 10, 1)))
+    const second = await env.DB.prepare("SELECT s.debtor_external_id, s.debtor_user_id FROM expense_splits s JOIN expenses e ON e.id = s.expense_id WHERE e.fixed_cost_year_month = '2026-11'").all()
+    expect(second.results).toEqual([{ debtor_external_id: member!.id, debtor_user_id: null }])
+  })
+  it('rolls back expense, splits and account balance when split insertion fails', async () => {
+    const { userId, householdId } = await createUserWithHousehold('testuser_atomic253@example.com')
+    const account = await env.DB.prepare("INSERT INTO accounts (household_id, owner_user_id, name, type, balance) VALUES (?, ?, '[E2E_TEST]', 'bank', 10000) RETURNING id").bind(householdId, userId).first<{ id: number }>()
+    const id = await createFixedCost({ userId, householdId, name: '[E2E_TEST]', amount: 1000, paymentDay: 1, accountId: account!.id })
+    const person = await env.DB.prepare("INSERT INTO external_persons (household_id, name) VALUES (?, 'testuser_external') RETURNING id").bind(householdId).first<{ id: number }>()
+    await env.DB.prepare('INSERT INTO fixed_cost_splits (fixed_cost_id, debtor_external_id, split_ratio, amount_due) VALUES (?, ?, 50, 500)').bind(id, person!.id).run()
+    await env.DB.prepare("CREATE TRIGGER test253_fail_split BEFORE INSERT ON expense_splits BEGIN SELECT RAISE(ABORT, 'test253 insertion failure'); END").run()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await postDueFixedCosts(env.DB, new Date(Date.UTC(2026, 9, 1)))
+      expect(error).toHaveBeenCalled()
+      expect((await env.DB.prepare('SELECT * FROM expenses').all()).results).toEqual([])
+      expect((await env.DB.prepare('SELECT * FROM expense_splits').all()).results).toEqual([])
+      expect(await env.DB.prepare('SELECT balance FROM accounts WHERE id = ?').bind(account!.id).first()).toEqual({ balance: 10000 })
+    } finally {
+      error.mockRestore()
+      await env.DB.prepare('DROP TRIGGER test253_fail_split').run()
+    }
   })
 })

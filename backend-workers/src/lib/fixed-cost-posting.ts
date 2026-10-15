@@ -127,33 +127,38 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
   // 退出しても行が残る。退出した相手に毎月 expense_splits を作らないよう household_members で絞り込む)。
   const splitRows = await db
     .prepare(
-      `SELECT s.debtor_user_id, s.split_input_type, s.split_ratio, s.amount_due
+      `SELECT s.debtor_user_id, s.debtor_external_id, s.split_input_type, s.split_ratio, s.amount_due
          FROM fixed_cost_splits s
-         JOIN household_members hm ON hm.user_id = s.debtor_user_id AND hm.household_id = ?
+         LEFT JOIN household_members hm ON hm.user_id = s.debtor_user_id AND hm.household_id = ?
+         LEFT JOIN external_persons ep ON ep.id = s.debtor_external_id AND ep.household_id = ?
         WHERE s.fixed_cost_id = ?
+          AND ((s.debtor_user_id IS NOT NULL AND s.debtor_external_id IS NULL AND hm.user_id IS NOT NULL)
+            OR (s.debtor_user_id IS NULL AND s.debtor_external_id IS NOT NULL AND ep.id IS NOT NULL))
         ORDER BY s.id`,
     )
-    .bind(fixedCost.householdId, fixedCost.id)
-    .all<{ debtor_user_id: number; split_input_type: string; split_ratio: number; amount_due: number }>()
+    .bind(fixedCost.householdId, fixedCost.householdId, fixedCost.id)
+    .all<{ debtor_user_id: number | null; debtor_external_id: number | null; split_input_type: string; split_ratio: number; amount_due: number }>()
   if (splitRows.results.length > 0) {
     const inputType = splitRows.results[0].split_input_type === 'amount' ? 'amount' : 'ratio'
     const calcRows: SplitInputRow[] = splitRows.results.map((row) => ({
-      key: `u:${row.debtor_user_id}`,
+      key: row.debtor_user_id !== null ? `u:${row.debtor_user_id}` : `e:${row.debtor_external_id}`,
       ratio: inputType === 'ratio' ? row.split_ratio : undefined,
       amountDue: inputType === 'amount' ? row.amount_due : undefined,
     }))
     const resolved = resolveSplits(fixedCost.amount, inputType, calcRows)
     if (resolved.ok) {
       for (const row of resolved.rows) {
-        const debtorUserId = Number(row.key.slice(2))
+        const debtorId = Number(row.key.slice(2))
+        const debtorUserId = row.key.startsWith('u:') ? debtorId : null
+        const debtorExternalId = row.key.startsWith('e:') ? debtorId : null
         statements.push(
           db
             .prepare(
               `INSERT INTO expense_splits
-                 (expense_id, debtor_user_id, split_input_type, split_ratio, amount_due, status)
-               VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, 'unpaid')`,
+                 (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
+               VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, ?, 'unpaid')`,
             )
-            .bind(debtorUserId, inputType, row.ratio, row.amountDue),
+            .bind(debtorUserId, debtorExternalId, inputType, row.ratio, row.amountDue),
         )
       }
     } else {

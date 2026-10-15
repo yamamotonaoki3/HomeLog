@@ -15,6 +15,7 @@ export default defineConfig(async () => ({
       // AIを使う処理のテストではモックに差し替える。
       remoteBindings: false,
       miniflare: {
+        d1Databases: ['DB', 'MIGRATION_DB'],
         bindings: { TEST_MIGRATIONS: await readD1Migrations(migrationsPath) },
       },
     }),
