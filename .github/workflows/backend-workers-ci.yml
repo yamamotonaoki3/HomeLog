@@ -2,8 +2,7 @@ name: Backend Workers CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 defaults:
   run:
