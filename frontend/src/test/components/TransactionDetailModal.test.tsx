@@ -28,7 +28,7 @@ describe('TransactionDetailModal', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(splitStatus === 'loading' ? '読み込み中...' : splitStatus === 'error' ? '割り勘の取得に失敗しました' : '割り勘内訳なし')
   })
   it.each([null, 5])('収入は既存契約の口座 %s を表示し支出専用項目は表示しない', (accountId) => {
-    render(<TransactionDetailModal {...props} transaction={{ kind: 'income', data: { id: 1, incomeDate: '2030-01-15', amount: 1000, content: '[E2E_TEST]収入', categoryId: 11, memo: null, accountId } }} />)
+    render(<TransactionDetailModal {...props} transaction={{ kind: 'income', data: { id: 1, incomeDate: '2030-01-15', amount: 1000, content: '[E2E_TEST]収入', categoryId: 11, memo: null, accountId, accountName: accountId === null ? null : 'testuser_銀行' } }} />)
     const dialog = screen.getByRole('dialog', { name: '収入詳細' })
     expect(dialog).toHaveTextContent('+1,000円')
     expect(dialog).toHaveTextContent(accountId === null ? 'なし' : 'testuser_銀行')

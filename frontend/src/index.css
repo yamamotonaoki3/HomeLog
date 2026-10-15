@@ -330,3 +330,13 @@ input[type="checkbox"], input[type="radio"] {
 .shortcut-url { display: block; width: 100%; min-width: 0; margin-bottom: .8rem; }
 
 .shopping-list-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr); gap: 0.5rem; }
+.transaction-modal {
+  width: 420px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.transaction-modal select, .transaction-modal input, .transaction-modal textarea {
+  min-width: 0;
+  max-width: 100%;
+}
