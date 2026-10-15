@@ -1,0 +1,57 @@
+# Cloudflare Workersへの配信手順（#261）
+
+WorkersがReactのビルド成果物とAPIを同一originで配信する。画面の直接アクセスはSPAへ、`/api`・`/api/*`・`/health` はHonoへ渡す。既存のfetchとscheduled処理は維持する。画面・API・DBの仕様変更はない。
+
+本書は実施手順であり、本Issueでは外部リソース作成・本番デプロイを実行しない。技術スタック等の資料全体の刷新も対象外。
+
+## ローカル検証・CIの前提
+
+Node.js 24と各ディレクトリの依存導入（`npm ci`）が必要。`backend-workers/.dev.vars.example`を参考にローカル専用の`.dev.vars`へJWT_SECRETを設定する。値を出力・コミットしない。
+
+Wrangler起動・Workersテスト・dry-run・E2Eより前に、必ず`frontend/`で`npm run build`を実行する。Reactを変更した際も再buildする。通常開発のViteと通常E2Eは引き続き別サーバー構成。
+
+```sh
+# リポジトリルート
+cd frontend
+npm ci
+npm run build
+cd ../backend-workers
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run deploy:dry-run
+```
+
+dry-runはローカルのbundle・assets構成を検証するもので、D1/R2の実在、権限、secret登録済みか、公開環境の動作までは保証しない。E2Eの専用DB・後始末と静的配信テストは[e2e/README.md](../e2e/README.md)参照。
+
+## 将来の初回公開（ユーザーの公開判断後のみ）
+
+以下は`backend-workers/`で行う。Cloudflareアカウント、Workers/D1/R2の利用権限と必要な課金設定を準備する。実行先アカウントを確認する。
+
+1. `npx wrangler login`で認証する。
+2. ダッシュボードまたは`npx wrangler d1 create homelog-db`でD1を作成する。
+3. `wrangler.toml`の`database_id = "local-placeholder"`を作成済みD1のIDに置き換える。D1 IDは秘密鍵ではない。対象DBを必ず確認する。
+4. `npx wrangler d1 migrations apply homelog-db --remote`で本番DBへ既存マイグレーションを適用する。
+5. `npx wrangler r2 bucket create homelog-recipe-images`で画像用R2を準備する。
+6. `npx wrangler secret put JWT_SECRET`へ十分な強度の本番鍵を対話入力する。コマンド引数・vars・Issue・ログへ実鍵を書かない。`.dev.vars`はローカル専用で、本番secret登録の代わりにはならない。
+7. `frontend/`で`npm ci`と`npm run build`を実行する。
+8. `backend-workers/`へ戻り`npm run deploy:dry-run`を実行する。
+9. 公開判断後に`npm run deploy`を実行する。
+
+注意: `wrangler secret put`は既存Workerでも新バージョンを即時デプロイする。初回Worker未作成時はWranglerがWorker作成を提案するため、作成確認も外部操作として扱う。公開準備の単なるローカル検証として実行しない。初回はsecret操作より前にもfrontend buildを済ませる。作成・配信対象のWorker名は`homelog-backend-workers`。
+
+既存Cron（UTC毎日16:00、JST翌01:00）も公開対象となり、固定費計上とOCR一時画像削除が動く。公開先D1/R2と自動処理開始を確認してから実行する。
+
+**パスワード再設定メールは未実装**。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。配信構成が整ってもメール送信を前提とする本番運用開始の条件は満たさない。メール基盤の選定・実装は別途対応する。
+
+OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方式）とGoogle Vision側の利用準備、およびWorkers AIの利用準備が別途必要。ローカルE2Eではリモートバインディングを無効にする。
+
+## 公開後の確認・残作業
+
+- HTTPS公開URLで`/`、`/login`、`/recipes/iphone-shortcut`への直接アクセスとreloadを確認する。
+- 同じoriginでhealthの200 JSON、未認証meの401 JSON、未知APIと`/api`の非HTML 404を確認する。
+- 登録・ログイン・本人表示・共有URLの未ログイン復帰・PWA登録後のオンライン動作を確認する。架空の確認データのみを使う。
+- 公開URL確定後、ユーザーがiPhone Safariとショートカット共有を実機確認する。iCloud共有リンクの配布は後続Issue。カスタムドメイン・本番ID・課金プランは本Issueで決めない。
+
+参考（2026-10-16確認）: [Cloudflare SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)、[Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)。

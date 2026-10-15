@@ -16,6 +16,9 @@ export default defineConfig({
     // manifestオプションで追加する(injectManifest等の高度な構成は不要なため`generateSW`戦略)。
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        navigateFallbackDenylist: [/^\/api(\/|\?|$)/, /^\/health(\?|$)/],
+      },
       manifest: {
         name: 'HomeLog',
         short_name: 'HomeLog',
