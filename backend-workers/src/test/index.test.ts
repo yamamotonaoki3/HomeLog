@@ -9,3 +9,11 @@ describe('GET /health', () => {
     await expect(res.json()).resolves.toEqual({ status: 'ok' })
   })
 })
+
+describe('未知API', () => {
+  it.each(['/api', '/api/not-found'])('%sはHTMLではなく404を返す', async (path) => {
+    const res = await app.request(path)
+    expect(res.status).toBe(404)
+    expect(res.headers.get('content-type')).not.toContain('text/html')
+  })
+})

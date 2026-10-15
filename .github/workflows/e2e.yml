@@ -23,6 +23,10 @@ jobs:
         working-directory: backend-workers
         run: npm ci
 
+      - name: Build frontend assets before Workers startup
+        working-directory: frontend
+        run: npm run build
+
       - name: Create CI-only .dev.vars for backend-workers
         working-directory: backend-workers
         run: echo "JWT_SECRET=ci-test-only-secret-not-for-production-use-32chars" > .dev.vars
@@ -38,6 +42,10 @@ jobs:
       - name: Run E2E tests
         working-directory: e2e
         run: npm run test
+
+      - name: Run Workers static assets E2E tests
+        working-directory: e2e
+        run: npm test -- --config playwright.static-assets.config.ts
 
       - name: Upload Playwright report
         if: always()

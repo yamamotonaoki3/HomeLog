@@ -25,6 +25,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend assets before Workers checks
+        working-directory: frontend
+        run: npm run build
+
       - name: Create CI-only .dev.vars
         run: echo "JWT_SECRET=ci-test-only-secret-not-for-production-use-32chars" > .dev.vars
 

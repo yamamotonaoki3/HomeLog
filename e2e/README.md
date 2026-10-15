@@ -5,6 +5,7 @@
 事前に以下を実施する。
 
 - `frontend` と `backend-workers` でそれぞれ `npm ci` を実行する。
+- `frontend` で `npm run build` を実行する（Wrangler起動・Workersテスト・dry-run共通の事前手順。frontend変更後は再build）。
 - `backend-workers/.dev.vars.example` を `backend-workers/.dev.vars` にコピーし、`JWT_SECRET` を設定する（実値はリポジトリに保存しない）。
 
 ```bash
@@ -29,6 +30,15 @@ npm test -- tests/zaiko.spec.ts
 
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
 - 8787 / 5173 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
+
+## Workers単独の静的配信（#261）
+
+通常E2E完了後、`e2e/`で `npm test -- --config playwright.static-assets.config.ts` を実行する。
+Viteを起動せず8787の実Workersからbuild済みassetsを配信する。同じ専用ローカルD1と前後cleanupを使うため、通常E2Eとの同時実行は禁止。開始前にwrangler/workerd/viteの残存プロセスと使用ポートを確認する。
+
+`static-assets.spec.ts` は1280／390／320px（390／320はタッチ）でログイン・トップ・手順ページの直接アクセス、reload、横はみ出し、JS/CSS/favicon/manifest/SW、同一originの認証・API・health、共有クエリとhashのログイン復帰を検証する。通常contextはSWをblockし、別contextでは登録・制御後のオンラインAPIと共有URLを確認する。
+`STATIC_ASSETS_SCREENSHOT_DIR`にリポジトリ外の保存先を指定すると各幅3画面のfullPage画像を保存する。
+本番の準備・公開判断は[deployment.md](../docs/deployment.md)参照。
 
 ## テストデータ規約
 
