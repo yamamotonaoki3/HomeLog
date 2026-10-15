@@ -6,7 +6,7 @@ import { setupUserWithHousehold } from './support/flows'
 
 async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  for (const element of await page.locator('.transaction-table, .transaction-detail-modal, .transaction-detail-modal dd').all()) {
+  for (const element of await page.locator('.transaction-list, .transaction-detail-modal, .transaction-detail-modal dd').all()) {
     const box = await element.boundingBox()
     if (box) {
       expect(box.x).toBeGreaterThanOrEqual(0)
@@ -53,9 +53,9 @@ for (const width of [1280, 390, 320]) {
         if (shots) await page.screenshot({ path: join(shots, `${label}-${width}.png`), fullPage: true })
       }
       await page.goto('/kakeibo')
-      await expect(page.getByRole('row').filter({ hasText: content })).toContainText('+9,999,999,999円')
+      await expect(page.getByRole('button', { name: `収入：${content}の詳細`, exact: true })).toContainText('+9,999,999,999円')
       await shot('income-list')
-      await page.getByRole('button', { name: content, exact: true }).click()
+      await page.getByRole('button', { name: `収入：${content}の詳細`, exact: true }).click()
       const detail = page.getByRole('dialog', { name: '収入詳細' })
       await expect(detail).toContainText(name)
       await shot('income-detail')

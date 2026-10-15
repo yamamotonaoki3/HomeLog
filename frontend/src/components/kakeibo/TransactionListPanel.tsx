@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type Ref } from 'react'
 import { Link } from 'react-router-dom'
 import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
@@ -22,6 +22,7 @@ interface Props {
   activeCategoryOptions: KakeiboCategory[] | IncomeCategory[]
   onActiveCategoryFilterChange: (categoryId: string) => void
   onAddClick: () => void
+  addButtonRef?: Ref<HTMLButtonElement>
   addDisabled: boolean
 }
 
@@ -41,6 +42,7 @@ export function TransactionListPanel({
   activeCategoryOptions,
   onActiveCategoryFilterChange,
   onAddClick,
+  addButtonRef,
   addDisabled,
 }: Props) {
   const rows = useMemo<TransactionRow[]>(() => {
@@ -90,7 +92,7 @@ export function TransactionListPanel({
             ))}
           </select>
         )}
-        <button type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
+        <button ref={addButtonRef} type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
           登録
         </button>
         <Link to="/fixed-costs" className="btn btn-secondary">
@@ -100,36 +102,18 @@ export function TransactionListPanel({
           カテゴリー管理
         </Link>
       </div>
-      <table className="table transaction-table">
-        <thead>
-          <tr>
-            <th>日付</th>
-            <th>内容</th>
-            <th>金額</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={3}>{emptyMessage(typeFilter)}</td>
-            </tr>
-          ) : (
-            rows.map((row) => (
-              <tr key={`${row.kind}-${row.id}`} onClick={(event) => {
-                const trigger = event.currentTarget.querySelector('button')!
-                onSelectTransaction(row.kind, row.id, trigger)
-              }}>
-                <td>{row.date}</td>
-                <td><button type="button" className="event-name-button" onClick={(event) => {
-                  event.stopPropagation()
-                  onSelectTransaction(row.kind, row.id, event.currentTarget)
-                }}>{row.description || '内容なし'}</button></td>
-                <td className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+      <div className="transaction-list">
+        <div className="list-row-heading transaction-grid"><span>日付</span><span>内容</span><span>金額</span></div>
+        {rows.length === 0 ? <p>{emptyMessage(typeFilter)}</p> : rows.map((row) => (
+          <button key={`${row.kind}-${row.id}`} type="button" className="list-row-button transaction-grid"
+            aria-label={`${row.kind === 'income' ? '収入' : '支出'}：${row.description || '内容なし'}の詳細`}
+            onClick={(event) => onSelectTransaction(row.kind, row.id, event.currentTarget)}>
+            <span>{row.date}</span>
+            <span>{row.description || '内容なし'}</span>
+            <span className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

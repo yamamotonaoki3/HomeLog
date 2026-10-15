@@ -27,7 +27,7 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     await page.getByLabel('日付').fill(jstToday)
     await page.getByLabel('通知する').check()
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByTestId('events-panel').getByRole('row').filter({ hasText: '[E2E_TEST] カレンダーイベント' })).toBeVisible()
+    await expect(page.getByTestId('events-panel').locator('.list-row-button').filter({ hasText: '[E2E_TEST] カレンダーイベント' })).toBeVisible()
 
     const accessToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     expect(accessToken).toBeTruthy()

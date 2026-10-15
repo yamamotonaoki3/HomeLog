@@ -188,19 +188,12 @@ input[type="checkbox"], input[type="radio"] {
 /* 家計簿は3列のまま狭幅にも収め、詳細の長文はセル内で折り返す。 */
 .kakeibo-page { overflow-wrap: anywhere; }
 .kakeibo-page .toolbar select { min-width: 0; max-width: 100%; }
-.transaction-table { table-layout: fixed; overflow: visible; }
-.transaction-table th:first-child { width: 25%; }
-.transaction-table th:last-child { width: 30%; }
-.transaction-table th, .transaction-table td { overflow-wrap: anywhere; vertical-align: middle; }
-.transaction-table tbody tr { cursor: pointer; }
-.transaction-table td:last-child { font-variant-numeric: tabular-nums; }
 .transaction-detail-memo { white-space: pre-wrap; }
 .transaction-split-list { margin: 0; padding: 0; list-style: none; }
 .transaction-split-list li + li { margin-top: 12px; }
 @media (max-width: 480px) {
   .kakeibo-page { padding: 12px; }
   .kakeibo-page .panel { padding: 10px; }
-  .transaction-table th, .transaction-table td { padding: 8px 4px; }
 }
 .calendar-event { text-align: left; background: #eef2ff; color: #3730a3; border: none; border-radius: 4px; padding: 2px 4px; cursor: pointer; max-width: 100%; }
 .event-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
@@ -294,13 +287,6 @@ input[type="checkbox"], input[type="radio"] {
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* イベント一覧は3列を狭幅でも折り返し、詳細・編集操作も画面内に収める。 */
-.events-table { table-layout: fixed; overflow: visible; }
-.events-table th, .events-table td { overflow-wrap: anywhere; vertical-align: top; }
-.events-table th:first-child { width: 40%; }
-.events-table th:nth-child(2) { width: 38%; }
-.event-name-button { width: 100%; min-height: 44px; padding: 4px 0; border: none; background: none; color: #1d4ed8; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
-.event-name-button:hover { text-decoration: underline; }
-.event-name-button:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
 .event-modal { width: min(560px, calc(100vw - 32px)); overflow-wrap: anywhere; }
 .event-modal .event-detail-list { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 10px; }
 .event-modal .modal-actions { flex-wrap: wrap; }
@@ -308,7 +294,6 @@ input[type="checkbox"], input[type="radio"] {
 @media (max-width: 480px) {
   .events-page { padding: 12px; }
   .events-page .panel { padding: 10px; }
-  .events-table th, .events-table td { padding: 8px 4px; }
   .event-modal { padding: 16px; }
 }
 /* S-10 値段入力と編集 */
@@ -340,3 +325,7 @@ input[type="checkbox"], input[type="radio"] {
   min-width: 0;
   max-width: 100%;
 }
+.events-grid { display: grid; grid-template-columns: minmax(0, 40fr) minmax(0, 38fr) minmax(0, 22fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.transaction-grid { display: grid; grid-template-columns: minmax(0, 25fr) minmax(0, 45fr) minmax(0, 30fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.transaction-grid > span:last-child { font-variant-numeric: tabular-nums; }
+.events-page, .events-page .panel, .events-list, .transaction-list { min-width: 0; }

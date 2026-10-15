@@ -91,12 +91,35 @@ const travelEvent: Event = {
 }
 
 describe('EventsPage', () => {
+  it('行の各列と余白を単一buttonにし、詳細の巡回と起点復帰を行う', async () => {
+    setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+    const user = userEvent.setup()
+    renderEventsPage()
+    const row = await screen.findByRole('button', { name: '旅行の詳細' })
+    expect(row.querySelectorAll('span')).toHaveLength(3)
+    expect(row.querySelector('button')).toBeNull()
+    for (const cell of row.querySelectorAll('span')) {
+      await user.click(cell)
+      const close = screen.getByRole('button', { name: '閉じる' })
+      expect(close).toHaveFocus()
+      await user.tab()
+      expect(screen.getByRole('button', { name: '表示する' })).toHaveFocus()
+      await user.tab({ shift: true })
+      expect(close).toHaveFocus()
+      await user.keyboard('{Escape}')
+      expect(row).toHaveFocus()
+    }
+    await user.keyboard(' ')
+    await user.click(screen.getByRole('dialog'))
+    expect(row).toHaveFocus()
+  })
+
   it('一覧は3列だけで、名前ボタンから全項目と今年の支出合計を詳細表示する', async () => {
     setupApi({ events: [{ ...travelEvent, notifyEnabled: true, defaultAmount: 1200 }], summaries: { 1: 5000 } })
     const user = userEvent.setup()
     renderEventsPage()
-    const button = await screen.findByRole('button', { name: '旅行' })
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['イベント名', '日時', '繰り返し'])
+    const button = await screen.findByRole('button', { name: '旅行の詳細' })
+    expect([...document.querySelectorAll('.events-grid.list-row-heading > span')].map((h) => h.textContent)).toEqual(['イベント名', '日時', '繰り返し'])
     expect(screen.queryByLabelText('集計対象期間')).not.toBeInTheDocument()
     expect(screen.queryByText('5000円')).not.toBeInTheDocument()
     button.focus()
@@ -112,19 +135,43 @@ describe('EventsPage', () => {
 
   })
 
+  it('起点行が接続されていなければ登録へ戻る', async () => {
+    setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+    const user = userEvent.setup()
+    renderEventsPage()
+    const row = await screen.findByRole('button', { name: '旅行の詳細' })
+    await user.click(row)
+    row.remove()
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus()
+  })
+
+  it('編集後の再取得で対象が消えたら詳細を閉じ登録へ戻る', async () => {
+    setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+    const user = userEvent.setup()
+    renderEventsPage()
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    server.use(http.get('/api/events', () => HttpResponse.json([])))
+    await user.click(screen.getByRole('button', { name: '更新' }))
+    await screen.findByText('イベントはありません')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus())
+  })
+
   it('イベントがない場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderEventsPage()
 
     await waitFor(() => expect(screen.getByText('イベントはありません')).toBeInTheDocument())
-    expect(screen.getByText('イベントはありません')).toHaveAttribute('colspan', '3')
+    expect(document.querySelectorAll('.list-row-button')).toHaveLength(0)
   })
 
   it('詳細に集計金額が表示される', async () => {
     setupApi({ events: [travelEvent], summaries: { 1: 5000 } })
     renderEventsPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '旅行' }))
+    await userEvent.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     expect(await screen.findByText('5000円')).toBeInTheDocument()
   })
 
@@ -132,7 +179,7 @@ describe('EventsPage', () => {
     setupApi({ events: [{ ...travelEvent, showOnDashboard: false }] })
     renderEventsPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '旅行' }))
+    await userEvent.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     expect(await screen.findByText('集計対象外')).toBeInTheDocument()
   })
 
@@ -140,7 +187,7 @@ describe('EventsPage', () => {
     setupApi({ events: [{ ...travelEvent, editable: false }] })
     renderEventsPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '旅行' }))
+    await userEvent.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
   })
@@ -149,7 +196,7 @@ describe('EventsPage', () => {
     setupApi({ events: [{ ...travelEvent, editable: false }] })
     renderEventsPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '旅行' }))
+    await userEvent.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     expect(screen.queryByRole('button', { name: '表示する' })).not.toBeInTheDocument()
     expect(screen.getByText('表示する')).toBeInTheDocument()
   })
@@ -162,7 +209,7 @@ describe('EventsPage', () => {
       ),
     )
     renderEventsPage()
-    await userEvent.click(await screen.findByRole('button', { name: '旅行' }))
+    await userEvent.click(await screen.findByRole('button', { name: '旅行の詳細' }))
 
     await waitFor(() => expect(screen.getByText('イベントの集計取得に失敗しました。時間をおいて再度お試しください')).toBeInTheDocument())
     expect(screen.getByText('取得失敗')).toBeInTheDocument()
@@ -224,7 +271,7 @@ describe('EventsPage', () => {
     const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 5000 } })
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '表示する' })).toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: '表示する' }))
@@ -238,7 +285,7 @@ describe('EventsPage', () => {
     const { calls } = setupApi({ events: [travelEvent] })
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
 
     await user.click(screen.getByRole('button', { name: '削除' }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
@@ -251,7 +298,7 @@ describe('EventsPage', () => {
     setupApi({ events: [travelEvent], summaries: { 1: 5000 } })
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     await waitFor(() => expect(screen.getByText('5000円')).toBeInTheDocument())
 
     await user.selectOptions(screen.getByLabelText('集計対象期間'), '今月')
@@ -263,16 +310,16 @@ describe('EventsPage', () => {
     const { calls } = setupApi({ events: [original] })
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
     expect(screen.getByLabelText('通知する')).toBeChecked()
     expect(screen.getByLabelText('デフォルト金額（任意）')).toHaveValue(1500)
     await user.clear(screen.getByLabelText('イベント名'))
     await user.paste('[E2E_TEST] 更新')
     await user.click(screen.getByRole('button', { name: '更新' }))
-    await screen.findByRole('button', { name: '[E2E_TEST] 更新' })
+    await screen.findByRole('button', { name: '[E2E_TEST] 更新の詳細' })
     expect(calls.find((c) => c.url === '/api/events/1' && c.method === 'PATCH')?.body).toEqual({ name: '[E2E_TEST] 更新', eventDate: original.eventDate, isAllDay: false, startTime: '09:00', endTime: null, recurrenceType: 'weekly', notifyEnabled: true, defaultAmount: 1500, showOnDashboard: false, personal: true })
-    await user.click(screen.getByRole('button', { name: '[E2E_TEST] 更新' }))
+    expect(screen.getByRole('dialog', { name: 'イベント詳細' })).toBeInTheDocument()
     expect(within(screen.getByRole('dialog')).getByText('個人')).toBeInTheDocument()
   })
 
@@ -280,7 +327,7 @@ describe('EventsPage', () => {
     const { calls } = setupApi({ events: [travelEvent] })
     const user = userEvent.setup()
     renderEventsPage()
-    const button = await screen.findByRole('button', { name: '旅行' })
+    const button = await screen.findByRole('button', { name: '旅行の詳細' })
     await user.click(button)
     await user.click(screen.getByRole('dialog'))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -298,7 +345,7 @@ describe('EventsPage', () => {
     const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 123 } })
     const user = userEvent.setup()
     renderEventsPage()
-    const button = await screen.findByRole('button', { name: '旅行' })
+    const button = await screen.findByRole('button', { name: '旅行の詳細' })
     expect(calls.filter((c) => c.method === 'GET')).toHaveLength(0)
     await user.click(button)
     await screen.findByText('123円')
@@ -314,7 +361,7 @@ describe('EventsPage', () => {
     server.use(method(url, () => HttpResponse.json({ message: '[E2E_TEST] 失敗' }, { status: 500 })))
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     if (operation === '表示設定') await user.click(screen.getByRole('button', { name: '表示する' }))
     if (operation === '削除') {
       await user.click(screen.getByRole('button', { name: '削除' }))
@@ -325,7 +372,7 @@ describe('EventsPage', () => {
       await user.click(screen.getByRole('button', { name: '更新' }))
     }
     await screen.findByText('[E2E_TEST] 失敗')
-    expect(within(screen.getByTestId('events-panel')).getByRole('button', { name: '旅行' })).toBeInTheDocument()
+    expect(within(screen.getByTestId('events-panel')).getByRole('button', { name: '旅行の詳細' })).toBeInTheDocument()
   })
 
   it('古い期間の遅延レスポンスが最新の合計を上書きしない', async () => {
@@ -341,7 +388,7 @@ describe('EventsPage', () => {
     }))
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     await user.selectOptions(screen.getByLabelText('集計対象期間'), 'month')
     await screen.findByText('123円')
     await act(async () => { release(); await new Promise((resolve) => setTimeout(resolve, 20)) })
@@ -356,19 +403,25 @@ describe('EventsPage', () => {
     server.use(http.patch('/api/events/:id/show-on-dashboard', async () => { await pending; return HttpResponse.json({ showOnDashboard: false }) }))
     const user = userEvent.setup()
     renderEventsPage()
-    await user.click(await screen.findByRole('button', { name: '旅行' }))
+    await user.click(await screen.findByRole('button', { name: '旅行の詳細' }))
     await user.click(screen.getByRole('button', { name: '表示する' }))
     expect(screen.getByRole('button', { name: '表示する' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '編集' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '削除' })).toBeDisabled()
+    screen.getByRole('button', { name: '表示する' }).blur()
+    await user.tab({ shift: true })
+    expect(screen.getByRole('button', { name: '閉じる' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: '旅行の詳細' })).toHaveFocus()
     release()
+    await user.click(screen.getByRole('button', { name: '旅行の詳細' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '表示しない' })).toBeEnabled())
   })
 
   it.each([['none', '単発'], ['daily', '毎日'], ['weekly', '毎週'], ['monthly', '毎月'], ['yearly', '毎年']] as const)('%sの繰り返しを一覧に表示する', async (recurrenceType, label) => {
     setupApi({ events: [{ ...travelEvent, recurrenceType }] })
     renderEventsPage()
-    await screen.findByRole('button', { name: '旅行' })
+    await screen.findByRole('button', { name: '旅行の詳細' })
     expect(within(screen.getByTestId('events-panel')).getByText(label)).toBeInTheDocument()
   })
 

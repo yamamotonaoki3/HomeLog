@@ -14,7 +14,7 @@ test.describe('F-03/F-13 家計簿', () => {
     await addTransaction(page, '支出', 1200, '[E2E_TEST] ランチ')
     await addTransaction(page, '収入', 5000, '[E2E_TEST] 臨時収入', { accountId: account.id })
 
-    const rows = page.getByRole('row')
+    const rows = page.getByTestId('transaction-panel').locator('.list-row-button')
     await expect(rows.filter({ hasText: '[E2E_TEST] ランチ' })).toContainText('-1,200円')
     await expect(rows.filter({ hasText: '[E2E_TEST] 臨時収入' })).toContainText('+5,000円')
 

@@ -1,3 +1,4 @@
+import { checkRow } from './support/list-row'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -6,7 +7,7 @@ import { setupUserWithHousehold } from './support/flows'
 
 async function fits(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  for (const selector of ['.kakeibo-page .panel', '.kakeibo-page .toolbar > *', '.transaction-table', '.transaction-table button', '.transaction-detail-modal', '.transaction-detail-modal dd']) {
+  for (const selector of ['.kakeibo-page .panel', '.kakeibo-page .toolbar > *', '.transaction-list', '.transaction-list .list-row-button', '.transaction-detail-modal', '.transaction-detail-modal dd']) {
     for (const element of await page.locator(selector).all()) {
       const rect = await element.boundingBox()
       if (rect) { expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(page.viewportSize()!.width) }
@@ -52,16 +53,17 @@ for (const width of [1280, 390, 320]) {
       expect(incomes.find((item: { content: string }) => item.content === purpose).accountId).toBe(account.id)
       await page.goto('/kakeibo')
       const panel = page.getByTestId('transaction-panel')
-      await expect(panel.getByRole('columnheader')).toHaveText(['日付', '内容', '金額'])
-      const expenseRow = panel.getByRole('row').filter({ hasText: purpose }).filter({ hasText: '-9,999,999,999円' })
+      await expect(panel.locator('.list-row-heading > span')).toHaveText(['日付', '内容', '金額'])
+      const expenseRow = panel.locator('.list-row-button').filter({ hasText: purpose }).filter({ hasText: '-9,999,999,999円' })
       await expect(expenseRow).toBeVisible()
-      await expect(panel.getByRole('row').filter({ hasText: incomeContent })).toContainText('+1,000円')
+      await expect(panel.locator('.list-row-button').filter({ hasText: incomeContent })).toContainText('+1,000円')
       await fits(page)
-      const shots = process.env.ISSUE_214_SHOTS_DIR
+      const shots = process.env.ISSUE_246_SHOTS_DIR
       if (shots) { await mkdir(shots, { recursive: true }); await page.screenshot({ path: join(shots, `kakeibo-${width}.png`), fullPage: true }) }
-      const trigger = expenseRow.getByRole('button')
+      const trigger = expenseRow
+      await checkRow(page, trigger, width, '支出詳細')
       if (width === 1280) { await trigger.focus(); await trigger.press('Enter') }
-      else await expenseRow.getByRole('cell').first().tap()
+      else await expenseRow.locator(':scope > span').first().tap()
       const detail = page.getByRole('dialog', { name: '支出詳細' })
       await expect(detail.getByRole('heading')).toBeInViewport()
       expect(await detail.locator('.transaction-detail-modal').evaluate((element) => element.scrollTop)).toBe(0)
@@ -76,25 +78,25 @@ for (const width of [1280, 390, 320]) {
       await expect(trigger).toBeFocused()
       await trigger.press('Space')
       await detail.getByRole('button', { name: '閉じる' }).click()
-      if (width === 1280) await expenseRow.getByRole('cell').last().click()
-      else await expenseRow.getByRole('cell').last().tap()
+      if (width === 1280) await expenseRow.locator(':scope > span').last().click()
+      else await expenseRow.locator(':scope > span').last().tap()
       await detail.click({ position: { x: 2, y: 2 } })
       await expect(detail).toBeHidden()
       for (const mode of ['expense', 'income', 'all']) {
         await panel.getByLabel('種別絞り込み').selectOption(mode)
-        await expect(panel.getByRole('columnheader')).toHaveText(['日付', '内容', '金額'])
+        await expect(panel.locator('.list-row-heading > span')).toHaveText(['日付', '内容', '金額'])
         await fits(page)
       }
-      await panel.getByRole('button', { name: '内容なし', exact: true }).click()
+      await panel.getByRole('button', { name: '支出：内容なしの詳細', exact: true }).click()
       await expect(detail).toContainText('内容なし')
       await detail.getByRole('button', { name: '閉じる' }).click()
-      await panel.getByRole('button', { name: incomeContent, exact: true }).click()
+      await panel.getByRole('button', { name: `収入：${incomeContent}の詳細`, exact: true }).click()
       const incomeDetail = page.getByRole('dialog', { name: '収入詳細' })
       await expect(incomeDetail.locator('dt').filter({ hasText: /世帯合計対象|割り勘内訳/ })).toHaveCount(0)
       await expect(incomeDetail.locator('dt').filter({ hasText: /^口座$/ }).locator('xpath=following-sibling::dd[1]')).toHaveText(accountName)
       await fits(page)
       await incomeDetail.getByRole('button', { name: '閉じる' }).click()
-      await panel.getByRole('row').filter({ hasText: purpose }).filter({ hasText: '+' }).getByRole('button').click()
+      await panel.locator('.list-row-button').filter({ hasText: purpose }).filter({ hasText: '+' }).click()
       await expect(incomeDetail).toContainText(accountName)
       await fits(page)
       if (shots) await page.screenshot({ path: join(shots, `income-detail-${width}.png`) })

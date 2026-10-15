@@ -23,7 +23,7 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
     await page.getByLabel('イベント名').fill(eventName)
     await page.getByLabel('日付').fill(jstToday)
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByTestId('events-panel').getByRole('row').filter({ hasText: eventName })).toBeVisible()
+    await expect(page.getByTestId('events-panel').locator('.list-row-button').filter({ hasText: eventName })).toBeVisible()
 
     await page.goto('/kakeibo')
     await page.getByRole('button', { name: '登録', exact: true }).first().click()
