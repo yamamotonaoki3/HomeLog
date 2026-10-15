@@ -30,6 +30,8 @@ function toInitialSplits(fixedCost: FixedCost | null): InitialSplit[] {
   const byAmount = fixedCost.splitInputType === 'amount'
   return fixedCost.splits.map((s) => ({
     debtorUserId: s.debtorUserId,
+    debtorExternalId: s.debtorExternalId,
+    debtorExternalName: s.debtorExternalName,
     ratio: byAmount ? undefined : s.splitRatio,
     amountDue: byAmount ? s.amountDue : undefined,
   }))
@@ -182,7 +184,8 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
             amount={Number(amount) || 0}
             members={members}
             membersLoaded={membersLoaded}
-            allowExternal={false}
+            maxRows={20}
+            allowEmpty
             initialSplits={toInitialSplits(fixedCost)}
             initialSplitInputType={fixedCost?.splitInputType ?? undefined}
             onChange={handleSplitChange}

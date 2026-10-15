@@ -15,6 +15,19 @@ function setup(value: FixedCost = cost) {
 }
 
 describe('固定費詳細の操作', () => {
+  it('世帯取得失敗でも複数外部名と未確認名を表示し、他者には隠す', async () => {
+    const user = setup({ ...cost, splitInputType: 'ratio', splits: [
+      { debtorUserId: null, debtorExternalId: 2, debtorExternalName: 'testuser_external_A', splitRatio: 20, amountDue: 16000 },
+      { debtorUserId: null, debtorExternalId: 3, debtorExternalName: 'testuser_external_B', splitRatio: 30, amountDue: 24000 },
+      { debtorUserId: null, debtorExternalId: 4, debtorExternalName: null, splitRatio: 0, amountDue: 0 },
+    ] })
+    server.use(http.get('/api/households/me', () => HttpResponse.json({}, { status: 500 })))
+    await user.click(await screen.findByRole('button', { name: 'testuser_家賃の詳細' }))
+    const dialog = screen.getByRole('dialog', { name: '固定費詳細' })
+    expect(dialog).toHaveTextContent('testuser_external_A：20% / 16000円')
+    expect(dialog).toHaveTextContent('testuser_external_B：30% / 24000円')
+    expect(dialog).toHaveTextContent('相手の名前を確認できません')
+  })
   it('他者の設定を非公開と表示し操作を出さない', async () => {
     const user = setup({ ...cost, editable: false })
     await user.click(await screen.findByRole('button', { name: 'testuser_家賃の詳細' }))
