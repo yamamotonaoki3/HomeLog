@@ -88,9 +88,11 @@ flowchart TD
 
 ## 6-3. 割り勘設定（実装済み）
 
-- 家賃・水道代など、毎月同じ割合で割り勘する固定費のために、固定費自体に割り勘設定を持たせられる（`fixed_cost_splits`）。**世帯内メンバーのみ**を対象とする（支出の割り勘と違い世帯外の相手は指定できない）。
+- 家賃・水道代など、毎月同じ割合で割り勘する固定費のために、固定費自体に割り勘設定を持たせられる（`fixed_cost_splits`）。APIと自動計上は世帯内メンバーと世帯外の相手の混在に対応する（#253）。入力・詳細UIは世帯内のみで、世帯外対応は#254で行う。
 - 入力UI・バリデーション（％入力/金額入力トグル、相手の割合合計100%以下・金額合計は固定費金額以下、登録者本人の負担分は「固定費金額−相手の負担額合計」として暗黙に決まる）は支出の割り勘（[F04_kakeibo_warikan](F04_kakeibo_warikan.md) 7章）と同一で、`src/lib/split-calc.ts` の `resolveSplits` を共用する。
-- 割り勘設定は S-08 固定費登録モーダルで入力し、`GET/POST/PATCH /api/fixed-costs` で `splitInputType` + `splits`（負担者ごとの `debtorUserId` と割合 or 金額）としてやり取りする。PATCH は毎回「送られた内容で全置換」（空配列で削除）。割り勘設定は登録者本人にのみ返す（他メンバーには非開示）。
+- `POST/PATCH /api/fixed-costs` の `splits` は、各行で `debtorUserId` / `debtorExternalId` / `debtorExternalName` のいずれか一つと割合 or 金額を指定する。新規名はtrim・50文字以内、既存外部IDは自世帯のものに限る。自己指定・重複を拒否し、最大20行。排他はアプリ層で検証する（DB CHECKなし）。名前の自動名寄せはしない。
+- 本人向け `GET/POST/PATCH` の内訳には `debtorUserId`（世帯外ならnull）、`debtorExternalId` / `debtorExternalName`（世帯内ならnull）、`splitRatio`、`amountDue` を返す。PATCH は毎回全置換（空配列・省略・nullで削除）。他メンバーには従来どおり `splitInputType:null` / `splits:[]` を返す。
+- 自動計上は所属中の世帯内メンバーと自世帯の世帯外相手を対象にし、退出済みメンバーだけを除外する。両種別は別キーで計算し、支出内訳に対応するIDを転記する。退会snapshotは#253の対象外。
 - 毎月の自動計上時に、この設定を雛形として expenses と expense_splits（`status=unpaid`）を同一トランザクションで生成する。負担額は**その時点の固定費金額**に対して `resolveSplits` で計算し直す（金額変更後もつじつまが合うように）。金額変更で割り勘の整合が取れなくなった場合は、支出だけ計上し expense_splits の生成はスキップしてログに記録する。以降の請求・承認フローは通常の割り勘と同じ。
 
 ## 6-4. 引き落とし元（口座・カード）

@@ -1,5 +1,15 @@
 # API設計（MVPおよび実装済み収入口座連携）
 
+## 固定費の世帯外割り勘（Workers、#253）
+
+`GET/POST/PATCH /api/fixed-costs` は世帯内・世帯外を混在して扱う。認証必須（401）、編集は登録者のみ（他者・他世帯は404）。
+
+- POST/PATCHの `splits` は最大20行。各行は `debtorUserId` / `debtorExternalId` / `debtorExternalName` の一つだけを指定する（他の識別子は省略またはnull）。既存IDは自世帯に限り、新規名はtrimし50文字以内。名前の自動名寄せは行わず、編集時は取得済みIDを再利用する。
+- 自己指定、識別子なし・複数、重複（名前はtrim・大文字小文字を無視）、空白名、不正な負担分を400 `VALIDATION_ERROR`で拒否する。拒否時は既存設定を維持し、新規名も作成しない。割合は0〜100・合計100以下、金額は0〜9,999,999,999の整数・合計は固定費金額以下。`splitInputType` は `ratio` / `amount`、未指定は `ratio`。
+- 本人向け内訳は `{ debtorUserId, debtorExternalId, debtorExternalName, splitRatio, amountDue }`。世帯内は外部ID・名がnull、世帯外はuser IDがnull。外部名は現在の `external_persons.name` を返す。他者には `splitInputType:null` / `splits:[]` を返す。
+- PATCHは全置換。空配列・null・省略は内訳削除。世帯内のみの旧入力も引き続き利用可能。本体と内訳は単一batchで保存し、新規の外部名マスタのみ検証完了後に先行作成する。
+- 自動計上は自世帯の世帯外相手も `expense_splits`（unpaid）へ転記し、精算APIの既存フローを利用する。退会snapshotは対象外。入力・詳細UIは後続#254で対応する。
+
 [← 要件定義書に戻る](../requirements.md)
 
 MVPスコープ（認証・世帯グループ・在庫管理・買い物リスト・トップ簡易ダッシュボード）のREST APIエンドポイントを定義する。家計簿・献立表等のPhase 2以降の機能のAPIは、着手時に追記する。
