@@ -30,9 +30,15 @@ async function refreshAccessToken(): Promise<string> {
     throw new Error('リフレッシュトークンがありません')
   }
   const response = await axios.post<RefreshResponse>('/api/auth/refresh', { refreshToken })
+  // 更新中に別アカウントでログインし直した場合は、古いセッションのトークンで上書きしない。
+  if (getRefreshToken() !== refreshToken) {
+    throw new StaleSessionError()
+  }
   setAccessToken(response.data.accessToken)
   return response.data.accessToken
 }
+
+class StaleSessionError extends Error {}
 
 apiClient.interceptors.request.use((config) => {
   const accessToken = getAccessToken()
@@ -55,6 +61,7 @@ apiClient.interceptors.response.use(
 
     originalRequest._retry = true
 
+    const sessionRefreshToken = getRefreshToken()
     try {
       if (!refreshPromise) {
         refreshPromise = refreshAccessToken().finally(() => {
@@ -65,6 +72,10 @@ apiClient.interceptors.response.use(
       originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`)
       return apiClient(originalRequest)
     } catch (refreshError) {
+      // 失敗したのが古いセッションなら、新しいセッションを消さない。
+      if (refreshError instanceof StaleSessionError || getRefreshToken() !== sessionRefreshToken) {
+        return Promise.reject(refreshError)
+      }
       clearTokens()
       authExpiredHandler?.()
       return Promise.reject(refreshError)

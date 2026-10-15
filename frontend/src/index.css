@@ -332,3 +332,11 @@ input[type="checkbox"], input[type="radio"] {
 .transaction-grid { display: grid; grid-template-columns: minmax(0, 25fr) minmax(0, 45fr) minmax(0, 30fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .transaction-grid > span:last-child { font-variant-numeric: tabular-nums; }
 .events-page, .events-page .panel, .events-list, .transaction-list { min-width: 0; }
+
+/* 本人名は全文をDOMに保持し、操作部品の幅を確保して1行省略する。 */
+.nav-logo { flex-shrink: 0; }
+.account-nav { min-width: 0; }
+.settings-icon-link, .notification-alarm { flex-shrink: 0; }
+.header-account { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; width: 180px; }
+.header-account-name { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.header-account .nav-logout { flex-shrink: 0; white-space: nowrap; }

@@ -10,7 +10,8 @@ function isWithinSection(pathname: string, paths: string[]) {
 }
 
 export function AppLayout() {
-  const { logout } = useAuth()
+  const { logout, user, userStatus } = useAuth()
+  const accountName = user?.displayName ?? (userStatus === 'error' ? 'アカウント名を取得できません' : '読み込み中…')
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const isKakeiboSection = isWithinSection(pathname, kakeiboPaths)
@@ -24,8 +25,9 @@ export function AppLayout() {
         : null
   const primaryNavClass = (section: string) => (activePrimary === section ? 'nav-link is-active' : 'nav-link')
 
-  const handleLogout = async () => {
-    await logout()
+  const handleLogout = () => {
+    // クライアントのセッション消去直後に遷移し、旧APIの完了で新セッションを中断しない。
+    void logout()
     navigate('/login', { replace: true })
   }
 
@@ -44,9 +46,12 @@ export function AppLayout() {
                 <path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 0 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 0 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 0 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z" />
               </svg>
             </NavLink>
-            <button type="button" className="nav-logout" onClick={handleLogout}>
-              ログアウト
-            </button>
+            <div className="header-account">
+              <span className="header-account-name" title={accountName}>{accountName}</span>
+              <button type="button" className="nav-logout" onClick={handleLogout}>
+                ログアウト
+              </button>
+            </div>
           </nav>
         </div>
       </header>
