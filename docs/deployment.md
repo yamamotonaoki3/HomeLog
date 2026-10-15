@@ -31,7 +31,7 @@ dry-runはローカルのbundle・assets構成を検証するもので、D1/R2�
 
 1. `npx wrangler login`で認証する。
 2. ダッシュボードまたは`npx wrangler d1 create homelog-db`でD1を作成する。
-3. `wrangler.toml`の`database_id = "local-placeholder"`を作成済みD1のIDに置き換える。D1 IDは秘密鍵ではない。対象DBを必ず確認する。
+3. `wrangler.toml`の`database_id`が作成済みD1のIDになっていることを確認する（#263で設定済み。別環境に作り直した場合は置き換える）。D1 IDは秘密鍵ではない。対象DBを必ず確認する。
 4. `npx wrangler d1 migrations apply homelog-db --remote`で本番DBへ既存マイグレーションを適用する。
 5. `npx wrangler r2 bucket create homelog-recipe-images`で画像用R2を準備する。
 6. `npx wrangler secret put JWT_SECRET`へ十分な強度の本番鍵を対話入力する。コマンド引数・vars・Issue・ログへ実鍵を書かない。`.dev.vars`はローカル専用で、本番secret登録の代わりにはならない。

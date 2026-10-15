@@ -19,12 +19,12 @@ JWT_REFRESH_EXPIRATION_SECONDS = "604800"
 # 有効にするとパスワードリセットの生トークンがログに出力されるため、共有・本番環境では絶対にtrueにしないこと。
 APP_PASSWORD_RESET_LOG_TOKEN_ENABLED = "false"
 
-# ローカル開発用のD1データベース定義。
-# 本番用のdatabase_idはCloudflareダッシュボードでD1を作成後に設定する（Phase 6で対応）。
+# D1データベース定義。
+# 本番D1(homelog-db)のID。秘密情報ではない。ローカル開発は --local で別の模擬DBを使う。
 [[d1_databases]]
 binding = "DB"
 database_name = "homelog-db"
-database_id = "local-placeholder"
+database_id = "23786409-7730-4076-9aa2-d84fb198d4ca"
 migrations_dir = "drizzle"
 
 # OCR用画像の一時保存先(#132)。ローカル開発・テストではwranglerの模擬R2を使い、実バケットには接続しない。
