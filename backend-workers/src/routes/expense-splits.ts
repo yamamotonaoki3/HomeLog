@@ -81,7 +81,7 @@ async function loadSplit(db: D1Database, householdId: number, splitId: number): 
 
 async function accountOwnedBy(db: D1Database, accountId: number, ownerUserId: number, householdId: number): Promise<boolean> {
   const row = await db
-    .prepare('SELECT 1 FROM accounts WHERE id = ? AND owner_user_id = ? AND household_id = ?')
+    .prepare('SELECT 1 FROM accounts WHERE id = ? AND owner_user_id = ? AND household_id = ? AND deleted_at IS NULL')
     .bind(accountId, ownerUserId, householdId)
     .first()
   return row != null
@@ -425,7 +425,7 @@ async function runSettlement(
   // 負担者の支払い口座(mark-paid で保持済み)。口座が削除されていれば null 扱いで続行。
   let debtorAccountId = split.debtor_account_id
   if (debtorAccountId != null) {
-    const exists = await c.env.DB.prepare('SELECT 1 FROM accounts WHERE id = ?').bind(debtorAccountId).first()
+    const exists = await c.env.DB.prepare('SELECT 1 FROM accounts WHERE id = ? AND deleted_at IS NULL').bind(debtorAccountId).first()
     if (!exists) debtorAccountId = null
   }
 

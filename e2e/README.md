@@ -55,6 +55,8 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
+`income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。#245で口座選択UIを実装するまで、既存の収入表示シナリオは`addIncomeViaApi`で実API登録する。
+
 `fixed-cost-detail.spec.ts` は1280／390／320pxで固定費4列の各セル・余白・Enter/Space、詳細のフォーカス巡回と復帰、編集保存／キャンセル・削除確認／キャンセル・登録導線、上限金額と長い名前・口座名の横はみ出しを実ローカルAPIで検証する。390／320pxはタッチ対応。`FIXED_COST_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・編集・削除確認・登録を保存する。
 
 `shopping-detail.spec.ts` は1280／390／320pxで買い物3列の行全域、Enter/Space、詳細のフォーカス巡回と復帰、購入個数の保持・一括反映（実在庫数と自動残留・手動除外）、削除・手動追加・横はみ出しを検証する。390／320pxはタッチ対応コンテキストで実行する。`SHOPPING_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・手動追加の画像を保存する。

@@ -45,6 +45,21 @@ export async function joinHousehold(page: Page, inviteCode: string): Promise<voi
   await expect(page).toHaveURL(/\/$/)
 }
 
+/** #244のAPI契約。口座選択UIは#245で対応するため、収入の表示検証用データは実APIで作る。 */
+export async function addIncomeViaApi(page: Page, amount: number, content: string, date?: string): Promise<void> {
+  const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
+  const headers = { Authorization: `Bearer ${token}` }
+  const accountResponse = await page.request.post('/api/accounts', { headers, data: { name: '[E2E_TEST] income account', type: 'bank', balance: 0 } })
+  expect(accountResponse.status()).toBe(201)
+  const account = await accountResponse.json()
+  const categoryResponse = await page.request.get('/api/income-categories', { headers })
+  expect(categoryResponse.ok()).toBe(true)
+  const categories = await categoryResponse.json()
+  const response = await page.request.post('/api/incomes', { headers, data: { incomeDate: date ?? new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), amount, content, categoryId: categories[0].id, accountId: account.id } })
+  expect(response.status()).toBe(201)
+  await page.reload()
+}
+
 /** 家計簿画面で支出/収入を1件登録する。splitWith を渡すと、その表示名のメンバーと割り勘(割合指定)にする */
 export async function addTransaction(
   page: Page,

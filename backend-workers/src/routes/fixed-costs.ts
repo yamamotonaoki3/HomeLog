@@ -69,7 +69,7 @@ async function validateAccountOrCard(
     const account = await db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.id, card.accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+      .where(and(eq(accounts.id, card.accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
       .get()
     if (!account) {
       return { ok: false, message: INVALID_CARD_MESSAGE }
@@ -78,7 +78,7 @@ async function validateAccountOrCard(
     const account = await db
       .select()
       .from(accounts)
-      .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId)))
+      .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
       .get()
     if (!account) {
       return { ok: false, message: INVALID_ACCOUNT_MESSAGE }
