@@ -127,6 +127,14 @@ a:hover { text-decoration: underline; }
 .list-row-button:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; background: #f0f6ff; }
 .list-row-button > span { min-width: 0; overflow-wrap: anywhere; }
 .list-row-heading { padding: 12px 8px; font-weight: bold; border-bottom: 1px solid #ddd; }
+.fixed-cost-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, .6fr) minmax(0, 1fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.fixed-cost-page, .fixed-cost-page .panel { min-width: 0; }
+.fixed-cost-page .toolbar { flex-wrap: wrap; }
+.fixed-cost-modal { width: min(420px, calc(100vw - 24px)); min-width: 0; overflow-wrap: anywhere; }
+.fixed-cost-modal dl { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr); gap: 12px; }
+.fixed-cost-modal dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fixed-cost-modal .modal-actions { flex-wrap: wrap; }
+.fixed-cost-modal input, .fixed-cost-modal select, .fixed-cost-modal fieldset { min-width: 0; max-width: 100%; }
 .inventory-list-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(3.5rem, .3fr) minmax(3.5rem, .3fr); gap: 8px; align-items: center; }
 .inventory-list { min-width: 0; }
 .inventory-modal-overlay { -webkit-tap-highlight-color: transparent; }

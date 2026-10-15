@@ -19,7 +19,7 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     await page.getByLabel('金額').fill('1000')
     await page.getByLabel('支払日').fill(jstDay)
     await page.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(page.getByTestId('fixed-costs-panel').getByRole('row').filter({ hasText: '[E2E_TEST] カレンダー固定費' })).toBeVisible()
+    await expect(page.getByTestId('fixed-costs-panel').getByRole('button', { name: '[E2E_TEST] カレンダー固定費の詳細', exact: true })).toBeVisible()
 
     await page.goto('/events')
     await page.getByRole('button', { name: 'イベントを登録' }).click()

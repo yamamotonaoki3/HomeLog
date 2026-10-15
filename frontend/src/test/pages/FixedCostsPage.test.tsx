@@ -110,7 +110,12 @@ describe('FixedCostsPage', () => {
     await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
     expect(screen.getByText('80000円')).toBeInTheDocument()
     expect(screen.getByText('27日')).toBeInTheDocument()
-    expect(screen.getByText('世帯共有')).toBeInTheDocument()
+    const row = screen.getByRole('button', { name: '家賃の詳細' })
+    expect(row.querySelectorAll('span')).toHaveLength(4)
+    expect(screen.queryByText('世帯共有')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    await userEvent.click(row)
+    expect(screen.getByRole('dialog', { name: '固定費詳細' })).toHaveTextContent('世帯共有')
   })
 
   it('引き落とし元の口座名が一覧に表示される', async () => {
@@ -283,7 +288,7 @@ describe('FixedCostsPage', () => {
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/fixed-costs')).toBe(false)
   })
 
-  it('割り勘設定のある固定費は一覧に人数を表示する', async () => {
+  it('割り勘設定のある固定費は詳細に相手・割合・金額を表示する', async () => {
     setupApi({
       fixedCosts: [
         {
@@ -303,7 +308,12 @@ describe('FixedCostsPage', () => {
     })
     renderFixedCostsPage()
 
-    await waitFor(() => expect(screen.getByText('1人と割り勘')).toBeInTheDocument())
+    await userEvent.click(await screen.findByRole('button', { name: '家賃の詳細' }))
+    const dialog = screen.getByRole('dialog', { name: '固定費詳細' })
+    expect(dialog).toHaveTextContent('％入力')
+    expect(dialog).toHaveTextContent('テスト花子')
+    expect(dialog).toHaveTextContent('50%')
+    expect(dialog).toHaveTextContent('40000円')
   })
 
   it('固定費登録時に割り勘設定を送信できる', async () => {
@@ -359,6 +369,7 @@ describe('FixedCostsPage', () => {
     renderFixedCostsPage()
     await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '家賃の詳細' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
     await waitFor(() =>
       expect(
@@ -391,6 +402,7 @@ describe('FixedCostsPage', () => {
     renderFixedCostsPage()
     await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '家賃の詳細' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
     expect(screen.getByRole('heading', { name: '固定費を編集' })).toBeInTheDocument()
     const amountInput = screen.getByLabelText('金額')
@@ -398,7 +410,7 @@ describe('FixedCostsPage', () => {
     await user.type(amountInput, '85000')
     await user.click(screen.getByRole('button', { name: '更新' }))
 
-    await waitFor(() => expect(screen.getByText('85000円')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('85000円')).toHaveLength(2))
     const patchCall = calls.find((c) => c.method === 'PATCH' && c.url === '/api/fixed-costs/1')
     expect(patchCall?.body).toMatchObject({ name: '家賃', amount: 85000 })
   })
@@ -426,6 +438,7 @@ describe('FixedCostsPage', () => {
     await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
 
     const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '家賃の詳細' }))
     await user.click(screen.getByRole('button', { name: '編集' }))
 
     expect(screen.getByLabelText('引き落とし元（任意）')).toHaveValue('account:5')
@@ -453,6 +466,7 @@ describe('FixedCostsPage', () => {
     renderFixedCostsPage()
     await waitFor(() => expect(screen.getByText('水道代')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '水道代の詳細' }))
     await user.click(screen.getByRole('button', { name: '削除' }))
     expect(screen.getByRole('heading', { name: '固定費を削除しますか？' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '削除する' }))
@@ -506,6 +520,7 @@ describe('FixedCostsPage', () => {
     renderFixedCostsPage()
     await waitFor(() => expect(screen.getByText('水道代')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '水道代の詳細' }))
     await user.click(screen.getByRole('button', { name: '削除' }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
 

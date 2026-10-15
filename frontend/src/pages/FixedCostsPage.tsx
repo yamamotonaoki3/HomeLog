@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -6,6 +6,7 @@ import type { Account, FixedCost } from '../api/kakeiboTypes'
 import { getCurrentUserId } from '../api/tokenStorage'
 import { Toast } from '../components/Toast'
 import { FixedCostModal } from '../components/kakeibo/FixedCostModal'
+import { FixedCostDetailModal, FixedCostDeleteModal } from '../components/kakeibo/FixedCostDetailModal'
 import type { HouseholdMember } from '../components/kakeibo/SplitFields'
 
 interface HouseholdMe {
@@ -19,7 +20,11 @@ export function FixedCostsPage() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modalTarget, setModalTarget] = useState<FixedCost | null | undefined>(undefined)
-  const [deleteTarget, setDeleteTarget] = useState<FixedCost | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [view, setView] = useState<'detail' | 'edit' | 'delete'>('detail')
+  const origin = useRef<HTMLButtonElement | null>(null)
+  const register = useRef<HTMLButtonElement>(null)
+  const selected = fixedCosts.find((cost) => cost.id === selectedId)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
@@ -34,13 +39,14 @@ export function FixedCostsPage() {
 
   const paymentSourceName = useCallback(
     (fixedCost: FixedCost) => {
+      if (!fixedCost.editable) return '非公開'
       if (fixedCost.accountId !== null) {
-        return accounts.find((account) => account.id === fixedCost.accountId)?.name ?? ''
+        return accounts.find((account) => account.id === fixedCost.accountId)?.name ?? '確認できません'
       }
       if (fixedCost.cardId !== null) {
-        return accounts.flatMap((account) => account.cards).find((card) => card.id === fixedCost.cardId)?.name ?? ''
+        return accounts.flatMap((account) => account.cards).find((card) => card.id === fixedCost.cardId)?.name ?? '確認できません'
       }
-      return ''
+      return 'なし'
     },
     [accounts],
   )
@@ -84,33 +90,46 @@ export function FixedCostsPage() {
     }
   }, [fetchFixedCosts, showToast])
 
-  const handleSaved = async () => {
+  const closeDetail = useCallback(() => {
+    setSelectedId(null)
+    setView('detail')
+    if (origin.current?.isConnected) origin.current.focus()
+    else register.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (selectedId !== null && !selected) closeDetail()
+  }, [selectedId, selected, closeDetail])
+
+  const handleSaved = async (saved: FixedCost) => {
     const wasEdit = modalTarget != null
+    setFixedCosts((prev) => [...prev.filter((cost) => cost.id !== saved.id), saved])
     try {
       await fetchFixedCosts()
     } catch (err) {
       showToast(getApiErrorMessage(err, '固定費一覧の取得に失敗しました'))
-      throw err
+      return
     }
     setModalTarget(undefined)
     showToast(wasEdit ? '固定費を更新しました' : '固定費を登録しました')
   }
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
-    const deletedId = deleteTarget.id
+    if (!selected || deleting) return
+    const deletedId = selected.id
     setDeleting(true)
     try {
       await apiClient.delete(`/fixed-costs/${deletedId}`)
     } catch (err) {
       showToast(getApiErrorMessage(err, '固定費の削除に失敗しました'))
       setDeleting(false)
-      setDeleteTarget(null)
+      setView('detail')
       return
     }
     setFixedCosts((prev) => prev.filter((fixedCost) => fixedCost.id !== deletedId))
     setDeleting(false)
-    setDeleteTarget(null)
+    origin.current = null
+    closeDetail()
     showToast('固定費を削除しました')
     try {
       await fetchFixedCosts()
@@ -124,62 +143,23 @@ export function FixedCostsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page fixed-cost-page">
       <div className="panel" data-testid="fixed-costs-panel">
         <div className="toolbar">
           <h2>固定費管理</h2>
           <Link to="/kakeibo" className="btn btn-secondary">
             家計簿に戻る
           </Link>
-          <button type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
+          <button ref={register} type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
             固定費を登録
           </button>
         </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>固定費名</th>
-              <th>金額</th>
-              <th>支払日</th>
-              <th>公開範囲</th>
-              <th>世帯合計対象</th>
-              <th>引き落とし元</th>
-              <th>割り勘</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fixedCosts.length === 0 ? (
-              <tr>
-                <td colSpan={8}>固定費はありません</td>
-              </tr>
-            ) : (
-              fixedCosts.map((fixedCost) => (
-                <tr key={fixedCost.id}>
-                  <td>{fixedCost.name}</td>
-                  <td>{fixedCost.amount}円</td>
-                  <td>{fixedCost.paymentDay}日</td>
-                  <td>{fixedCost.personal ? '個人' : '世帯共有'}</td>
-                  <td>{fixedCost.includeInHouseholdTotal ? '○' : ''}</td>
-                  <td>{paymentSourceName(fixedCost)}</td>
-                  <td>{fixedCost.splits.length > 0 ? `${fixedCost.splits.length}人と割り勘` : ''}</td>
-                  <td>
-                    {fixedCost.editable && (
-                      <>
-                        <button type="button" className="btn btn-tiny" onClick={() => setModalTarget(fixedCost)}>
-                          編集
-                        </button>
-                        <button type="button" className="btn btn-tiny" onClick={() => setDeleteTarget(fixedCost)}>
-                          削除
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <div className="list-row-heading fixed-cost-grid"><span>固定費名</span><span>金額</span><span>支払日</span><span>引き落とし元</span></div>
+        {fixedCosts.length === 0 ? <p>固定費はありません</p> : fixedCosts.map((cost) => (
+          <button key={cost.id} type="button" className="list-row-button fixed-cost-grid" aria-label={`${cost.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(cost.id); setView('detail') }}>
+            <span>{cost.name}</span><span>{cost.amount}円</span><span>{cost.paymentDay}日</span><span>{paymentSourceName(cost)}</span>
+          </button>
+        ))}
       </div>
       {modalTarget !== undefined && (
         <FixedCostModal
@@ -187,31 +167,12 @@ export function FixedCostsPage() {
           accounts={accounts}
           members={members}
           membersLoaded={membersLoaded}
-          onClose={() => setModalTarget(undefined)}
+          onClose={() => { setModalTarget(undefined); setView('detail'); if (!selectedId) register.current?.focus() }}
           onSaved={handleSaved}
         />
       )}
-      {deleteTarget && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <h2>固定費を削除しますか？</h2>
-            <p className="hint">「{deleteTarget.name}」を削除します。この操作は取り消せません。</p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-primary" onClick={handleDelete} disabled={deleting}>
-                削除する
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {selected && view === 'detail' && modalTarget === undefined && <FixedCostDetailModal fixedCost={selected} paymentSource={paymentSourceName(selected)} members={members} membersLoaded={membersLoaded} onClose={closeDetail} onEdit={() => { setView('edit'); setModalTarget(selected) }} onDelete={() => setView('delete')} />}
+      {selected && view === 'delete' && <FixedCostDeleteModal name={selected.name} busy={deleting} onClose={() => setView('detail')} onDelete={handleDelete} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )
