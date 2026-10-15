@@ -6,7 +6,8 @@ import { passwordResetTokens, refreshTokens, users } from '../db/schema'
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '../lib/crypto'
 import { errorResponse } from '../lib/errors'
 import { signAccessToken } from '../lib/jwt'
-import type { Bindings } from '../index'
+import { requireAuth } from '../middleware/auth'
+import type { AppEnv } from '../index'
 
 const PASSWORD_RESET_EXPIRATION_SECONDS = 30 * 60 // 30分(docs/details/features/F01_auth.md参照)
 const PASSWORD_RESET_REQUESTED_MESSAGE = 'パスワード再設定用のメールを送信しました(該当するアカウントが存在する場合)'
@@ -81,7 +82,19 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   }
 }
 
-export const authRoute = new Hono<{ Bindings: Bindings }>()
+export const authRoute = new Hono<AppEnv>()
+
+authRoute.get('/me', requireAuth, async (c) => {
+  const user = await drizzle(c.env.DB)
+    .select({ id: users.id, displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, c.get('userId')))
+    .get()
+  if (!user) {
+    return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  }
+  return c.json(user)
+})
 
 authRoute.post('/register', async (c) => {
   const body = await parseJsonBody(c)

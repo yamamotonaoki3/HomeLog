@@ -78,10 +78,17 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | --- | --- | --- |
 | POST | `/api/auth/register` | ユーザー登録 |
 | POST | `/api/auth/login` | ログイン（アクセストークン・リフレッシュトークン発行） |
+| GET | `/api/auth/me` | 認証済み本人のID・表示名取得（Workers、#258） |
 | POST | `/api/auth/refresh` | リフレッシュトークンでアクセストークン再発行 |
 | POST | `/api/auth/logout` | ログアウト（リフレッシュトークンを失効） |
 | POST | `/api/auth/password-reset/request` | パスワードリセット申請（メール送信） |
 | POST | `/api/auth/password-reset/confirm` | パスワードリセット実行 |
+
+### GET /api/auth/me（Workers、#258）
+
+`Authorization: Bearer <アクセストークン>` 必須。JWTで認証した本人のIDで `users` を検索し、現在の `{ "id": 1, "displayName": "testuser_太郎" }` のみを200で返す。`id` は数値、`displayName` は登録済みの表示名（1〜50文字）。メールアドレス・パスワードハッシュ等は返さない。リクエストのID指定は本人の識別に使わず、世帯所属も不要。
+
+トークンなし・不正・期限切れ、および認証したIDのユーザーがDBに存在しない場合は、いずれも401と `{ "code": "UNAUTHORIZED", "message": "認証が必要です" }` を返す。JWTの内容、login/refreshの応答、DBスキーマは変更しない。ヘッダーへの表示は後続#257で対応する。
 
 ### POST /api/auth/register
 
