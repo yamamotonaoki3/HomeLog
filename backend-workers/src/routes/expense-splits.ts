@@ -357,8 +357,8 @@ function buildSettlementStatements(db: D1Database, p: SettlementParams): D1Prepa
     // 立替者の収入
     db
       .prepare(
-        `INSERT INTO incomes (household_id, earner_user_id, category_id, account_id, amount, content, memo, income_date)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${p.guardSql}`,
+        `INSERT INTO incomes (household_id, earner_user_id, category_id, account_id, amount, content, memo, income_date, settlement_split_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${p.guardSql}`,
       )
       .bind(
         p.householdId,
@@ -370,6 +370,7 @@ function buildSettlementStatements(db: D1Database, p: SettlementParams): D1Prepa
         p.incomeMemo,
         p.date,
         p.splitId,
+        p.splitId,
       ),
   ]
 
@@ -378,8 +379,8 @@ function buildSettlementStatements(db: D1Database, p: SettlementParams): D1Prepa
     statements.push(
       db
         .prepare(
-          `INSERT INTO expenses (household_id, payer_user_id, category_id, account_id, amount, purpose, memo, expense_date, include_in_household_total)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, 0 WHERE ${p.guardSql}`,
+          `INSERT INTO expenses (household_id, payer_user_id, category_id, account_id, amount, purpose, memo, expense_date, include_in_household_total, settlement_split_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, 0, ? WHERE ${p.guardSql}`,
         )
         .bind(
           p.householdId,
@@ -390,6 +391,7 @@ function buildSettlementStatements(db: D1Database, p: SettlementParams): D1Prepa
           p.purposeText,
           p.expenseMemo,
           p.date,
+          p.splitId,
           p.splitId,
         ),
     )

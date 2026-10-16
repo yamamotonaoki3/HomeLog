@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, real, sqliteTable, text, primaryKey, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 // 既存Java実装のFlyway V1相当のテーブル定義をSQLite(D1)向けに翻訳したもの。
 // Phase 2以降、household等のテーブルをこのファイルに追加していく。
@@ -179,6 +179,7 @@ export const cardCharges = sqliteTable('card_charges', {
 })
 
 export const expenses = sqliteTable('expenses', {
+  settlementSplitId: integer('settlement_split_id').references((): AnySQLiteColumn => expenseSplits.id, { onDelete: 'set null' }),
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')
     .notNull()
@@ -208,9 +209,10 @@ export const expenses = sqliteTable('expenses', {
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),
-})
+}, (table) => [uniqueIndex('expenses_settlement_split_id_unique').on(table.settlementSplitId)])
 
 export const incomes = sqliteTable('incomes', {
+  settlementSplitId: integer('settlement_split_id').references((): AnySQLiteColumn => expenseSplits.id, { onDelete: 'set null' }),
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')
     .notNull()
@@ -230,7 +232,13 @@ export const incomes = sqliteTable('incomes', {
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),
-})
+}, (table) => [uniqueIndex('incomes_settlement_split_id_unique').on(table.settlementSplitId)])
+
+export const fixedCostPostingSuppressions = sqliteTable('fixed_cost_posting_suppressions', {
+  fixedCostId: integer('fixed_cost_id').notNull().references(() => fixedCosts.id, { onDelete: 'cascade' }),
+  yearMonth: text('year_month').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (table) => [primaryKey({ columns: [table.fixedCostId, table.yearMonth] })])
 
 // sqliteTable('recipes', {...})は「recipesという名前のテーブルには、こういう列がある」という
 // TypeScript側の定義。実際にテーブルを作るSQL文はdrizzle/0005_recipes.sqlに書かれており、
@@ -403,3 +411,4 @@ export const fixedCosts = sqliteTable('fixed_costs', {
     .notNull()
     .default(sql`(current_timestamp)`),
 })
+

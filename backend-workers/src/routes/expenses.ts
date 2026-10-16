@@ -10,6 +10,7 @@ import { resolveHouseholdId } from '../lib/household-context'
 import { resolveSplits, type SplitInputRow } from '../lib/split-calc'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
+import { balanceStatements, conflict, deleteLedger, ledgerArgs, ledgerWhere, loadMutableLedger } from '../lib/ledger-mutations'
 
 const CATEGORY_NOT_FOUND_MESSAGE = '指定されたカテゴリーが見つかりません'
 const ACCOUNT_AND_CARD_BOTH_SPECIFIED_MESSAGE = '口座とカードは同時に指定できません'
@@ -223,7 +224,13 @@ expensesRoute.get('/', async (c) => {
   return c.json(rows.map(toResponse))
 })
 
-expensesRoute.post('/', async (c) => {
+expensesRoute.post('/', (c) => saveExpense(c))
+expensesRoute.put('/:id', (c) => saveExpense(c, true))
+expensesRoute.delete('/:id', (c) => deleteLedger(c, 'expenses'))
+
+async function saveExpense(c: Context<AppEnv>, updating = false) {
+  const ctx = updating ? await loadMutableLedger(c, 'expenses') : null
+  if (ctx?.error) return ctx.error
   const parsed = createExpenseSchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
@@ -317,6 +324,39 @@ expensesRoute.post('/', async (c) => {
     resolvedAccountId = accountId
     balanceUpdateStatement = { table: 'accounts', id: accountId }
   }
+
+  if (ctx && !ctx.error) {
+    const { row, target } = ctx
+    const args = ledgerArgs('expenses', row, householdId, userId)
+    const exists = `EXISTS (SELECT 1 FROM expenses WHERE ${ledgerWhere('expenses')})`
+    const statements = balanceStatements(c.env.DB, target, row.amount, balanceUpdateStatement, -amount, exists, args)
+    // 外部相手の追加も更新と同じbatch。各INSERT直後のlast_insert_rowid()を内訳に使用する。
+    // 本体のUPDATEで金額・補正先が変わると以降の条件(読み込み時の値との一致)が成立しなくなるため、本体の更新は最後に行う。
+    statements.push(c.env.DB.prepare(`DELETE FROM expense_splits WHERE expense_id = ? AND ${exists}`).bind(row.id, ...args))
+    for (const split of preparedSplits.rows) {
+      if (split.newExternalName) {
+        statements.push(c.env.DB.prepare(`INSERT INTO external_persons (household_id, name) SELECT ?, ? WHERE ${exists}`)
+          .bind(householdId, split.newExternalName, ...args))
+      }
+      statements.push(c.env.DB.prepare(`INSERT INTO expense_splits
+        (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
+        SELECT ?, ?, ${split.newExternalName ? 'last_insert_rowid()' : '?'}, ?, ?, ?, 'unpaid' WHERE ${exists}`)
+        .bind(row.id, split.debtorUserId, ...(split.newExternalName ? [] : [split.debtorExternalId]), split.splitInputType,
+          split.splitRatio, split.amountDue, ...args))
+    }
+    statements.push(c.env.DB.prepare(`UPDATE expenses SET expense_date = ?, amount = ?, purpose = ?, category_id = ?, memo = ?,
+      include_in_household_total = ?, account_id = ?, card_id = ?, event_id = ? WHERE ${ledgerWhere('expenses')} RETURNING id`)
+      .bind(expenseDate, amount, purpose?.trim() ?? '', categoryId, memo ?? null, includeInHouseholdTotal ? 1 : 0,
+        resolvedAccountId, resolvedCardId, eventId ?? null, ...args))
+    const results = await c.env.DB.batch(statements)
+    if (!results[results.length - 1].results.length) return conflict(c)
+    const updated = await db.select().from(expenses).where(eq(expenses.id, row.id)).get()
+    const splitRows = await c.env.DB.prepare(`SELECT debtor_user_id AS debtorUserId, debtor_external_id AS debtorExternalId,
+      split_input_type AS splitInputType, split_ratio AS splitRatio, amount_due AS amountDue, status
+      FROM expense_splits WHERE expense_id = ? ORDER BY id`).bind(row.id).all()
+    return c.json({ ...toResponse(updated!), splits: splitRows.results })
+  }
+
 
   // 新規の世帯外の相手を先に作成しIDへ解決する。ここで失敗しても残るのは名前マスタの行のみで
   // 参照整合性・残高・支出には一切影響しないため、支出本体のバッチとは分けてよい(P1対応)。
@@ -419,4 +459,4 @@ expensesRoute.post('/', async (c) => {
     },
     201,
   )
-})
+}

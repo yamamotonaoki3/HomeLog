@@ -1,5 +1,5 @@
 // 既存Java実装のErrorResponse/ErrorCode(common/exception, common/constant)と一致させる。
-export type ErrorCode = 'VALIDATION_ERROR' | 'RESOURCE_NOT_FOUND' | 'DUPLICATE_RESOURCE' | 'UNAUTHORIZED' | 'INVALID_TOKEN' | 'EXTERNAL_SERVICE_ERROR'
+export type ErrorCode = 'VALIDATION_ERROR' | 'RESOURCE_NOT_FOUND' | 'RESOURCE_CONFLICT' | 'DUPLICATE_RESOURCE' | 'UNAUTHORIZED' | 'INVALID_TOKEN' | 'EXTERNAL_SERVICE_ERROR'
 
 export interface FieldDetail {
   field: string
