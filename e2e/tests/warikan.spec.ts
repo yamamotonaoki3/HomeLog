@@ -39,20 +39,23 @@ async function expectNoPageOverflow(page: Page) {
       overflow: Math.max(0, document.documentElement.scrollWidth - width),
       outside: [...document.querySelectorAll('body *')].filter((element) => {
         const rect = element.getBoundingClientRect()
-        return rect.right > width && !element.closest('.warikan-table-scroll')
+        return rect.right > width
       }).map((element) => ({ tag: element.tagName, class: element.className })),
     }
   })).toEqual({ overflow: 0, outside: [] })
 }
 
-async function screenshot(page: Page, width: number) {
+async function screenshot(page: Page, width: number, name = 'warikan') {
   // 任意のローカル保存先を指定した実行でのみ撮影。リポジトリには保存しない。
   if (process.env.WARIKAN_SCREENSHOT_DIR) {
     await mkdir(process.env.WARIKAN_SCREENSHOT_DIR, { recursive: true })
-    await page.getByRole('region', { name: '割り勘の内訳一覧（横スクロール可能）' }).evaluate((element) => { element.scrollLeft = 0 })
-    await page.screenshot({ path: join(process.env.WARIKAN_SCREENSHOT_DIR, `warikan-${width}.png`), fullPage: true })
+    await page.screenshot({ path: join(process.env.WARIKAN_SCREENSHOT_DIR, `${name}-${width}.png`), fullPage: true })
   }
 }
+
+// 一覧の行(日付・相手・金額だけ)。用途はアクセシブルネームで特定する。
+const rowOf = (page: Page, purpose: string) => page.getByRole('list', { name: '割り勘の内訳一覧' }).getByRole('button', { name: purpose })
+const detailOf = (page: Page) => page.getByRole('dialog', { name: '割り勘詳細' })
 
 test.describe('F-04 割り勘・精算', () => {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
@@ -76,9 +79,12 @@ test.describe('F-04 割り勘・精算', () => {
 
       // A(立替者)側：請求対象として表示される
       await pageA.goto('/warikan')
-      const rowA = pageA.getByRole('row').filter({ hasText: purpose })
-      await expect(rowA).toContainText('1500円')
-      await expect(rowA).toContainText('未請求')
+      const rowA = rowOf(pageA, purpose)
+      await expect(rowA).toContainText('1,500円')
+      await expect(rowA).not.toContainText('未請求')
+      await rowA.click()
+      await expect(detailOf(pageA)).toContainText('未請求')
+      await detailOf(pageA).getByRole('button', { name: '閉じる' }).click()
       await expect(pageA.getByRole('tab', { name: 'すべて' })).toHaveAttribute('aria-selected', 'true')
 
       // 世帯内・世帯外が混在しても初回表示で両方が見え、種別で絞り込める。
@@ -87,7 +93,7 @@ test.describe('F-04 割り勘・精算', () => {
       await addExternalExpense(pageA, externalPurpose, 'e2euser_external_mixed')
       await pageA.getByRole('link', { name: /割り勘/ }).click()
       await expect(pageA.getByRole('tab', { name: 'すべて' })).toHaveAttribute('aria-selected', 'true')
-      const externalRow = pageA.getByRole('row').filter({ hasText: externalPurpose })
+      const externalRow = rowOf(pageA, externalPurpose)
       await expect(rowA).toBeVisible()
       await expect(externalRow).toBeVisible()
       await expectNoPageOverflow(pageA)
@@ -103,16 +109,17 @@ test.describe('F-04 割り勘・精算', () => {
 
       // B(負担者)側：支払を報告する
       await pageB.goto('/warikan')
-      const rowB = pageB.getByRole('row').filter({ hasText: purpose })
-      await rowB.getByRole('button', { name: '支払う' }).click()
+      await rowOf(pageB, purpose).click()
+      await detailOf(pageB).getByRole('button', { name: '支払う' }).click()
       await pageB.getByTestId('settlement-account-modal').getByRole('button', { name: '支払った' }).click()
-      await expect(rowB).toContainText('受領確認待ち')
+      await expect(detailOf(pageB)).toContainText('受領確認待ち')
 
       // A 側：受領を確定すると精算済みになる
       await pageA.reload()
-      await rowA.getByRole('button', { name: '受け取りました' }).click()
+      await rowA.click()
+      await detailOf(pageA).getByRole('button', { name: '受け取りました' }).click()
       await pageA.getByTestId('settlement-account-modal').getByRole('button', { name: '受け取りを確定' }).click()
-      await expect(rowA).toContainText('精算済み')
+      await expect(detailOf(pageA)).toContainText('精算済み')
 
       await contextA.close()
       await contextB.close()
@@ -131,10 +138,9 @@ test.describe('F-04 割り勘・精算', () => {
         await page.goto('/kakeibo')
         await addExternalExpense(page, purpose, externalName)
         await page.getByRole('link', { name: /割り勘/ }).click()
-        const row = page.getByRole('row').filter({ hasText: purpose })
+        const row = rowOf(page, purpose)
         await expect(row).toContainText(externalName)
-        await expect(row).toContainText('1500円')
-        await expect(row).toContainText('未請求')
+        await expect(row).toContainText('1,500円')
         await expect(page.getByRole('tab', { name: 'すべて' })).toHaveAttribute('aria-selected', 'true')
         await page.reload()
         await expect(row).toBeVisible()
@@ -144,8 +150,14 @@ test.describe('F-04 割り勘・精算', () => {
         await expect(page.getByText('世帯内の割り勘の内訳はありません')).toBeVisible()
         await page.getByRole('tab', { name: '世帯外' }).click()
         await expect(row).toBeVisible()
-        await row.getByRole('button', { name: '請求', exact: true }).click()
-        await expect(row).toContainText('請求中')
+        await row.click()
+        const detail = detailOf(page)
+        await expect(detail).toContainText('未請求')
+        await expectNoPageOverflow(page)
+        await screenshot(page, viewport.width, 'warikan-detail')
+        await detail.getByRole('button', { name: '請求', exact: true }).click()
+        await expect(detail).toContainText('請求中')
+        await detail.getByRole('button', { name: '閉じる' }).click()
         await expect(page.getByRole('tab', { name: '世帯外' })).toHaveAttribute('aria-selected', 'true')
         if (viewport.width === 390) {
           await page.setViewportSize({ width: 320, height: 844 })
@@ -153,10 +165,12 @@ test.describe('F-04 割り勘・精算', () => {
           await expectNoPageOverflow(page)
           await screenshot(page, 320)
         }
-        // 横スクロールが必要な幅でも操作列に到達して精算できる。
-        await row.getByRole('button', { name: '精算済みにする' }).click()
+        // 狭い幅でも詳細モーダルから精算できる。
+        await row.click()
+        await expectNoPageOverflow(page)
+        await detail.getByRole('button', { name: '精算済みにする' }).click()
         await page.getByTestId('settlement-account-modal').getByRole('button', { name: '精算済みにする' }).click()
-        await expect(row).toContainText('精算済み')
+        await expect(detail).toContainText('精算済み')
       } finally {
         await context.close()
       }

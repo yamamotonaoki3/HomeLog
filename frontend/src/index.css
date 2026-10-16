@@ -155,8 +155,9 @@ a:hover { text-decoration: underline; }
 
 /* 割り勘一覧は狭い画面でも表の中だけをスクロールし、操作列へ到達できる。 */
 .warikan-page .tabs { flex-wrap: wrap; }
-.warikan-table-scroll { max-width: 100%; overflow-x: auto; }
-.warikan-table-scroll .table { min-width: 640px; }
+.warikan-list { margin: 0; padding: 0; list-style: none; }
+.warikan-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.warikan-row-amount { text-align: right; white-space: nowrap; }
 
 /* モーダル */
 .modal-overlay {
@@ -366,3 +367,4 @@ input[type="checkbox"], input[type="radio"] {
   padding: 8px;
   font-size: 16px;
 }
+.modal-overlay[hidden] { display: none; }

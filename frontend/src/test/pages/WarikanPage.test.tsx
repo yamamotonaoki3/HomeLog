@@ -101,7 +101,13 @@ function renderPage() {
   )
 }
 
-const rowOf = () => screen.findByRole('row', { name: /共同購入/ })
+const rowOf = (name: RegExp = /共同購入/) => screen.findByRole('button', { name })
+const detail = () => screen.getByRole('dialog', { name: '割り勘詳細' })
+// 一覧の行を押して詳細モーダルを開き、そのモーダルを返す。
+async function openDetail(name: RegExp = /共同購入/) {
+  await userEvent.click(await rowOf(name))
+  return screen.findByRole('dialog', { name: '割り勘詳細' })
+}
 
 describe('WarikanPage(改訂フロー)', () => {
   it('立替者: unpaid では請求ボタン、payment_reported では受け取り/差し戻しボタンが出る', async () => {
@@ -109,7 +115,7 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '請求' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '請求' }))
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('1/request'))
   })
 
@@ -118,7 +124,7 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '支払う' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '支払う' }))
     const modal = await screen.findByTestId('settlement-account-modal')
     await user.selectOptions(within(modal).getByLabelText('口座（任意）'), '7')
     await user.click(within(modal).getByRole('button', { name: '支払った' }))
@@ -131,12 +137,12 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '受け取りました' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '受け取りました' }))
     const modal = await screen.findByTestId('settlement-account-modal')
     await user.click(within(modal).getByRole('button', { name: '受け取りを確定' }))
 
     await waitFor(() => expect(calls).toContainEqual({ path: '1/confirm-receipt', body: { accountId: null } }))
-    await waitFor(() => expect(screen.getByRole('row', { name: /共同購入/ })).toHaveTextContent('精算済み'))
+    await waitFor(() => expect(detail()).toHaveTextContent('精算済み'))
   })
 
   it('負担者: 受領確認待ちのとき保留できる', async () => {
@@ -144,7 +150,7 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '保留' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '保留' }))
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('1/hold'))
   })
 
@@ -154,7 +160,7 @@ describe('WarikanPage(改訂フロー)', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('tab', { name: '世帯外' }))
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '精算済みにする' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '精算済みにする' }))
     const modal = await screen.findByTestId('settlement-account-modal')
     await user.selectOptions(within(modal).getByLabelText('口座（任意）'), '7')
     await user.click(within(modal).getByRole('button', { name: '精算済みにする' }))
@@ -165,7 +171,7 @@ describe('WarikanPage(改訂フロー)', () => {
   it('精算済みの行には削除ボタンが出ない', async () => {
     setupApi([split({ status: 'settled' })])
     renderPage()
-    const row = await rowOf()
+    const row = await openDetail()
     expect(within(row).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
   })
 
@@ -174,7 +180,7 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: '削除' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: '削除' }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
 
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('DELETE 1'))
@@ -186,21 +192,21 @@ describe('WarikanPage コメント', () => {
   it('立替者・負担者どちらの行にもstatusを問わずコメントボタンが出て、件数0のときはバッジが無い', async () => {
     setupApi([split({ role: 'payer', status: 'settled', commentCount: 0 })])
     renderPage()
-    const button = within(await rowOf()).getByRole('button', { name: 'コメント' })
+    const button = within(await openDetail()).getByRole('button', { name: 'コメント' })
     expect(button).toBeInTheDocument()
   })
 
   it('コメント件数が0より多いときはバッジを表示する', async () => {
     setupApi([split({ commentCount: 3 })])
     renderPage()
-    expect(within(await rowOf()).getByRole('button', { name: 'コメント(3)' })).toBeInTheDocument()
+    expect(within(await openDetail()).getByRole('button', { name: 'コメント(3)' })).toBeInTheDocument()
   })
 
   it('コメントボタンでモーダルが開く', async () => {
     setupApi([split({})])
     renderPage()
     const user = userEvent.setup()
-    await user.click(within(await rowOf()).getByRole('button', { name: 'コメント' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: 'コメント' }))
     expect(await screen.findByTestId('expense-split-comments-modal')).toBeInTheDocument()
   })
 
@@ -209,14 +215,14 @@ describe('WarikanPage コメント', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await rowOf()).getByRole('button', { name: 'コメント' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: 'コメント' }))
     const modal = await screen.findByTestId('expense-split-comments-modal')
     await user.type(within(modal).getByLabelText('コメントを投稿'), 'コメントテスト')
     await user.click(within(modal).getByRole('button', { name: '投稿' }))
     await waitFor(() => expect(within(modal).getByText('コメントテスト')).toBeInTheDocument())
 
     await user.click(within(modal).getByRole('button', { name: '閉じる' }))
-    expect(await within(await rowOf()).findByRole('button', { name: 'コメント(1)' })).toBeInTheDocument()
+    expect(await within(detail()).findByRole('button', { name: 'コメント(1)' })).toBeInTheDocument()
   })
 })
 
@@ -228,8 +234,8 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     ])
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
-    expect(screen.getByText('世帯外の支出')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /世帯内の支出/ })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /世帯外の支出/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'すべて', selected: true })).toBeInTheDocument()
   })
 
@@ -239,19 +245,19 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
       split({ id: 2, expensePurpose: '世帯外の支出', isExternal: true, debtorLabel: 'E2EUser A' }),
     ])
     renderPage()
-    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /世帯内の支出/ })).toBeInTheDocument())
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('tab', { name: '世帯外' }))
 
-    expect(screen.getByText('世帯外の支出')).toBeInTheDocument()
-    expect(screen.queryByText('世帯内の支出')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /世帯外の支出/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /世帯内の支出/ })).not.toBeInTheDocument()
   })
 
   it('絞り込んだ結果が0件のときはプレースホルダーを表示する', async () => {
     setupApi([split({ id: 1, expensePurpose: '世帯内の支出', isExternal: false })])
     renderPage()
-    await waitFor(() => expect(screen.getByText('世帯内の支出')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /世帯内の支出/ })).toBeInTheDocument())
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('tab', { name: '世帯外' }))
@@ -262,10 +268,13 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
   it.each([false, true])('単一種別でも初期表示に内訳を表示する（isExternal=%s）', async (isExternal) => {
     setupApi([split({ isExternal, expensePurpose: '[E2E_TEST] 単一種別', debtorLabel: 'testuser_external', amountDue: 500 })])
     renderPage()
-    const row = await screen.findByRole('row', { name: /単一種別/ })
+    const row = await rowOf(/単一種別/)
     expect(row).toHaveTextContent('testuser_external')
     expect(row).toHaveTextContent('500円')
-    expect(row).toHaveTextContent('未請求')
+    // 一覧は日付・相手・金額だけ。用途と状態は詳細モーダルに出す。
+    expect(row).not.toHaveTextContent('未請求')
+    expect(row).not.toHaveTextContent('単一種別')
+    expect(await openDetail(/単一種別/)).toHaveTextContent('未請求')
     expect(screen.getByRole('tab', { name: 'すべて', selected: true })).toBeInTheDocument()
   })
 
@@ -275,17 +284,17 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
       split({ id: 2, expensePurpose: '[E2E_TEST] 外部', isExternal: true }),
     ])
     renderPage()
-    await screen.findByText('[E2E_TEST] 内部')
+    await screen.findByRole('button', { name: /\[E2E_TEST\] 内部/ })
     const user = userEvent.setup()
     await user.click(screen.getByRole('tab', { name: '世帯内' }))
-    expect(screen.getByText('[E2E_TEST] 内部')).toBeInTheDocument()
-    expect(screen.queryByText('[E2E_TEST] 外部')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\[E2E_TEST\] 内部/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /\[E2E_TEST\] 外部/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: '世帯外' }))
-    expect(screen.queryByText('[E2E_TEST] 内部')).not.toBeInTheDocument()
-    expect(screen.getByText('[E2E_TEST] 外部')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /\[E2E_TEST\] 内部/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\[E2E_TEST\] 外部/ })).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'すべて' }))
-    expect(screen.getByText('[E2E_TEST] 内部')).toBeInTheDocument()
-    expect(screen.getByText('[E2E_TEST] 外部')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\[E2E_TEST\] 内部/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\[E2E_TEST\] 外部/ })).toBeInTheDocument()
   })
 
   it('全件0件と選択種別0件の文言を区別する', async () => {
@@ -305,7 +314,7 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     await rowOf()
     const user = userEvent.setup()
     await user.click(screen.getByRole('tab', { name: '世帯外' }))
-    const row = screen.getByRole('row', { name: /外部/ })
+    const row = await openDetail(/外部/)
     if (action === 'request') {
       await user.click(within(row).getByRole('button', { name: '請求' }))
       await waitFor(() => expect(row).toHaveTextContent('請求中'))
@@ -319,7 +328,7 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
       await screen.findByText('世帯外の割り勘の内訳はありません')
     }
     expect(screen.getByRole('tab', { name: '世帯外', selected: true })).toBeInTheDocument()
-    expect(screen.queryByText('共同購入')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /共同購入/ })).not.toBeInTheDocument()
   })
 
   it('取得失敗はエラー通知を表示する', async () => {
@@ -327,6 +336,6 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     server.use(http.get('/api/expense-splits', () => HttpResponse.json({ message: '割り勘の取得に失敗しました' }, { status: 500 })))
     renderPage()
     expect(await screen.findByText('割り勘の取得に失敗しました')).toBeInTheDocument()
-    expect(screen.queryByText('共同購入')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /共同購入/ })).not.toBeInTheDocument()
   })
 })
