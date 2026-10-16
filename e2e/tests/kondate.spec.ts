@@ -19,6 +19,8 @@ test.describe('F-09/F-10 レシピ・献立', () => {
 
     await page.goto('/menu')
     const menu = page.getByTestId('menu-panel')
+    // キーワードで絞り込んでから選ぶ(#281)。
+    await menu.getByLabel('レシピを検索').fill('肉じゃ')
     await menu.getByLabel('レシピ', { exact: true }).selectOption({ label: title })
     await menu.getByRole('button', { name: '追加' }).click()
     await expect(menu.getByRole('listitem').filter({ hasText: title })).toBeVisible()
@@ -93,6 +95,26 @@ test.describe('F-09/F-10 レシピ・献立', () => {
         await mkdir(process.env.ISSUE_218_SHOTS_DIR, { recursive: true })
         await page.screenshot({ path: join(process.env.ISSUE_218_SHOTS_DIR, `menu-${width}.png`), fullPage: true })
       }
+    })
+  }
+
+  for (const width of [390, 320]) {
+    test(`${width}pxでレシピ検索欄と選択欄がはみ出さない (#281)`, async ({ page, consoleGuard }) => {
+      consoleGuard.watch(page)
+      await page.setViewportSize({ width, height: 844 })
+      await setupUserWithHousehold(page, `menuSearch${width}`)
+      await page.goto('/menu')
+      const menu = page.getByTestId('menu-panel')
+      await menu.getByLabel('レシピを検索').fill('[E2E_TEST] 該当なし')
+      await expect(menu.getByLabel('レシピ', { exact: true })).toContainText('該当するレシピがありません')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+      for (const element of [menu.getByLabel('レシピを検索'), menu.getByLabel('レシピ', { exact: true })]) {
+        const box = (await element.boundingBox())!
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width).toBeLessThanOrEqual(width)
+      }
+      const dir = process.env.MENU_SEARCH_SCREENSHOT_DIR
+      if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `menu-search-${width}.png`), fullPage: true }) }
     })
   }
 })

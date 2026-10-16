@@ -19,6 +19,11 @@ function displayLabel(entry: MenuEntry): string {
   return entry.freeTextMemo ?? ''
 }
 
+// 全角・半角の英数字や大文字・小文字の違いを無視して比較するための正規化。
+function normalizeKeyword(value: string) {
+  return value.normalize('NFKC').toLowerCase().trim()
+}
+
 export function MenuPage() {
   const [weekStartDate, setWeekStartDate] = useState(() => getMondayOf(new Date()))
   const [entries, setEntries] = useState<MenuEntry[]>([])
@@ -26,6 +31,7 @@ export function MenuPage() {
   const [loading, setLoading] = useState(true)
   const [addMode, setAddMode] = useState<AddMode>('recipe')
   const [selectedRecipeId, setSelectedRecipeId] = useState('')
+  const [recipeKeyword, setRecipeKeyword] = useState('')
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -94,6 +100,9 @@ export function MenuPage() {
       cancelled = true
     }
   }, [weekStartDate, fetchEntries, showToast])
+
+  const keyword = normalizeKeyword(recipeKeyword)
+  const filteredRecipes = keyword === '' ? recipes : recipes.filter((recipe) => normalizeKeyword(recipe.title).includes(keyword))
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault()
@@ -185,15 +194,36 @@ export function MenuPage() {
             </label>
           </fieldset>
           {addMode === 'recipe' ? (
-            <select aria-label="レシピ" value={selectedRecipeId} onChange={(e) => setSelectedRecipeId(e.target.value)}>
-              <option value="">選択してください</option>
-              {recipes.map((recipe) => (
-                <option key={recipe.id} value={recipe.id}>
-                  {recipe.isFavorite ? '★ ' : ''}
-                  {recipe.title}
-                </option>
-              ))}
-            </select>
+            <div className="menu-recipe-picker">
+              <input
+                type="search"
+                aria-label="レシピを検索"
+                placeholder="キーワードで絞り込み"
+                value={recipeKeyword}
+                onChange={(e) => {
+                  const keyword = e.target.value
+                  setRecipeKeyword(keyword)
+                  // 絞り込みで見えなくなったレシピが選ばれたまま追加されないよう、選択を解除する。
+                  const selected = recipes.find((recipe) => String(recipe.id) === selectedRecipeId)
+                  if (selected && !normalizeKeyword(selected.title).includes(normalizeKeyword(keyword))) setSelectedRecipeId('')
+                }}
+              />
+              <select aria-label="レシピ" value={selectedRecipeId} onChange={(e) => setSelectedRecipeId(e.target.value)}>
+                {filteredRecipes.length === 0 ? (
+                  <option value="">該当するレシピがありません</option>
+                ) : (
+                  <>
+                    <option value="">選択してください</option>
+                    {filteredRecipes.map((recipe) => (
+                      <option key={recipe.id} value={recipe.id}>
+                        {recipe.isFavorite ? '★ ' : ''}
+                        {recipe.title}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </div>
           ) : (
             <input aria-label="自由メモの内容" type="text" maxLength={100} value={memo} onChange={(e) => setMemo(e.target.value)} />
           )}

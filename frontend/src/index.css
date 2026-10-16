@@ -344,3 +344,20 @@ input[type="checkbox"], input[type="radio"] {
 .header-account { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; width: 180px; }
 .header-account-name { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .header-account .nav-logout { flex-shrink: 0; white-space: nowrap; }
+
+/* 献立表: レシピ検索欄と選択欄を縦に並べ、スマホでも幅いっぱいに使う(#281) */
+.menu-recipe-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.menu-recipe-picker input,
+.menu-recipe-picker select {
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  padding: 8px;
+  font-size: 16px;
+}
