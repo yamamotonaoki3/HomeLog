@@ -2,7 +2,7 @@
 
 WorkersがReactのビルド成果物とAPIを同一originで配信する。画面の直接アクセスはSPAへ、`/api`・`/api/*`・`/health` はHonoへ渡す。既存のfetchとscheduled処理は維持する。画面・API・DBの仕様変更はない。
 
-本書は実施手順であり、本Issueでは外部リソース作成・本番デプロイを実行しない。技術スタック等の資料全体の刷新も対象外。
+本番は https://homelog-backend-workers.nyproducts.workers.dev で公開済み。以降の公開は「本番の自動デプロイ（Workers Builds・#267）」の手順で行う。技術スタック等の資料全体の刷新は対象外。
 
 ## ローカル検証・CIの前提
 
@@ -25,7 +25,7 @@ npm run deploy:dry-run
 
 dry-runはローカルのbundle・assets構成を検証するもので、D1/R2の実在、権限、secret登録済みか、公開環境の動作までは保証しない。E2Eの専用DB・後始末と静的配信テストは[e2e/README.md](../e2e/README.md)参照。
 
-## 将来の初回公開（ユーザーの公開判断後のみ）
+## 初回公開の手順（実施済み・環境を作り直す場合の参考）
 
 以下は`backend-workers/`で行う。Cloudflareアカウント、Workers/D1/R2の利用権限と必要な課金設定を準備する。実行先アカウントを確認する。
 
