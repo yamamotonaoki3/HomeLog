@@ -185,6 +185,32 @@ describe('MenuPage', () => {
     expect(postCall?.body).toMatchObject({ weekStartDate: monday, recipeId: 10 })
   })
 
+  it('キーワードでレシピの選択肢を絞り込み、選んだレシピで追加できる (#281)', async () => {
+    const monday = getMondayOf(new Date())
+    const base = { ingredients: null, steps: null, sourceType: 'manual' as const, url: null, thumbnailUrl: null, memo: null, isFavorite: false }
+    const { calls } = setupApi({ recipes: [{ ...base, id: 10, title: '肉じゃが' }, { ...base, id: 11, title: '鶏の唐揚げ' }, { ...base, id: 12, title: 'Pasta Carbonara' }] })
+    const user = userEvent.setup()
+    renderMenuPage()
+    await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
+    const select = screen.getByLabelText('レシピ')
+    const options = () => within(select).getAllByRole('option').map((option) => option.textContent)
+
+    await user.type(screen.getByLabelText('レシピを検索'), '唐揚')
+    expect(options()).toEqual(['選択してください', '鶏の唐揚げ'])
+    await user.clear(screen.getByLabelText('レシピを検索'))
+    await user.type(screen.getByLabelText('レシピを検索'), 'ＰＡＳＴＡ')
+    expect(options()).toEqual(['選択してください', 'Pasta Carbonara'])
+    await user.selectOptions(select, '12')
+    await user.type(screen.getByLabelText('レシピを検索'), 'x')
+    expect(options()).toEqual(['該当するレシピがありません'])
+    expect(select).toHaveValue('')
+    await user.clear(screen.getByLabelText('レシピを検索'))
+    expect(options()).toHaveLength(4)
+    await user.selectOptions(select, '11')
+    await user.click(screen.getByRole('button', { name: '追加' }))
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ weekStartDate: monday, recipeId: 11 }))
+  })
+
   it('自由メモでラフ登録できる', async () => {
     const monday = getMondayOf(new Date())
     const { calls } = setupApi()
