@@ -464,7 +464,8 @@ export function KakeiboPage() {
   const activeCategoryFilter = typeFilter === 'income' ? incomeCategoryFilter : categoryFilter
   const activeCategoryOptions = typeFilter === 'income' ? incomeCategories : categories
   const addDisabled = categories.length === 0 && incomeCategories.length === 0
-  const fixedCostTotal = fixedCosts.reduce((sum, fixedCost) => sum + fixedCost.amount, 0)
+  // 自動計上される支出は登録者本人の支出になるため、自分が登録した固定費(editable)だけを合計する(#282)。
+  const fixedCostTotal = fixedCosts.filter((fixedCost) => fixedCost.editable).reduce((sum, fixedCost) => sum + fixedCost.amount, 0)
 
   const unsettledSplits = splits.filter((split) => split.status !== 'settled')
   const owedByMe = unsettledSplits.filter((split) => split.role === 'debtor')
@@ -496,11 +497,11 @@ export function KakeiboPage() {
 
   return (
     <div className="page kakeibo-page">
-      <div className="panel" data-testid="monthly-summary">
-        <p>
-          今月支出：{monthlyExpenseTotal}円　今月収入：{monthlyIncomeTotal}円　世帯合計対象額：
-          {dashboardSummary?.householdExpenseTotal ?? 0}円
-        </p>
+      <div className="panel kakeibo-monthly-summary" data-testid="monthly-summary">
+        <p>今月支出：{monthlyExpenseTotal}円</p>
+        <p>今月収入：{monthlyIncomeTotal}円</p>
+        <p>世帯合計対象額：{dashboardSummary?.householdExpenseTotal ?? 0}円</p>
+        <p>今月の固定費予定額：{fixedCostTotal}円</p>
       </div>
       <div className="panel" data-testid="event-summary">
         <label htmlFor="kakeibo-event-period">イベント支出（対象期間）</label>
@@ -526,9 +527,6 @@ export function KakeiboPage() {
             })}
           </ul>
         )}
-      </div>
-      <div className="panel" data-testid="fixed-cost-summary">
-        <p>今月の固定費予定額：{fixedCostTotal}円</p>
       </div>
       <div className="panel" data-testid="warikan-summary">
         <p>
