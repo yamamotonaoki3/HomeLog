@@ -606,7 +606,7 @@ flowchart TD
 
 対応: [F09_kondate_recipe](features/F09_kondate_recipe.md)
 
-PC案内の下に同じ左右幅の「iPhoneからレシピを登録」パネルを配置し、「ショートカットの作り方」から `/recipes/iphone-shortcut` に遷移する（#223）。
+PC案内の下に同じ左右幅の「iPhoneからレシピを登録」パネルを配置し、「ショートカットを追加する」から `/recipes/iphone-shortcut` に遷移する（#223）。
 専用手順ページは既存AppLayout・認証／世帯ガード下に置き、見出し、登録先URLの接頭辞の読み取り専用欄、「URLをコピー」、コピー結果（status）、番号付き作成手順、注意事項、「レシピ一覧に戻る」を縦に表示する。320pxでもページ全体が横にはみ出さない。
 コピー対象は現在のorigin + `/recipes/share?url=`。入力URLだけを1回エンコードして末尾に変数を連結し、複数URLは先頭、空入力は終了と案内する。コピー失敗時は手動コピーを案内する。アクション名のiOSバージョン差、localhostの制約、WEBタブへの貼り付けを注記する。
 

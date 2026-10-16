@@ -17,14 +17,9 @@ async function layout(page: Page) {
 }
 
 for (const width of [1280, 390, 320]) {
-  test(`${width}px: iPhone案内・コピー・共有契約・戻る`, async ({ page, context, consoleGuard }) => {
+  test(`${width}px: iPhone案内・追加ボタン・共有契約・戻る`, async ({ page, context, consoleGuard }) => {
     consoleGuard.watch(page)
     await page.setViewportSize({ width, height: width === 1280 ? 800 : 844 })
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
-        writeText: async (text: string) => { document.documentElement.dataset.copied = text },
-      } })
-    })
     await setupUserWithHousehold(page, `iphone${width}`)
     await page.goto('/recipes')
     const pc = page.locator('.recipe-bookmarklet-guide')
@@ -39,7 +34,7 @@ for (const width of [1280, 390, 320]) {
     const dir = process.env.RECIPE_IPHONE_SCREENSHOT_DIR
     if (dir) {
       await mkdir(dir, { recursive: true })
-      await page.getByRole('link', { name: 'ショートカットの作り方' }).scrollIntoViewIfNeeded()
+      await page.getByRole('link', { name: 'ショートカットを追加する' }).scrollIntoViewIfNeeded()
       await page.screenshot({ path: join(dir, `recipes-${width}.png`), fullPage: true })
     }
     const posts: unknown[] = []
@@ -52,23 +47,17 @@ for (const width of [1280, 390, 320]) {
       recipes.push(recipe)
       await route.fulfill({ status: 201, json: recipe })
     })
-    await page.getByRole('link', { name: 'ショートカットの作り方' }).focus()
+    await page.getByRole('link', { name: 'ショートカットを追加する' }).focus()
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/\/recipes\/iphone-shortcut$/)
-    const input = page.getByLabel('登録先URLの接頭辞')
     const prefix = `${new URL(page.url()).origin}/recipes/share?url=`
-    await expect(input).toHaveValue(prefix)
-    await page.getByRole('button', { name: 'URLをコピー' }).click()
-    await expect(page.getByRole('status')).toContainText('コピーしました')
-    expect(await page.locator('html').getAttribute('data-copied')).toBe(prefix)
+    const add = page.getByRole('link', { name: 'ショートカットを追加' })
+    await expect(add).toHaveAttribute('href', /^https:\/\/www\.icloud\.com\/shortcuts\//)
+    await expect(add).toHaveAttribute('target', '_blank')
+    await expect(page.getByLabel('登録先URLの接頭辞')).toHaveCount(0)
     await layout(page)
     await page.getByRole('link', { name: 'レシピ一覧に戻る' }).scrollIntoViewIfNeeded()
     if (dir) await page.screenshot({ path: join(dir, `iphone-shortcut-${width}.png`), fullPage: true })
-    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }))
-    await page.getByRole('button', { name: 'URLをコピー' }).click()
-    await expect(page.getByRole('status')).toContainText('手動でコピー')
-    await input.focus()
-    expect(await input.evaluate((element: HTMLInputElement) => element.selectionEnd! - element.selectionStart!)).toBe(prefix.length)
     expect(posts).toEqual([])
     await page.getByRole('link', { name: 'レシピ一覧に戻る' }).click()
     await expect(page).toHaveURL(/\/recipes$/)
@@ -96,11 +85,10 @@ test('案内は未ログインならログインへ、世帯未所属なら世�
   await expect(page).toHaveURL(/\/household$/)
 })
 
-test('コピーした接頭辞で共有し、未ログインの失敗・再試行後もURLを保持する', async ({ page, browser, consoleGuard }) => {
+test('共有URLで開き、未ログインの失敗・再試行後もURLを保持する', async ({ page, browser, consoleGuard }) => {
   consoleGuard.watch(page)
   const user = await setupUserWithHousehold(page, 'iphoneLogin')
-  await page.goto('/recipes/iphone-shortcut')
-  const prefix = await page.getByLabel('登録先URLの接頭辞').inputValue()
+  const prefix = `${new URL(page.url()).origin}/recipes/share?url=`
   const context = await browser.newContext()
   try {
     const shared = await context.newPage()

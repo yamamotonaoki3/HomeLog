@@ -55,10 +55,7 @@ for (const width of [1280, 390, 320]) {
       expect(await me.json()).toMatchObject({ displayName: user.displayName })
       await page.goto('/recipes/iphone-shortcut')
       await page.reload()
-      const prefix = page.getByLabel('登録先URLの接頭辞')
-      await expect(prefix).toHaveValue('http://localhost:8787/recipes/share?url=')
-      await prefix.focus()
-      await expect(prefix).toBeFocused()
+      await expect(page.getByRole('link', { name: 'ショートカットを追加' })).toBeVisible()
       await page.getByRole('link', { name: 'レシピ一覧に戻る' }).scrollIntoViewIfNeeded()
       await shot('iphone-shortcut')
       const sharedUrl = 'https://recipe.example.com/料理?q=a&eq=x=y&plus=+&pct=%25#手順'

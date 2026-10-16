@@ -97,7 +97,7 @@ describe('RecipesPage', () => {
     const iphone = await screen.findByRole('heading', { name: 'iPhoneからレシピを登録' })
     const pc = screen.getByRole('heading', { name: 'PCからレシピを登録' })
     expect(pc.compareDocumentPosition(iphone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'ショートカットの作り方' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
+    expect(screen.getByRole('link', { name: 'ショートカットを追加する' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
     expect(calls).toEqual([])
   })
   it('一覧にPCから登録する案内を表示する', async () => {
