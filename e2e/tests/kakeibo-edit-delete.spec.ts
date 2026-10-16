@@ -39,12 +39,16 @@ for (const width of [1280, 390, 320]) {
 
       await page.goto('/kakeibo')
       const panel = page.getByTestId('transaction-panel')
+      // 今月のサマリーは1項目1行(#282)。
+      await expect(page.getByTestId('monthly-summary').locator('p')).toHaveCount(4)
+      await fits(page)
+      const dir = process.env.KAKEIBO_EDIT_SCREENSHOT_DIR
+      if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `summary-${width}.png`) }) }
       await panel.locator('.list-row-button').filter({ hasText: '[E2E_TEST] 編集する支出' }).click()
       const detail = page.getByRole('dialog', { name: '支出詳細' })
       await expect(detail).toBeVisible()
       await fits(page)
-      const dir = process.env.KAKEIBO_EDIT_SCREENSHOT_DIR
-      if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `detail-${width}.png`), fullPage: true }) }
+      if (dir) await page.screenshot({ path: join(dir, `detail-${width}.png`), fullPage: true })
 
       await detail.getByRole('button', { name: '編集' }).click()
       const modal = page.getByTestId('transaction-modal')

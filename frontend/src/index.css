@@ -345,6 +345,11 @@ input[type="checkbox"], input[type="radio"] {
 .header-account-name { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .header-account .nav-logout { flex-shrink: 0; white-space: nowrap; }
 
+/* 家計簿: 今月のサマリーは1項目1行で表示する(#282) */
+.kakeibo-monthly-summary p {
+  margin: 4px 0;
+}
+
 /* 献立表: レシピ検索欄と選択欄を縦に並べ、スマホでも幅いっぱいに使う(#281) */
 .menu-recipe-picker {
   display: flex;

@@ -987,6 +987,25 @@ describe('KakeiboPage 今月支出/今月収入/世帯合計対象額サマリ�
     expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：45300円')
   })
 
+  it('4項目を1行ずつ表示し、固定費予定額は自分が登録した固定費の合計を表示する (#282)', async () => {
+    const fixed = { paymentDay: 1, personal: false, includeInHouseholdTotal: false, accountId: null, cardId: null, splitInputType: null, splits: [] }
+    setupApi({
+      fixedCosts: [
+        { ...fixed, id: 1, name: '家賃', amount: 80000, editable: true },
+        { ...fixed, id: 2, name: '携帯代', amount: 3000, personal: true, editable: true },
+        { ...fixed, id: 3, name: '他メンバーの保険', amount: 5000, editable: false },
+      ],
+      dashboardSummary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 45300 },
+    })
+    renderKakeiboPage()
+    const summary = await screen.findByTestId('monthly-summary')
+    await waitFor(() => expect(summary).toHaveTextContent('今月の固定費予定額：83000円'))
+    expect([...summary.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
+      '今月支出：0円', '今月収入：0円', '世帯合計対象額：45300円', '今月の固定費予定額：83000円',
+    ])
+    expect(screen.queryByTestId('fixed-cost-summary')).not.toBeInTheDocument()
+  })
+
   it('カテゴリー絞り込み中も今月支出・今月収入は全カテゴリーの合計を表示する', async () => {
     setupApi({
       expenses: [
