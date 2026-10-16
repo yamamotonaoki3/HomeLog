@@ -178,4 +178,10 @@ describe('ledger mutations', () => {
     expect((await request(`expenses/${id}`, 'DELETE')).status).toBe(204)
     expect(await balance()).toBe(10000)
   })
+  it('split list returns debtor ids so that the payer can rebuild splits', async () => {
+    const { id } = await (await request('expenses', 'POST', expense({ splits: [{ debtorExternalName: '[E2E_TEST] friend', ratio: 50 }] }))).json<{ id: number }>()
+    const external = (await env.DB.prepare('SELECT debtor_external_id FROM expense_splits WHERE expense_id = ?').bind(id).first<{ debtor_external_id: number }>())!.debtor_external_id
+    const list = await (await request('expense-splits', 'GET')).json<{ expenseId: number; debtorUserId: number | null; debtorExternalId: number | null }[]>()
+    expect(list).toEqual([expect.objectContaining({ expenseId: id, debtorUserId: null, debtorExternalId: external })])
+  })
 })
