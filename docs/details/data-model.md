@@ -579,6 +579,15 @@ Workersの`0015_accounts_deleted_at.sql`では、削除済み口座（子カー�
 | content | VARCHAR(100) | ○ | 収入内容（例：〇月分給与） |
 | memo | VARCHAR(255) | — | メモ |
 | income_date | DATE | ○ | 収入発生日 |
+| settlement_split_id | BIGINT | — | FK → expense_splits.id（ON DELETE SET NULL、UNIQUE）。割り勘精算で自動作成した収入の元内訳。設定済みの行は編集・削除不可（#275）。expensesにも同じ列がある |
+
+### fixed_cost_posting_suppressions（固定費の再計上抑止）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| fixed_cost_id | BIGINT | ○ | PK・FK → fixed_costs.id（ON DELETE CASCADE） |
+| year_month | VARCHAR(7) | ○ | PK。自動計上分の支出を削除した計上月（YYYY-MM）。この月は再計上しない（#275） |
+| created_at | TIMESTAMP | ○ | 記録日時 |
 
 ### fixed_costs（固定費）
 

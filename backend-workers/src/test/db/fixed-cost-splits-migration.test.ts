@@ -5,7 +5,7 @@ it('preserves legacy rows, indexes, FK and cascade on an independent D1 database
   const { MIGRATION_DB: db, TEST_MIGRATIONS: migrations } = env as unknown as { MIGRATION_DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
   const latest = migrations.find(m => m.name.startsWith('0016'))!
   expect(latest).toBeDefined()
-  await applyD1Migrations(db, migrations.filter(m => m !== latest))
+  await applyD1Migrations(db, migrations.filter(m => m.name < latest.name))
   await db.batch([
     db.prepare("INSERT INTO users (id, email, password_hash, display_name) VALUES (1, 'testuser_migration@example.com', 'dummy', 'testuser_migration')"),
     db.prepare("INSERT INTO households (id, name, invite_code) VALUES (1, '[E2E_TEST]', 'test253migration')"),

@@ -9,6 +9,7 @@ import { parseOptionalIntQueryParam } from '../lib/query-params'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
+import { balanceStatements, conflict, deleteLedger, ledgerArgs, ledgerWhere, loadMutableLedger } from '../lib/ledger-mutations'
 
 const CATEGORY_NOT_FOUND_MESSAGE = '指定されたカテゴリーが見つかりません'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
@@ -78,7 +79,13 @@ incomesRoute.get('/', async (c) => {
   return c.json(rows.map(({ income, accountName }) => toResponse(income, accountName)))
 })
 
-incomesRoute.post('/', async (c) => {
+incomesRoute.post('/', (c) => saveIncome(c))
+incomesRoute.put('/:id', (c) => saveIncome(c, true))
+incomesRoute.delete('/:id', (c) => deleteLedger(c, 'incomes'))
+
+async function saveIncome(c: Context<AppEnv>, updating = false) {
+  const ctx = updating ? await loadMutableLedger(c, 'incomes') : null
+  if (ctx?.error) return ctx.error
   const parsed = createIncomeSchema.safeParse(await parseJsonBody(c))
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
@@ -108,6 +115,20 @@ incomesRoute.post('/', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '指定された口座が見つかりません'), 400)
   }
 
+  if (ctx && !ctx.error) {
+    const { row, target } = ctx
+    const args = ledgerArgs('incomes', row, householdId, userId)
+    const statements = balanceStatements(c.env.DB, target, -row.amount, { table: 'accounts', id: accountId }, amount,
+      `EXISTS (SELECT 1 FROM incomes WHERE ${ledgerWhere('incomes')})`, args)
+    statements.push(c.env.DB.prepare(`UPDATE incomes SET income_date = ?, amount = ?, content = ?, category_id = ?, memo = ?, account_id = ?
+      WHERE ${ledgerWhere('incomes')} RETURNING id`)
+      .bind(incomeDate, amount, content, categoryId, memo ?? null, accountId, ...args))
+    const results = await c.env.DB.batch(statements)
+    if (!results[results.length - 1].results.length) return conflict(c)
+    return c.json({ id: row.id, incomeDate, amount, content, categoryId, memo: memo ?? null, accountId, accountName: account.name })
+  }
+
+
   // 相対加算と条件付きINSERTを同じトランザクションで実行する。
   // 事前照合後の削除などでUPDATEが0件なら、changes()によりINSERTも0件になる。
   // INSERT失敗時は先行した残高加算もロールバックされる。
@@ -127,4 +148,4 @@ incomesRoute.post('/', async (c) => {
   }
 
   return c.json({ id: row.id, incomeDate, amount, content, categoryId, memo: memo ?? null, accountId, accountName: account.name }, 201)
-})
+}

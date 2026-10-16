@@ -54,8 +54,9 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
   const expenseDate = `${yearMonth}-${pad2(today.getUTCDate())}`
 
   const alreadyPosted = await db
-    .prepare('SELECT 1 FROM expenses WHERE fixed_cost_id = ? AND fixed_cost_year_month = ?')
-    .bind(fixedCost.id, yearMonth)
+    .prepare(`SELECT 1 FROM expenses WHERE fixed_cost_id = ? AND fixed_cost_year_month = ?
+      UNION ALL SELECT 1 FROM fixed_cost_posting_suppressions WHERE fixed_cost_id = ? AND year_month = ?`)
+    .bind(fixedCost.id, yearMonth, fixedCost.id, yearMonth)
     .first()
   if (alreadyPosted) {
     return
@@ -98,7 +99,8 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
         `INSERT INTO expenses
            (household_id, payer_user_id, category_id, account_id, card_id, fixed_cost_id, fixed_cost_year_month,
             amount, purpose, expense_date, include_in_household_total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM fixed_cost_posting_suppressions WHERE fixed_cost_id = ? AND year_month = ?)`,
       )
       .bind(
         fixedCost.householdId,
@@ -112,11 +114,15 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
         fixedCost.name,
         expenseDate,
         fixedCost.includeInHouseholdTotal ? 1 : 0,
+        fixedCost.id,
+        yearMonth,
       ),
   ]
   if (balanceUpdateStatement) {
     statements.push(
-      db.prepare(`UPDATE ${balanceUpdateStatement.table} SET balance = balance - ? WHERE id = ?`).bind(fixedCost.amount, balanceUpdateStatement.id),
+      db.prepare(`UPDATE ${balanceUpdateStatement.table} SET balance = balance - ? WHERE id = ?
+        AND EXISTS (SELECT 1 FROM expenses WHERE fixed_cost_id = ? AND fixed_cost_year_month = ?)`)
+        .bind(fixedCost.amount, balanceUpdateStatement.id, fixedCost.id, yearMonth),
     )
   }
 
@@ -156,9 +162,9 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
             .prepare(
               `INSERT INTO expense_splits
                  (expense_id, debtor_user_id, debtor_external_id, split_input_type, split_ratio, amount_due, status)
-               VALUES ((SELECT MAX(id) FROM expenses), ?, ?, ?, ?, ?, 'unpaid')`,
+               SELECT id, ?, ?, ?, ?, ?, 'unpaid' FROM expenses WHERE fixed_cost_id = ? AND fixed_cost_year_month = ?`,
             )
-            .bind(debtorUserId, debtorExternalId, inputType, row.ratio, row.amountDue),
+            .bind(debtorUserId, debtorExternalId, inputType, row.ratio, row.amountDue, fixedCost.id, yearMonth),
         )
       }
     } else {
