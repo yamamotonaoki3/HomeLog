@@ -69,7 +69,8 @@ for (const width of [1280, 390, 320]) {
       expect(await detail.locator('.transaction-detail-modal').evaluate((element) => element.scrollTop)).toBe(0)
       for (const value of [purpose, accountName, eventName, 'testuser_external（世帯外）', '精算済み', '1% / 99,999,999円']) await expect(detail).toContainText(value)
       await expect(detail.locator('.transaction-detail-memo')).toHaveText(memo)
-      await expect(detail.getByRole('button', { name: /編集|削除/ })).toHaveCount(0)
+      // 精算済みの割り勘がある支出は編集・削除できない(#277)。
+      for (const name of ['編集', '削除']) await expect(detail.getByRole('button', { name, exact: true })).toBeDisabled()
       await fits(page)
       if (shots) await page.screenshot({ path: join(shots, `expense-detail-${width}.png`) })
       await detail.getByRole('heading').click()

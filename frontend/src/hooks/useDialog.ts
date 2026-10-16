@@ -11,7 +11,7 @@ export function useDialog(onClose: () => void, initialSelector: string) {
       if (dialog.closest('[hidden]')) return
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close.current(); return }
       if (event.key !== 'Tab') return
-      const controls: HTMLElement[] = [...dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>('button, input, select')].filter((element) => !element.disabled)
+      const controls: HTMLElement[] = [...dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('button, input, select, textarea')].filter((element) => !element.disabled)
       const index = controls.indexOf(document.activeElement as HTMLElement)
       event.preventDefault()
       event.stopPropagation()

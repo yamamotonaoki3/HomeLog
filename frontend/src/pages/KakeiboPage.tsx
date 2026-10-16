@@ -12,7 +12,7 @@ import type { HouseholdMember } from '../components/kakeibo/SplitFields'
 import { Toast } from '../components/Toast'
 import { TransactionListPanel } from '../components/kakeibo/TransactionListPanel'
 import { TransactionModal } from '../components/kakeibo/TransactionModal'
-import { TransactionDetailModal, type TransactionSelection } from '../components/kakeibo/TransactionDetailModal'
+import { TransactionDeleteModal, TransactionDetailModal, type TransactionSelection } from '../components/kakeibo/TransactionDetailModal'
 
 interface HouseholdMe {
   members: HouseholdMember[]
@@ -53,9 +53,14 @@ export function KakeiboPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [members, setMembers] = useState<HouseholdMember[]>([])
+  const [membersLoaded, setMembersLoaded] = useState(false)
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
   const [splitStatus, setSplitStatus] = useState<'loading' | 'error' | 'ok'>('loading')
   const [selected, setSelected] = useState<{ kind: 'expense' | 'income'; id: number } | null>(null)
+  const [editing, setEditing] = useState<TransactionSelection | null>(null)
+  const [deleting, setDeleting] = useState<TransactionSelection | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const addButton = useRef<HTMLButtonElement>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const closeDetail = useCallback(() => {
@@ -301,7 +306,10 @@ export function KakeiboPage() {
       .then((response) => {
         // 割り勘の相手候補は「自分以外」の世帯メンバー(自分を相手に指定するとAPIが400を返すため)。
         const myId = getCurrentUserId()
-        if (!cancelled) setMembers(response.data.members.filter((member) => member.userId !== myId))
+        if (!cancelled) {
+          setMembers(response.data.members.filter((member) => member.userId !== myId))
+          setMembersLoaded(true)
+        }
       })
       .catch(() => {
         // 割り勘の相手候補が取れないだけなので、致命的ではない(トーストは出さない)。
@@ -405,6 +413,46 @@ export function KakeiboPage() {
     }
   }
 
+  // 更新成功後の再取得失敗をPUT/DELETEの失敗と区別し、保存を再送させない。
+  const refreshTransactionData = async () => {
+    const results = await Promise.allSettled([
+      fetchExpenses(categoryFilter),
+      ...(categoryFilter === '' ? [] : [fetchAllExpenses()]),
+      fetchIncomes(incomeCategoryFilter),
+      ...(incomeCategoryFilter === '' ? [] : [fetchAllIncomes()]),
+      fetchAccounts(),
+      fetchSplits(),
+      fetchDashboardSummary(),
+      fetchEventSummaries(events, eventPeriod),
+    ])
+    return results.every((result) => result.status === 'fulfilled')
+  }
+
+  const handleEdited = async () => {
+    if (!editing) return
+    const refreshed = await refreshTransactionData()
+    setEditing(null)
+    showToast(refreshed ? `${editing.kind === 'expense' ? '支出' : '収入'}を更新しました` : '更新は完了しましたが、一覧または口座・割り勘の更新に失敗しました。画面を再読み込みしてください')
+  }
+
+  const handleDelete = async () => {
+    if (!deleting || deleteBusy) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    try {
+      await apiClient.delete(`/${deleting.kind === 'expense' ? 'expenses' : 'incomes'}/${deleting.data.id}`)
+    } catch (error) {
+      setDeleteError(getApiErrorMessage(error, `${deleting.kind === 'expense' ? '支出' : '収入'}の削除に失敗しました`))
+      setDeleteBusy(false)
+      return
+    }
+    const refreshed = await refreshTransactionData()
+    setDeleting(null)
+    setDeleteBusy(false)
+    closeDetail()
+    showToast(refreshed ? `${deleting.kind === 'expense' ? '支出' : '収入'}を削除しました` : '削除は完了しましたが、一覧または口座・割り勘の更新に失敗しました。画面を再読み込みしてください')
+  }
+
   const loading =
     typeFilter === 'income' ? incomeLoading : typeFilter === 'expense' ? expenseLoading : expenseLoading || incomeLoading
 
@@ -433,12 +481,16 @@ export function KakeiboPage() {
     .filter((income) => isInMonth(income.incomeDate, currentYear, currentMonth))
     .reduce((sum, income) => sum + income.amount, 0)
   const dashboardEvents = events.filter((event) => event.showOnDashboard)
+  const editingSplits = editing?.kind === 'expense'
+    ? splits.filter((split) => split.expenseId === editing.data.id && split.role === 'payer')
+    : []
   let detail: TransactionSelection | null = null
   if (selected?.kind === 'expense') {
-    const data = expenses.find((expense) => expense.id === selected.id)
+    // 表示中の一覧(最新)を優先し、編集でフィルター外になった明細は全件から探す。
+    const data = expenses.find((expense) => expense.id === selected.id) ?? allExpenses.find((expense) => expense.id === selected.id)
     if (data) detail = { kind: 'expense', data }
   } else if (selected?.kind === 'income') {
-    const data = incomes.find((income) => income.id === selected.id)
+    const data = incomes.find((income) => income.id === selected.id) ?? allIncomes.find((income) => income.id === selected.id)
     if (data) detail = { kind: 'income', data }
   }
 
@@ -500,8 +552,9 @@ export function KakeiboPage() {
         onAddClick={() => setModalOpen(true)}
         addDisabled={addDisabled}
       />
-      {detail && <TransactionDetailModal transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} />}
-      {modalOpen && (
+      {detail && !editing && !deleting && <TransactionDetailModal transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} onEdit={() => setEditing(detail)} onDelete={() => { setDeleteError(''); setDeleting(detail) }} />}
+      {deleting && <TransactionDeleteModal transaction={deleting} busy={deleteBusy} error={deleteError} onClose={() => setDeleting(null)} onDelete={handleDelete} />}
+      {(modalOpen || editing) && (
         <TransactionModal
           expenseCategories={categories}
           incomeCategories={incomeCategories}
@@ -509,9 +562,19 @@ export function KakeiboPage() {
           accountsStatus={accountsStatus}
           events={events}
           members={members}
+          membersLoaded={membersLoaded}
+          editing={editing ?? undefined}
+          initialSplits={editingSplits.map((split) => ({
+            debtorUserId: split.debtorUserId,
+            debtorExternalId: split.debtorExternalId,
+            debtorExternalName: split.isExternal ? split.debtorLabel : null,
+            ratio: split.splitRatio,
+            amountDue: split.amountDue,
+          }))}
+          initialSplitInputType={editingSplits[0]?.splitInputType}
           initialKind={initialKind}
-          onClose={() => setModalOpen(false)}
-          onSaved={handleSaved}
+          onClose={() => { setModalOpen(false); setEditing(null) }}
+          onSaved={editing ? handleEdited : handleSaved}
         />
       )}
       <Toast message={toast.message} showKey={toast.showKey} />
