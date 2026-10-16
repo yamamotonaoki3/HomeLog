@@ -114,6 +114,9 @@ function toResponse(row: SplitRow, userId: number) {
     expenseDate: row.expense_date,
     role,
     isExternal: row.debtor_external_id != null,
+    // 割り勘付き支出の編集(#277)で内訳を作り直すために返す。同世帯内のIDのみ。
+    debtorUserId: row.debtor_user_id,
+    debtorExternalId: row.debtor_external_id,
     payerLabel: row.payer_name,
     debtorLabel: row.debtor_user_name ?? row.debtor_external_name ?? '(不明)',
     splitInputType: row.split_input_type,

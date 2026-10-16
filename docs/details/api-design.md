@@ -25,6 +25,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | API | 契約 |
 | --- | --- |
 | `POST /api/incomes` | `incomeDate`（有効なYYYY-MM-DD）、`amount`（整数1〜9,999,999,999）、`content`（空白のみ不可、最大100文字）、`categoryId`（同世帯）、`accountId`（必須の正整数）、`memo`（任意/null、最大255文字）。入金先は本人所有・同世帯・未削除口座のみ。成功201。省略/null/不正/他人/別世帯/削除済み口座は400 `VALIDATION_ERROR`。収入INSERTと残高相対加算は単一D1 batchで原子的に実行 |
+| `GET /api/expense-splits`（追記） | 各内訳に相手の`debtorUserId`／`debtorExternalId`を含める（割り勘付き支出の編集で内訳を作り直すため、#278） |
 | `PUT/DELETE /api/expenses/:id`・`PUT/DELETE /api/incomes/:id` | 本人の支出・収入の編集（登録と同じ入力の全置換、200）・削除（204）。残高を自動補正。割り勘内訳に未請求以外がある支出・精算で自動作成された明細・補正先口座が削除済みの明細は409 `RESOURCE_CONFLICT`。他人・不存在は404。詳細は[F03](features/F03_kakeibo_expense.md)「支出・収入の編集・削除」（#275） |
 | `GET /api/incomes` | 本人の収入のみ返す。`categoryId`絞り込みは従来どおり。各要素は`id, incomeDate, amount, content, categoryId, memo, accountId, accountName`。`accountId/accountName`はnullable。論理削除口座も名前を解決する。POST成功レスポンスにも同じ項目を返す |
 | `DELETE /api/accounts/:id` | 支出/チャージ/固定費参照や子カードの既存削除禁止を優先。収入（通常/精算）参照ありなら`deleted_at`へUTC日時を設定、なしなら物理削除。成功204。削除済み/他人は404 |
