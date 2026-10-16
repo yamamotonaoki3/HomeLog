@@ -55,3 +55,38 @@ OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方
 - 公開URL確定後、ユーザーがiPhone Safariとショートカット共有を実機確認する。iCloud共有リンクの配布は後続Issue。カスタムドメイン・本番ID・課金プランは本Issueで決めない。
 
 参考（2026-10-16確認）: [Cloudflare SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)、[Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)。
+
+## 本番の自動デプロイ（Workers Builds・#267）
+
+本番への公開は、Cloudflare Workers Builds が `production` ブランチの更新を検知して行う。`main` へのマージだけでは本番は変わらない。`main` を `production` に反映する操作が、公開の承認にあたる。
+
+### Cloudflare 側の設定（初回のみ）
+
+Workers & Pages → `homelog-backend-workers` → Settings → Builds で GitHub リポジトリを接続し、次のとおり設定する。
+
+| 項目 | 設定値 |
+|---|---|
+| 本番ブランチ（Production branch） | `production` |
+| 本番以外のブランチのビルド | 無効 |
+| ルートディレクトリ | `backend-workers` |
+| ビルドコマンド | `cd ../frontend && npm ci && npm run build && cd ../backend-workers && npm ci` |
+| デプロイコマンド | `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy` |
+
+secret（`JWT_SECRET` など）は Worker に登録済みのものがそのまま使われる。Builds の環境変数へ実値を書かない。
+
+### 公開の手順
+
+1. 通常どおり PR を作り、CI が通ったら `main` にマージする。
+2. 公開したい時点で、`main` を `production` に反映する。
+   ```sh
+   git fetch origin
+   git push origin origin/main:production
+   ```
+   GitHub 上で `main` → `production` の PR を作ってマージしてもよい。
+3. Cloudflare の Builds 画面でビルドとデプロイの成功を確認し、公開 URL で `/health` などを確認する。
+
+`production` へは `main` 以外のコミットを入れない（fast-forward のみ）。`main` と食い違った場合は、`main` 側を正として修正する。
+
+### 切り戻し
+
+Cloudflare の Deployments 画面で直前のバージョンに戻す。ただし D1 マイグレーションは戻らないため、DB 変更を含む公開の切り戻しは個別に判断する。
