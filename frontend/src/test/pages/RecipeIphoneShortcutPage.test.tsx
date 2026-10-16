@@ -14,6 +14,23 @@ function show() {
 describe('RecipeIphoneShortcutPage', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('配布ショートカットを新しいタブで追加でき、本番向けと案内する', () => {
+    show()
+    const link = screen.getByRole('link', { name: 'ショートカットを追加' })
+    expect(link).toHaveAttribute('href', 'https://www.icloud.com/shortcuts/3914da403d2f41baa61d24a40ea9c699')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(link).toHaveClass('btn', 'btn-primary')
+    expect(screen.getByText(/追加されるショートカットは本番のHomeLogを開きます/)).toBeVisible()
+  })
+
+  it('自分で作る手順でアプリ共有用のテキスト入力を案内する', () => {
+    show()
+    expect(screen.getByRole('heading', { name: '自分で作る場合' })).toBeVisible()
+    const steps = within(screen.getByRole('list')).getAllByRole('listitem')
+    expect(steps[1]).toHaveTextContent('受け取る種類に「URL」「SafariのWebページ」「テキスト」を含めます（アプリ内の共有に表示させるため）')
+  })
+
   it.each(['http://localhost:5173', 'https://homelog.example.com'])('origin %s だけから接頭辞を生成してコピーする', async (origin) => {
     const user = userEvent.setup()
     const writeText = vi.fn().mockResolvedValue(undefined)
