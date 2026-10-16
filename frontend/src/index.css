@@ -368,3 +368,4 @@ input[type="checkbox"], input[type="radio"] {
   font-size: 16px;
 }
 .modal-overlay[hidden] { display: none; }
+.menu-entry-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; background: none; color: #2563eb; font: inherit; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }

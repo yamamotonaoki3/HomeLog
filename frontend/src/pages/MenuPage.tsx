@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
 import { addWeeks, getMondayOf } from '../lib/week'
 import { Toast } from '../components/Toast'
+import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 
 // リストへの追加方法は「レシピを選ぶ(確定登録)」「自由メモを入力する(ラフ登録)」の
 // 2種類をトグルで切り替える(F10_kondate_menu.md 5章)。
@@ -19,6 +20,17 @@ function displayLabel(entry: MenuEntry): string {
   return entry.freeTextMemo ?? ''
 }
 
+// 献立のタイトル。WEBレシピは元ページを新しいタブで、それ以外のレシピはアプリ内の詳細を開く(#289)。
+// 手入力の献立や削除済み・未取得のレシピはリンクにしない。
+function EntryTitle({ entry, recipe, onOpen }: { entry: MenuEntry; recipe: Recipe | undefined; onOpen: (recipe: Recipe) => void }) {
+  const label = displayLabel(entry)
+  if (!recipe || entry.recipeTitle === null) return <>{label}</>
+  if (recipe.sourceType === 'web' && recipe.url) {
+    return <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">{label}</a>
+  }
+  return <button type="button" className="menu-entry-link" onClick={() => onOpen(recipe)}>{label}</button>
+}
+
 // 全角・半角の英数字や大文字・小文字の違いを無視して比較するための正規化。
 function normalizeKeyword(value: string) {
   return value.normalize('NFKC').toLowerCase().trim()
@@ -32,6 +44,7 @@ export function MenuPage() {
   const [addMode, setAddMode] = useState<AddMode>('recipe')
   const [selectedRecipeId, setSelectedRecipeId] = useState('')
   const [recipeKeyword, setRecipeKeyword] = useState('')
+  const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null)
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -239,7 +252,7 @@ export function MenuPage() {
           ) : (
             entries.map((entry) => (
               <li key={entry.id}>
-                {displayLabel(entry)}
+                <EntryTitle entry={entry} recipe={recipes.find((recipe) => recipe.id === entry.recipeId)} onOpen={setDetailRecipe} />
                 <button type="button" className="btn btn-tiny" onClick={() => handleDelete(entry)}>
                   削除
                 </button>
@@ -248,6 +261,7 @@ export function MenuPage() {
           )}
         </ul>
       </div>
+      {detailRecipe && <RecipeDetailModal recipe={detailRecipe} onClose={() => setDetailRecipe(null)} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )
