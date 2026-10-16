@@ -117,4 +117,31 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `menu-search-${width}.png`), fullPage: true }) }
     })
   }
+
+  for (const width of [1280, 390, 320]) {
+    test(`${width}px 献立に追加したレシピのタイトルから詳細を開ける (#289)`, async ({ page, consoleGuard }) => {
+      consoleGuard.watch(page)
+      await page.setViewportSize({ width, height: 844 })
+      await setupUserWithHousehold(page, `menuLink${width}`)
+      const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
+      const title = '[E2E_TEST] 献立リンクのレシピ'
+      const created = await page.request.post('/api/recipes', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { title, ingredients: '[E2E_TEST] じゃがいも', steps: null, sourceType: 'manual' },
+      })
+      expect(created.status()).toBe(201)
+      await page.goto('/menu')
+      const menu = page.getByTestId('menu-panel')
+      await menu.getByLabel('レシピ', { exact: true }).selectOption({ label: title })
+      await menu.getByRole('button', { name: '追加', exact: true }).click()
+      await menu.getByRole('button', { name: title }).click()
+      const dialog = page.getByRole('dialog', { name: 'レシピ詳細' })
+      await expect(dialog).toContainText('[E2E_TEST] じゃがいも')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+      const dir = process.env.MENU_SEARCH_SCREENSHOT_DIR
+      if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `menu-link-${width}.png`), fullPage: true }) }
+      await dialog.getByRole('button', { name: '閉じる' }).click()
+      await expect(dialog).toBeHidden()
+    })
+  }
 })

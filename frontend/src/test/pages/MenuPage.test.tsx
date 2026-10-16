@@ -267,4 +267,38 @@ describe('MenuPage', () => {
     const options = screen.getAllByRole('option').map((o) => o.textContent)
     expect(options.indexOf('★ お気に入りレシピ')).toBeLessThan(options.indexOf('通常レシピ'))
   })
+
+  it('レシピのタイトルから元ページ・レシピ詳細を開ける。手入力の献立はリンクにしない (#289)', async () => {
+    const monday = getMondayOf(new Date())
+    const base = { ingredients: null, steps: null, thumbnailUrl: null, memo: null, isFavorite: false }
+    setupApi({
+      entries: {
+        [monday]: [
+          { id: 1, recipeId: 10, recipeTitle: '[E2E_TEST] 動画レシピ', freeTextMemo: null, weekStartDate: monday },
+          { id: 2, recipeId: 11, recipeTitle: '[E2E_TEST] 手入力レシピ', freeTextMemo: null, weekStartDate: monday },
+          { id: 3, recipeId: null, recipeTitle: null, freeTextMemo: '外食', weekStartDate: monday },
+        ],
+      },
+      recipes: [
+        { ...base, id: 10, title: '[E2E_TEST] 動画レシピ', sourceType: 'web', url: 'https://recipe.example.com/video' },
+        { ...base, id: 11, title: '[E2E_TEST] 手入力レシピ', sourceType: 'manual', url: null, ingredients: 'じゃがいも' },
+      ],
+    })
+    renderMenuPage()
+    const user = userEvent.setup()
+
+    const link = await screen.findByRole('link', { name: '[E2E_TEST] 動画レシピ' })
+    expect(link).toHaveAttribute('href', 'https://recipe.example.com/video')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+
+    await user.click(screen.getByRole('button', { name: '[E2E_TEST] 手入力レシピ' }))
+    const dialog = screen.getByRole('dialog', { name: 'レシピ詳細' })
+    expect(dialog).toHaveTextContent('じゃがいも')
+    await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
+
+    expect(screen.queryByRole('link', { name: '外食' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '外食' })).not.toBeInTheDocument()
+  })
 })
