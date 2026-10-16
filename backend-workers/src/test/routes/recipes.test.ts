@@ -262,6 +262,40 @@ describe('POST /api/recipes/from-url', () => {
     expect(await list.json()).toEqual(expect.arrayContaining([expect.objectContaining({ sourceType: 'web', url })]))
   })
 
+  it.each([
+    'https://youtu.be/abc123?si=x',
+    'https://www.youtube.com/watch?v=abc123',
+    'https://m.youtube.com/shorts/abc123',
+  ])('YouTubeのURL(%s)はoEmbedから動画タイトルとサムネイルを取得する', async (url) => {
+    const { headers } = await createUserWithHousehold('testuser_youtube@example.com')
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ title: '[E2E_TEST] 動画レシピ', thumbnail_url: 'https://i.ytimg.com/vi/abc123/hqdefault.jpg' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await app.request('/api/recipes/from-url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url }),
+    }, env)
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ title: '[E2E_TEST] 動画レシピ', thumbnailUrl: 'https://i.ytimg.com/vi/abc123/hqdefault.jpg', url })
+    const requested = new URL(fetchMock.mock.calls[0][0] as string)
+    expect(requested.origin + requested.pathname).toBe('https://www.youtube.com/oembed')
+    expect(requested.searchParams.get('url')).toBe(url)
+  })
+
+  it('YouTubeのoEmbedが失敗したらHTML解析にフォールバックする', async () => {
+    const { headers } = await createUserWithHousehold('testuser_youtube_fallback@example.com')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('not found', { status: 404 }))
+      .mockResolvedValueOnce(htmlResponse('<html><head><title>[E2E_TEST] HTMLのタイトル</title></head></html>')))
+    const res = await app.request('/api/recipes/from-url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://youtu.be/abc123' }),
+    }, env)
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ title: '[E2E_TEST] HTMLのタイトル' })
+  })
+
   it('og:titleとog:imageを抽出して201で保存できる', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     stubFetch(

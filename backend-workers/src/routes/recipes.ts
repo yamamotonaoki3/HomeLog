@@ -155,6 +155,24 @@ class MetaCollector {
   }
 }
 
+// YouTubeはWorkersからHTMLを取得すると同意画面などが返り、og:titleが「YouTube」になってしまう。
+// そのため公式のoEmbed APIから動画タイトルとサムネイルを取得する(失敗時はnullでHTML解析に任せる)。
+const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'])
+
+async function fetchYoutubeOembed(url: URL): Promise<{ title: string; thumbnailUrl: string | null } | null> {
+  if (!YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) return null
+  try {
+    const endpoint = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url.toString())}`
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(5000) })
+    if (!response.ok) return null
+    const data = (await response.json()) as { title?: unknown; thumbnail_url?: unknown }
+    if (typeof data.title !== 'string' || !data.title.trim()) return null
+    return { title: data.title.trim(), thumbnailUrl: typeof data.thumbnail_url === 'string' ? data.thumbnail_url : null }
+  } catch {
+    return null
+  }
+}
+
 // リクエストボディのJSONを安全に読み取るための共通関数。
 // ボディが空、あるいはJSONとして壊れている場合に例外で落ちないよう、catchでnullを返す。
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -271,44 +289,52 @@ recipesRoute.post('/from-url', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
   }
 
-  let response: Response
-  try {
-    response = await fetch(parsedUrl.toString(), {
-      headers: { 'User-Agent': 'HomeLogBot/1.0 (+recipe-clip)' },
-      signal: AbortSignal.timeout(5000),
+  let title: string
+  let thumbnailUrl: string | null
+  const oembed = await fetchYoutubeOembed(parsedUrl)
+  if (oembed) {
+    title = oembed.title
+    thumbnailUrl = oembed.thumbnailUrl
+  } else {
+    let response: Response
+    try {
+      response = await fetch(parsedUrl.toString(), {
+        headers: { 'User-Agent': 'HomeLogBot/1.0 (+recipe-clip)' },
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch {
+      return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+    }
+    if (!response.ok) {
+      return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+    }
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('text/html') || !response.body) {
+      return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
+    }
+
+    const collector = new MetaCollector()
+    const rewriter = new HTMLRewriter().on('meta', collector).on('title', collector)
+
+    let byteCount = 0
+    const countingSink = new WritableStream<Uint8Array>({
+      write(chunk) {
+        byteCount += chunk.byteLength
+        if (byteCount > MAX_RESPONSE_BYTES) {
+          throw new Error('response too large')
+        }
+      },
     })
-  } catch {
-    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
-  }
-  if (!response.ok) {
-    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
-  }
-  const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('text/html') || !response.body) {
-    return c.json(errorResponse('VALIDATION_ERROR', FETCH_FAILED_MESSAGE), 400)
-  }
 
-  const collector = new MetaCollector()
-  const rewriter = new HTMLRewriter().on('meta', collector).on('title', collector)
+    try {
+      await rewriter.transform(response).body?.pipeTo(countingSink)
+    } catch {
+      // 2MB超過時などはここに到達するが、その時点までに取得できたメタ情報で処理を続行する。
+    }
 
-  let byteCount = 0
-  const countingSink = new WritableStream<Uint8Array>({
-    write(chunk) {
-      byteCount += chunk.byteLength
-      if (byteCount > MAX_RESPONSE_BYTES) {
-        throw new Error('response too large')
-      }
-    },
-  })
-
-  try {
-    await rewriter.transform(response).body?.pipeTo(countingSink)
-  } catch {
-    // 2MB超過時などはここに到達するが、その時点までに取得できたメタ情報で処理を続行する。
+    title = collector.ogTitle ?? (collector.titleTagText.trim() || null) ?? parsedUrl.toString()
+    thumbnailUrl = collector.ogImage ?? null
   }
-
-  const title = collector.ogTitle ?? (collector.titleTagText.trim() || null) ?? parsedUrl.toString()
-  const thumbnailUrl = collector.ogImage ?? null
 
   const db = drizzle(c.env.DB)
   const userId = c.get('userId')
