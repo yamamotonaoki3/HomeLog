@@ -18,6 +18,8 @@ export interface ExpenseSplit {
   isExternal: boolean
   payerLabel: string
   debtorLabel: string
+  debtorUserId: number | null
+  debtorExternalId: number | null
   splitInputType: 'ratio' | 'amount'
   splitRatio: number
   amountDue: number

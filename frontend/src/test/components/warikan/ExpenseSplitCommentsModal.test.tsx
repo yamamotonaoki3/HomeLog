@@ -16,6 +16,8 @@ const split: ExpenseSplit = {
   isExternal: false,
   payerLabel: 'テスト太郎',
   debtorLabel: 'テスト花子',
+  debtorUserId: 20,
+  debtorExternalId: null,
   splitInputType: 'ratio',
   splitRatio: 50,
   amountDue: 1000,

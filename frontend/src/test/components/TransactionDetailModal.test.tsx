@@ -6,10 +6,31 @@ import type { Expense } from '../../api/kakeiboTypes'
 import type { ExpenseSplit } from '../../api/warikanTypes'
 
 const expense: Expense = { id: 1, expenseDate: '2030-01-15', amount: 9999999999, purpose: '[E2E_TEST]' + 'A'.repeat(90), categoryId: 1, memo: '[E2E_TEST]\n' + 'M'.repeat(240), includeInHouseholdTotal: true, accountId: 5, cardId: null, eventId: 8 }
-const split: ExpenseSplit = { id: 1, expenseId: 1, expensePurpose: expense.purpose, expenseAmount: expense.amount, expenseDate: expense.expenseDate, role: 'payer', isExternal: false, payerLabel: 'testuser_payer', debtorLabel: 'testuser_member', splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'settled', debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0 }
+const split: ExpenseSplit = { id: 1, expenseId: 1, expensePurpose: expense.purpose, expenseAmount: expense.amount, expenseDate: expense.expenseDate, role: 'payer', isExternal: false, payerLabel: 'testuser_payer', debtorLabel: 'testuser_member', debtorUserId: 20, debtorExternalId: null, splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'settled', debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0 }
 const props = { accounts: [{ id: 5, name: 'testuser_銀行', type: 'bank', balance: 0, cards: [] }], expenseCategories: [{ id: 1, name: '食費', isDefault: true }], incomeCategories: [{ id: 11, name: '給与', isDefault: true }], events: [{ id: 8, name: '[E2E_TEST]旅行' }], splits: [], splitStatus: 'ok' as const, onClose: vi.fn() }
 
 describe('TransactionDetailModal', () => {
+  it.each(['requested', 'payment_reported', 'pending', 'settled'] as const)('%s の内訳がある支出は編集・削除できない', (status) => {
+    render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splits={[{ ...split, status }]} />)
+    expect(screen.getByRole('button', { name: '編集' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled()
+    expect(screen.getByText('請求中・精算済みの割り勘がある支出は編集・削除できません')).toBeInTheDocument()
+  })
+  it.each(['loading', 'error'] as const)('割り勘の取得状態が %s なら支出の操作を無効にする', (splitStatus) => {
+    render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splitStatus={splitStatus} />)
+    expect(screen.getByRole('button', { name: '編集' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled()
+  })
+  it('未請求だけなら編集・削除できる', async () => {
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splits={[{ ...split, status: 'unpaid' }]} onEdit={onEdit} onDelete={onDelete} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    await user.click(screen.getByRole('button', { name: '削除' }))
+    expect(onEdit).toHaveBeenCalledOnce()
+    expect(onDelete).toHaveBeenCalledOnce()
+  })
   it.each([['unpaid', '未請求'], ['requested', '請求中'], ['payment_reported', '受領確認待ち']] as const)('割り勘状態 %s を表示する', (status, label) => {
     render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splits={[{ ...split, status }]} />)
     expect(screen.getByRole('dialog')).toHaveTextContent(label)
@@ -21,7 +42,7 @@ describe('TransactionDetailModal', () => {
     expect(within(dialog).getByText(/MMMM/).textContent).toBe(expense.memo)
     expect(within(dialog).queryByText('別支出', { exact: true })).not.toBeInTheDocument()
     expect(within(dialog).queryByText('負担者側', { exact: true })).not.toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: /編集|削除/ })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '編集' })).toBeDisabled()
   })
   it.each(['loading', 'error', 'ok'] as const)('割り勘取得状態 %s を空配列と区別する', (splitStatus) => {
     render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: { ...expense, accountId: null, eventId: null, memo: null } }} splitStatus={splitStatus} />)
@@ -35,14 +56,14 @@ describe('TransactionDetailModal', () => {
     expect(dialog).not.toHaveTextContent('世帯合計対象')
     expect(dialog).not.toHaveTextContent('割り勘内訳')
   })
-  it('閉じる・Escape・背景で閉じ、内部クリックでは閉じずフォーカスを閉じるに保つ', async () => {
+  it('閉じる・Escape・背景で閉じ、Tabで操作ボタンへ移動できる', async () => {
     const onClose = vi.fn()
     const user = userEvent.setup()
     render(<TransactionDetailModal {...props} onClose={onClose} transaction={{ kind: 'expense', data: expense }} />)
     const close = screen.getByRole('button', { name: '閉じる' })
     expect(close).toHaveFocus()
     await user.tab()
-    expect(close).toHaveFocus()
+    expect(screen.getByRole('button', { name: '編集' })).toHaveFocus()
     await user.click(screen.getByRole('heading'))
     expect(onClose).not.toHaveBeenCalled()
     await user.click(close)

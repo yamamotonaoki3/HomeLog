@@ -19,6 +19,8 @@ function split(over: Partial<ExpenseSplit>): ExpenseSplit {
     isExternal: false,
     payerLabel: 'テスト太郎',
     debtorLabel: 'テスト花子',
+    debtorUserId: over.isExternal ? null : 20,
+    debtorExternalId: over.isExternal ? 30 : null,
     splitInputType: 'ratio',
     splitRatio: 50,
     amountDue: 1000,

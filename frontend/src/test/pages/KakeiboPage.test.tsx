@@ -103,7 +103,7 @@ function setupApi(initial: Partial<MockState> = {}) {
     http.get('/api/fixed-costs', () => HttpResponse.json(state.fixedCosts)),
     http.get('/api/events', () => HttpResponse.json(state.events)),
     http.get('/api/households/me', () => HttpResponse.json({ members: initial.members ?? [] })),
-    http.get('/api/expense-splits', () => HttpResponse.json(initial.splits ?? [])),
+    http.get('/api/expense-splits', () => { calls.push({ method: 'GET', url: '/api/expense-splits' }); return HttpResponse.json(initial.splits ?? []) }),
     http.get('/api/dashboard/summary', () =>
       HttpResponse.json(initial.dashboardSummary ?? { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }),
     ),
@@ -180,6 +180,132 @@ async function openModal() {
   await user.click(screen.getByRole('button', { name: '登録' }))
   return user
 }
+
+describe('支出・収入の編集・削除 #277', () => {
+  it.each(['ratio', 'amount'] as const)('未請求の世帯内・世帯外内訳を%sで初期表示し、既存IDをPUTする', async (splitInputType) => {
+    const memberSplit: import('../../api/warikanTypes').ExpenseSplit = { id: 10, expenseId: 1, expensePurpose: lunchExpense.purpose, expenseAmount: 1200, expenseDate: lunchExpense.expenseDate, role: 'payer', isExternal: false, payerLabel: 'testuser_payer', debtorLabel: 'testuser_member', debtorUserId: 20, debtorExternalId: null, splitInputType, splitRatio: 25, amountDue: 300, status: 'unpaid', debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0 }
+    const externalSplit = { ...memberSplit, id: 11, isExternal: true, debtorUserId: null, debtorExternalId: 30, debtorLabel: 'testuser_external' }
+    const { state, calls } = setupApi({ expenses: [lunchExpense], members: [{ userId: 20, displayName: 'testuser_member' }], splits: [memberSplit, externalSplit, { ...memberSplit, id: 12, expenseId: 99 }, { ...memberSplit, id: 13, role: 'debtor' }] })
+    server.use(http.put('/api/expenses/1', async ({ request }) => {
+      const body = await request.json() as Record<string, unknown>
+      calls.push({ method: 'PUT', url: '/api/expenses/1', body })
+      state.expenses = [{ ...lunchExpense, ...body } as Expense]
+      return HttpResponse.json(state.expenses[0])
+    }))
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '支出：ランチの詳細' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '編集' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    expect(screen.getByLabelText('割り勘する')).toBeChecked()
+    expect(await screen.findByRole('option', { name: 'testuser_member' })).toBeInTheDocument()
+    expect(screen.getByLabelText('世帯メンバー')).toHaveValue('20')
+    expect(screen.getByLabelText('世帯外の人の名前')).toHaveValue('testuser_external')
+    const values = screen.getAllByLabelText(splitInputType === 'ratio' ? '負担割合（％）' : '負担額（円）')
+    expect(values).toHaveLength(2)
+    for (const value of values) expect(value).toHaveValue(splitInputType === 'ratio' ? 25 : 300)
+    await user.clear(screen.getByLabelText('金額'))
+    await user.type(screen.getByLabelText('金額'), '2000')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('dialog', { name: '支出詳細' })
+    expect(calls.filter((call) => call.method === 'PUT')).toEqual([{ method: 'PUT', url: '/api/expenses/1', body: {
+      expenseDate: lunchExpense.expenseDate, amount: 2000, purpose: lunchExpense.purpose, categoryId: 1, memo: null, includeInHouseholdTotal: false, accountId: null, cardId: null, eventId: null,
+      splitInputType, splits: splitInputType === 'ratio' ? [{ debtorUserId: 20, ratio: 25 }, { debtorExternalId: 30, ratio: 25 }] : [{ debtorUserId: 20, amountDue: 300 }, { debtorExternalId: 30, amountDue: 300 }],
+    } }])
+  })
+  it('編集をキャンセルすると変更前の詳細に戻る', async () => {
+    const { calls } = setupApi({ expenses: [lunchExpense] })
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '支出：ランチの詳細' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '編集' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    await user.clear(screen.getByLabelText('使用用途（任意）'))
+    await user.type(screen.getByLabelText('使用用途（任意）'), '[E2E_TEST]未保存')
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(screen.getByRole('dialog', { name: '支出詳細' })).toHaveTextContent('ランチ')
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false)
+  })
+  it.each(['expense', 'income'] as const)('%sをPUTし、一覧・口座・割り勘を再取得して更新後の詳細に戻る', async (kind) => {
+    const { state, calls } = setupApi({ expenses: [lunchExpense], incomes: [{ ...salaryIncome, accountId: 5, accountName: 'testuser_bank' }] })
+    const path = kind === 'expense' ? '/api/expenses/1' : '/api/incomes/1'
+    const label = kind === 'expense' ? '支出' : '収入'
+    const originalName = kind === 'expense' ? 'ランチ' : '1月分給与'
+    const updatedName = '[E2E_TEST]変更後'
+    server.use(http.put(path, async ({ request }) => {
+      const body = await request.json() as Record<string, unknown>
+      calls.push({ method: 'PUT', url: path, body })
+      if (kind === 'expense') state.expenses = [{ ...lunchExpense, ...body } as Expense]
+      else state.incomes = [{ ...state.incomes[0], ...body } as Income]
+      return HttpResponse.json(kind === 'expense' ? state.expenses[0] : state.incomes[0])
+    }))
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: `${label}：${originalName}の詳細` }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '編集' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    const field = screen.getByLabelText(kind === 'expense' ? '使用用途（任意）' : '収入内容')
+    await user.clear(field)
+    await user.click(field)
+    // type() は [E2E_TEST] をキー記法として解釈するため、文字列をそのまま貼り付ける。
+    await user.paste(updatedName)
+    expect(field).toHaveValue(updatedName)
+    const before = calls.length
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    const detail = await screen.findByRole('dialog', { name: `${label}詳細` })
+    expect(detail).toHaveTextContent(updatedName)
+    expect(screen.getByRole('button', { name: `${label}：${updatedName}の詳細` })).toBeInTheDocument()
+    const requests = calls.slice(before)
+    expect(requests).toContainEqual({ method: 'PUT', url: path, body: kind === 'expense'
+      ? { expenseDate: lunchExpense.expenseDate, amount: lunchExpense.amount, purpose: updatedName, categoryId: 1, memo: null, includeInHouseholdTotal: false, accountId: null, cardId: null, eventId: null }
+      : { incomeDate: salaryIncome.incomeDate, amount: salaryIncome.amount, content: updatedName, categoryId: 11, memo: null, accountId: 5 } })
+    for (const url of [kind === 'expense' ? '/api/expenses' : '/api/incomes', '/api/accounts', '/api/expense-splits']) expect(requests).toContainEqual({ method: 'GET', url })
+  })
+
+  it.each(['expense', 'income'] as const)('%sの削除は確認・キャンセルを経てDELETEし、詳細を閉じる', async (kind) => {
+    const { state, calls } = setupApi({ expenses: [lunchExpense], incomes: [salaryIncome] })
+    const label = kind === 'expense' ? '支出' : '収入'
+    const name = kind === 'expense' ? 'ランチ' : '1月分給与'
+    const path = kind === 'expense' ? '/api/expenses/1' : '/api/incomes/1'
+    server.use(http.delete(path, () => {
+      calls.push({ method: 'DELETE', url: path })
+      if (kind === 'expense') state.expenses = []
+      else state.incomes = []
+      return new HttpResponse(null, { status: 204 })
+    }))
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    const row = await screen.findByRole('button', { name: `${label}：${name}の詳細` })
+    await user.click(row)
+    await waitFor(() => expect(screen.getByRole('button', { name: '削除' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '削除' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('この操作は取り消せません')
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await user.click(screen.getByRole('button', { name: '削除' }))
+    const before = calls.length
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: `${label}：${name}の詳細` })).not.toBeInTheDocument()
+    expect(screen.getByText(`${label}を削除しました`)).toBeInTheDocument()
+    for (const url of [kind === 'expense' ? '/api/expenses' : '/api/incomes', '/api/accounts', '/api/expense-splits']) expect(calls.slice(before)).toContainEqual({ method: 'GET', url })
+  })
+
+  it.each([400, 409])('DELETEの%sメッセージを表示し、詳細と明細を保持する', async (status) => {
+    setupApi({ expenses: [lunchExpense] })
+    const message = status === 409 ? '精算で自動作成された明細は削除できません' : '入力内容を確認してください'
+    server.use(http.delete('/api/expenses/1', () => HttpResponse.json({ message }, { status })))
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '支出：ランチの詳細' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '削除' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '削除' }))
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(screen.getByRole('dialog', { name: '支出詳細' })).toHaveTextContent('ランチ')
+  })
+})
 
 describe('収入保存後の更新 #245', () => {
   it('口座の初期取得が遅い間は登録を防止し、取得完了後に選択できる', async () => {
@@ -262,12 +388,14 @@ describe('KakeiboPage 未精算サマリー', () => {
         {
           id: 1, expenseId: 1, expensePurpose: 'A', expenseAmount: 2000, expenseDate: '2026-01-01',
           role: 'debtor', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
+          debtorUserId: 20, debtorExternalId: null,
           splitInputType: 'ratio', splitRatio: 50, amountDue: 1000, status: 'requested',
           debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0,
         },
         {
           id: 2, expenseId: 2, expensePurpose: 'B', expenseAmount: 600, expenseDate: '2026-01-02',
           role: 'payer', isExternal: false, payerLabel: 'テスト太郎', debtorLabel: 'テスト花子',
+          debtorUserId: 20, debtorExternalId: null,
           splitInputType: 'ratio', splitRatio: 50, amountDue: 300, status: 'unpaid',
           debtorAccountId: null, requestedAt: null, settledAt: null, commentCount: 0,
         },
@@ -310,7 +438,7 @@ describe('KakeiboPage', () => {
     const detail = screen.getByRole('dialog', { name: '支出詳細' })
     expect(within(detail).getByText('食費')).toBeInTheDocument()
     expect(within(detail).getByText('対象外')).toBeInTheDocument()
-    expect(within(detail).queryByRole('button', { name: /編集|削除/ })).not.toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: '編集' })).toBeInTheDocument()
     await user.keyboard('{Escape}')
     expect(button).toHaveFocus()
     await user.keyboard(' ')

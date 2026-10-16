@@ -1,9 +1,11 @@
 import { Fragment, useCallback, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
+import { useDialog } from '../../hooks/useDialog'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Event } from '../../api/eventTypes'
 import type { Account, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
-import { SplitFields, type HouseholdMember, type SplitFieldsResult } from './SplitFields'
+import { SplitFields, type HouseholdMember, type InitialSplit, type SplitFieldsResult } from './SplitFields'
+import type { TransactionSelection } from './TransactionDetailModal'
 
 type Kind = 'expense' | 'income'
 
@@ -17,6 +19,10 @@ interface Props {
   // 割り勘の相手候補(自分以外の世帯メンバー)。
   members: HouseholdMember[]
   initialKind: Kind
+  editing?: TransactionSelection
+  initialSplits?: InitialSplit[]
+  initialSplitInputType?: 'ratio' | 'amount'
+  membersLoaded?: boolean
   onClose: () => void
   onSaved: (kind: Kind) => Promise<void>
 }
@@ -41,12 +47,18 @@ export function TransactionModal({
   events,
   members,
   initialKind,
+  editing,
+  initialSplits,
+  initialSplitInputType,
+  membersLoaded = true,
   onClose,
   onSaved,
 }: Props) {
-  const [kind, setKind] = useState<Kind>(initialKind)
-  const [date, setDate] = useState(today())
-  const [amount, setAmount] = useState('')
+  const expense = editing?.kind === 'expense' ? editing.data : undefined
+  const income = editing?.kind === 'income' ? editing.data : undefined
+  const [kind, setKind] = useState<Kind>(editing?.kind ?? initialKind)
+  const [date, setDate] = useState(expense?.expenseDate ?? income?.incomeDate ?? today())
+  const [amount, setAmount] = useState(editing ? String(editing.data.amount) : '')
   const [splitResult, setSplitResult] = useState<SplitFieldsResult>({
     enabled: false,
     valid: true,
@@ -55,19 +67,23 @@ export function TransactionModal({
     errorMessage: '',
   })
   const handleSplitChange = useCallback((result: SplitFieldsResult) => setSplitResult(result), [])
-  const [purpose, setPurpose] = useState('')
-  const [content, setContent] = useState('')
+  const [purpose, setPurpose] = useState(expense?.purpose ?? '')
+  const [content, setContent] = useState(income?.content ?? '')
   const [categoryId, setCategoryId] = useState<string>(
-    firstCategoryId(initialKind === 'expense' ? expenseCategories : incomeCategories),
+    editing ? String(editing.data.categoryId) : firstCategoryId(initialKind === 'expense' ? expenseCategories : incomeCategories),
   )
-  const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(false)
-  const [accountSelection, setAccountSelection] = useState('')
-  const [eventSelection, setEventSelection] = useState('')
-  const [memo, setMemo] = useState('')
+  const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(expense?.includeInHouseholdTotal ?? false)
+  const [accountSelection, setAccountSelection] = useState(expense?.cardId != null ? `card:${expense.cardId}` : expense?.accountId != null ? `account:${expense.accountId}` : income?.accountId != null ? String(income.accountId) : '')
+  const [eventSelection, setEventSelection] = useState(expense?.eventId != null ? String(expense.eventId) : '')
+  const [memo, setMemo] = useState(editing?.data.memo ?? '')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // 開いたら日付欄へフォーカスし、Tab移動をモーダル内に閉じ込める。Escapeで閉じるが、保存中は閉じない
+  // (キャンセルボタンと同じ。保存完了前に古いデータで再操作・二重登録させないため)。
+  const dialogRef = useDialog(() => { if (!submitting) onClose() }, '#tx-date')
 
   const categories = kind === 'expense' ? expenseCategories : incomeCategories
+  const incomeAccountUnavailable = accountsStatus !== 'ok' || (accounts.length === 0 && income?.accountId == null)
 
   const handleKindChange = (nextKind: Kind) => {
     setKind(nextKind)
@@ -91,7 +107,7 @@ export function TransactionModal({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (submitting) return
-    if (kind === 'income' && (accountsStatus !== 'ok' || !accounts.some((account) => String(account.id) === accountSelection))) {
+    if (kind === 'income' && (accountsStatus !== 'ok' || (!accounts.some((account) => String(account.id) === accountSelection) && !(income?.accountId != null && String(income.accountId) === accountSelection)))) {
       setError('入金先口座を選択してください')
       return
     }
@@ -119,10 +135,13 @@ export function TransactionModal({
     }
     setError('')
     setSubmitting(true)
+    const save = (path: string, body: object) => editing
+      ? apiClient.put(`${path}/${editing.data.id}`, body)
+      : apiClient.post(path, body)
     try {
       if (kind === 'expense') {
         const [selectionType, selectionId] = accountSelection === '' ? [null, null] : accountSelection.split(':')
-        await apiClient.post('/expenses', {
+        await save('/expenses', {
           expenseDate: date,
           amount: amountValue,
           purpose: trimmedDescription,
@@ -137,7 +156,7 @@ export function TransactionModal({
             : {}),
         })
       } else {
-        await apiClient.post('/incomes', {
+        await save('/incomes', {
           accountId: Number(accountSelection),
           incomeDate: date,
           amount: amountValue,
@@ -147,7 +166,7 @@ export function TransactionModal({
         })
       }
     } catch (err) {
-      setError(getApiErrorMessage(err, kind === 'expense' ? '支出の登録に失敗しました' : '収入の登録に失敗しました'))
+      setError(getApiErrorMessage(err, `${kind === 'expense' ? '支出' : '収入'}の${editing ? '更新' : '登録'}に失敗しました`))
       setSubmitting(false)
       return
     }
@@ -161,9 +180,9 @@ export function TransactionModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal transaction-modal" data-testid="transaction-modal">
-        <h2>登録</h2>
-        <div className="tabs" role="tablist">
+      <div ref={dialogRef} className="modal event-modal transaction-modal" data-testid="transaction-modal" role="dialog" aria-modal="true" aria-labelledby="transaction-modal-title">
+        <h2 id="transaction-modal-title">{editing ? `${kind === 'expense' ? '支出' : '収入'}を編集` : '登録'}</h2>
+        {!editing && <div className="tabs" role="tablist">
           <button
             type="button"
             role="tab"
@@ -184,7 +203,7 @@ export function TransactionModal({
           >
             収入
           </button>
-        </div>
+        </div>}
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="tx-date">日時</label>
           <input id="tx-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -231,8 +250,9 @@ export function TransactionModal({
           {kind === 'income' && (
             <>
               <label htmlFor="tx-income-account">入金先口座（必須）</label>
-              <select id="tx-income-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)} disabled={accountsStatus !== 'ok' || accounts.length === 0} required>
+              <select id="tx-income-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)} disabled={incomeAccountUnavailable} required>
                 <option value="">選択してください</option>
+                {income?.accountId != null && !accounts.some((account) => account.id === income.accountId) && <option value={income.accountId}>{income.accountName ?? '削除済み口座'}</option>}
                 {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
               </select>
               {accountsStatus === 'loading' ? <p>口座を読み込み中...</p> : accountsStatus === 'error' ? <p role="alert" className="error">口座の取得に失敗しました。画面を再読み込みしてください</p> : accounts.length === 0 ? <p>収入の登録には口座が必要です。<a href="/accounts">口座管理へ</a></p> : null}
@@ -276,17 +296,17 @@ export function TransactionModal({
                   </option>
                 ))}
               </select>
-              <SplitFields amount={Number(amount) || 0} members={members} onChange={handleSplitChange} />
+              <SplitFields amount={Number(amount) || 0} members={members} membersLoaded={membersLoaded} initialSplits={initialSplits} initialSplitInputType={initialSplitInputType} onChange={handleSplitChange} />
             </>
           )}
           <label htmlFor="tx-memo">メモ</label>
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
-          <p className="error">{error}</p>
+          {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0 || (kind === 'income' && (accountsStatus !== 'ok' || accounts.length === 0))}>
-              登録
+            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>
+              {editing ? '保存' : '登録'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onClose}>
               キャンセル
             </button>
           </div>

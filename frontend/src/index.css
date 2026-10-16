@@ -328,6 +328,10 @@ input[type="checkbox"], input[type="radio"] {
   min-width: 0;
   max-width: 100%;
 }
+.transaction-modal .split-fields { min-width: 0; }
+.transaction-modal .split-rows { padding: 0; list-style: none; }
+.transaction-modal .split-row { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; min-width: 0; }
+.transaction-modal .split-row select, .transaction-modal .split-row input { flex: 1 1 120px; width: 0; }
 .events-grid { display: grid; grid-template-columns: minmax(0, 40fr) minmax(0, 38fr) minmax(0, 22fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .transaction-grid { display: grid; grid-template-columns: minmax(0, 25fr) minmax(0, 45fr) minmax(0, 30fr); gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .transaction-grid > span:last-child { font-variant-numeric: tabular-nums; }
