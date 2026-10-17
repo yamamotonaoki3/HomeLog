@@ -411,6 +411,58 @@ describe('状態遷移(改訂フロー)', () => {
     expect(del2.status).toBe(204)
   })
 
+  it('世帯外の精算済み内訳は削除でき、精算の収入も消えて口座残高が戻る (#301)', async () => {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] 太郎の口座', 3000)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', amountDue: 400 }], { amount: 1000, splitInputType: 'amount' })
+    const splitId = await firstSplitId(owner.headers)
+    await patch(splitId, 'settle-self', owner.headers, { accountId: payerAccount })
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3400)
+
+    const del = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del.status).toBe(200)
+    expect(await del.json()).toEqual({ settlementLedgerRemoved: true })
+    expect(await listIncomes(owner.headers)).toHaveLength(0)
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3000)
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM expense_splits WHERE id = ?').bind(splitId).first<{ n: number }>()).toEqual({ n: 0 })
+    // 元の共同支出は残り、内訳が無くなったので通常どおり編集・削除できる
+    expect(await listExpenses(owner.headers)).toHaveLength(1)
+  })
+
+  it('世帯外の精算済み内訳は、口座を選ばずに精算していても削除できる (#301)', async () => {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', amountDue: 400 }], { amount: 1000, splitInputType: 'amount' })
+    const splitId = await firstSplitId(owner.headers)
+    await patch(splitId, 'settle-self', owner.headers, {})
+    const del = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del.status).toBe(200)
+    expect(await listIncomes(owner.headers)).toHaveLength(0)
+  })
+
+  it('元の内訳IDを記録する前の精算(収入が紐付かない)は、内訳だけ消したことを返す (#301)', async () => {
+    const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] 口座', 3000)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', amountDue: 400 }], { amount: 1000, splitInputType: 'amount' })
+    const splitId = await firstSplitId(owner.headers)
+    await patch(splitId, 'settle-self', owner.headers, { accountId: payerAccount })
+    await env.DB.prepare('UPDATE incomes SET settlement_split_id = NULL WHERE settlement_split_id = ?').bind(splitId).run()
+    const del = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del.status).toBe(200)
+    expect(await del.json()).toEqual({ settlementLedgerRemoved: false })
+    expect(await listIncomes(owner.headers)).toHaveLength(1)
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3400)
+  })
+
+  it('世帯内の相手との精算済み内訳は、立替者でも削除できない (#301)', async () => {
+    const { owner, member, splitId } = await setup()
+    await patch(splitId, 'request', owner.headers)
+    await patch(splitId, 'mark-paid', member.headers)
+    await patch(splitId, 'confirm-receipt', owner.headers)
+    const del = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    expect(del.status).toBe(400)
+    expect(await del.json()).toMatchObject({ message: '世帯内の相手との精算済みの割り勘内訳は削除できません' })
+  })
+
   it('負担者はDELETEできない(404)', async () => {
     const { member, splitId } = await setup()
     const res = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: member.headers }, env)

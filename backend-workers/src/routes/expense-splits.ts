@@ -12,7 +12,7 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 const NOT_FOUND_MESSAGE = '割り勘の内訳が見つかりません'
 const INVALID_STATUS_MESSAGE = '現在の状態ではこの操作はできません'
 const INVALID_ACCOUNT_MESSAGE = '指定された口座が見つかりません'
-const SETTLED_NOT_DELETABLE_MESSAGE = '精算済みの割り勘内訳は削除できません'
+const SETTLED_NOT_DELETABLE_MESSAGE = '世帯内の相手との精算済みの割り勘内訳は削除できません'
 
 // 割り勘内訳の状態遷移(F04_kakeibo_warikan.md 3章の業務フロー)。
 //   unpaid(未請求) → requested(請求中、立替者が請求) → payment_reported(負担者が「支払った」と報告)
@@ -503,6 +503,30 @@ expenseSplitsRoute.patch('/:id/settle-self', async (c) => {
   return runSettlement(c, ctx, 'settle-self', payerAccountId)
 })
 
+// 世帯外の相手との精算済み内訳の削除(#301)。精算で作った「割り勘精算」の収入(と、あれば支出)を消し、
+// 動かした口座残高を戻す。すべて「まだ精算済みの世帯外内訳として存在する」ことを条件に1バッチで行い、
+// 並行して削除された場合はどの文も適用しない。
+async function deleteSettledExternalSplit(c: Context<AppEnv>, splitId: number) {
+  const db = c.env.DB
+  const guard = "EXISTS (SELECT 1 FROM expense_splits WHERE id = ?1 AND status = 'settled' AND debtor_external_id IS NOT NULL)"
+  const results = await db.batch([
+    db.prepare(`UPDATE accounts SET balance = balance - (SELECT i.amount FROM incomes i WHERE i.settlement_split_id = ?1 AND i.account_id = accounts.id)
+      WHERE id IN (SELECT account_id FROM incomes WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
+    db.prepare(`UPDATE accounts SET balance = balance + (SELECT e.amount FROM expenses e WHERE e.settlement_split_id = ?1 AND e.account_id = accounts.id)
+      WHERE id IN (SELECT account_id FROM expenses WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
+    db.prepare(`DELETE FROM incomes WHERE settlement_split_id = ?1 AND ${guard}`).bind(splitId),
+    db.prepare(`DELETE FROM expenses WHERE settlement_split_id = ?1 AND ${guard}`).bind(splitId),
+    db.prepare("DELETE FROM expense_splits WHERE id = ?1 AND status = 'settled' AND debtor_external_id IS NOT NULL").bind(splitId),
+  ])
+  if (results[results.length - 1].meta.changes === 0) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
+  // settle-selfは口座の有無にかかわらず収入を必ず作る。紐付く収入が無いのは、元の内訳IDを記録する前(0018以前)の
+  // 精算なので、内訳だけを消したことを返し、画面で家計簿の「割り勘精算」を手動で消すよう案内する。
+  const settlementLedgerRemoved = results[2].meta.changes + results[3].meta.changes > 0
+  return c.json({ settlementLedgerRemoved })
+}
+
 expenseSplitsRoute.delete('/:id', async (c) => {
   const splitId = Number(c.req.param('id'))
   const db = drizzle(c.env.DB)
@@ -516,9 +540,12 @@ expenseSplitsRoute.delete('/:id', async (c) => {
   if (!split || split.payer_user_id !== userId) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
-  // 精算済み(現金が動いた後)の内訳は消さない。未精算のもののみ削除可。
   if (split.status === 'settled') {
-    return c.json(errorResponse('VALIDATION_ERROR', SETTLED_NOT_DELETABLE_MESSAGE), 400)
+    // 世帯内の相手との精算済みは相手の家計簿にも記録があるため消さない。
+    if (split.debtor_external_id == null) {
+      return c.json(errorResponse('VALIDATION_ERROR', SETTLED_NOT_DELETABLE_MESSAGE), 400)
+    }
+    return deleteSettledExternalSplit(c, splitId)
   }
 
   await c.env.DB.prepare('DELETE FROM expense_splits WHERE id = ?').bind(splitId).run()
