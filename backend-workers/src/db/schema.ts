@@ -9,6 +9,9 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   displayName: text('display_name').notNull(),
+  // 退会の申し込み日時と削除完了日時(#297、F01_auth.md 8-2章)。
+  deletionRequestedAt: text('deletion_requested_at'),
+  deletedAt: text('deleted_at'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),

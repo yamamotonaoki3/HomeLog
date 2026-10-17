@@ -4,7 +4,7 @@ import app from '../index'
 
 afterEach(() => vi.restoreAllMocks())
 
-it.each(['posting', 'cleanup'])('日次処理は%sが失敗しても両方を実行する', async (failure) => {
+it.each(['posting', 'cleanup'])('日次処理は%sが失敗しても残りを実行する', async (failure) => {
   const all = vi.fn().mockResolvedValue({ results: [] })
   const list = vi.fn().mockResolvedValue({ objects: [], truncated: false })
   const error = new Error('[E2E_TEST] 日次処理失敗')
@@ -20,7 +20,8 @@ it.each(['posting', 'cleanup'])('日次処理は%sが失敗しても両方を実
 
   await app.scheduled({} as ScheduledController, bindings)
 
-  expect(all).toHaveBeenCalledTimes(1)
+  // 固定費の自動計上と、退会アカウントの削除(#297)の2つがDBを読む。
+  expect(all).toHaveBeenCalledTimes(2)
   expect(list).toHaveBeenCalledWith({ prefix: 'ocr/' })
   expect(log).toHaveBeenCalledWith('日次処理に失敗しました', error)
 })

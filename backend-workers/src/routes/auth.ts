@@ -6,6 +6,7 @@ import { passwordResetTokens, refreshTokens, users } from '../db/schema'
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '../lib/crypto'
 import { errorResponse } from '../lib/errors'
 import { signAccessToken } from '../lib/jwt'
+import { countDeletionBlockers, deletionScheduledAt, hasBlockers, isReservedEmail, isWithinGracePeriod } from '../lib/account-deletion'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
@@ -21,8 +22,11 @@ const displayNameSchema = z
   .max(50)
   .refine((value) => value.trim().length > 0, { message: '表示名を入力してください' })
 
+// 退会済み行に使う予約ドメインのアドレスは、登録・メールアドレス変更で受け付けない(#297)。
+const userEmailSchema = z.string().email().refine((value) => !isReservedEmail(value))
+
 const registerSchema = z.object({
-  email: z.string().email(),
+  email: userEmailSchema,
   password: passwordSchema,
   displayName: displayNameSchema,
 })
@@ -143,23 +147,37 @@ authRoute.post('/login', async (c) => {
     await verifyPassword(password, await getDummyPasswordHash())
     return c.json(errorResponse('UNAUTHORIZED', 'メールアドレスまたはパスワードが正しくありません'), 401)
   }
-  if (!(await verifyPassword(password, user.passwordHash))) {
+  if (!(await verifyPassword(password, user.passwordHash)) || user.deletedAt) {
     return c.json(errorResponse('UNAUTHORIZED', 'メールアドレスまたはパスワードが正しくありません'), 401)
   }
+  if (user.deletionRequestedAt) {
+    // 退会の取り消し期間中は、取り消すかどうかを画面で確認できるよう削除予定日を返す。期間後はログインできない。
+    if (!isWithinGracePeriod(user.deletionRequestedAt)) {
+      return c.json(errorResponse('UNAUTHORIZED', 'メールアドレスまたはパスワードが正しくありません'), 401)
+    }
+    const scheduledAt = deletionScheduledAt(user.deletionRequestedAt)
+    return c.json(
+      errorResponse('ACCOUNT_DELETION_PENDING', '退会手続き中のアカウントです', [{ field: 'deletionScheduledAt', reason: scheduledAt }]),
+      403,
+    )
+  }
 
+  return c.json(await issueTokens(c, user.id))
+})
+
+async function issueTokens(c: Context<AppEnv>, userId: number) {
   const accessExpirationSeconds = Number(c.env.JWT_ACCESS_EXPIRATION_SECONDS)
   const refreshExpirationSeconds = Number(c.env.JWT_REFRESH_EXPIRATION_SECONDS)
 
-  const accessToken = await signAccessToken(user.id, c.env.JWT_SECRET, accessExpirationSeconds)
+  const accessToken = await signAccessToken(userId, c.env.JWT_SECRET, accessExpirationSeconds)
   const refreshToken = generateOpaqueToken()
-  await db.insert(refreshTokens).values({
-    userId: user.id,
+  await drizzle(c.env.DB).insert(refreshTokens).values({
+    userId,
     tokenHash: await sha256Hex(refreshToken),
     expiresAt: addSecondsIso(refreshExpirationSeconds),
   })
-
-  return c.json({ accessToken, refreshToken, expiresIn: accessExpirationSeconds })
-})
+  return { accessToken, refreshToken, expiresIn: accessExpirationSeconds }
+}
 
 authRoute.post('/refresh', async (c) => {
   const body = await parseJsonBody(c)
@@ -184,6 +202,14 @@ authRoute.post('/refresh', async (c) => {
     .get()
 
   if (!row) {
+    return c.json(errorResponse('INVALID_TOKEN', 'リフレッシュトークンが無効です'), 401)
+  }
+  const owner = await db
+    .select({ deletionRequestedAt: users.deletionRequestedAt, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, row.userId))
+    .get()
+  if (!owner || owner.deletionRequestedAt || owner.deletedAt) {
     return c.json(errorResponse('INVALID_TOKEN', 'リフレッシュトークンが無効です'), 401)
   }
 
@@ -321,7 +347,7 @@ const passwordChangeSchema = z.object({
 })
 const emailChangeSchema = z.object({
   currentPassword: z.string().min(1),
-  newEmail: z.string().email(),
+  newEmail: userEmailSchema,
 })
 
 function toAccount(user: { id: number; email: string; displayName: string }) {
@@ -422,4 +448,85 @@ authRoute.put('/email', requireAuth, async (c) => {
     }
     throw error
   }
+})
+
+// ---- 退会(#297、F01_auth.md 8-2章) ----
+const deletionRequestSchema = z.object({ currentPassword: z.string().min(1) })
+const INVALID_LOGIN_MESSAGE = 'メールアドレスまたはパスワードが正しくありません'
+
+authRoute.get('/account/deletion-check', requireAuth, async (c) => {
+  const blockers = await countDeletionBlockers(c.env.DB, c.get('userId'))
+  return c.json({ canRequest: !hasBlockers(blockers), ...blockers })
+})
+
+authRoute.post('/account/deletion', requireAuth, async (c) => {
+  const parsed = deletionRequestSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const userId = c.get('userId')
+  const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
+  if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  if (!(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) {
+    return c.json(
+      errorResponse('VALIDATION_ERROR', INVALID_CURRENT_PASSWORD_MESSAGE, [{ field: 'currentPassword', reason: INVALID_CURRENT_PASSWORD_MESSAGE }]),
+      400,
+    )
+  }
+  const blockers = await countDeletionBlockers(c.env.DB, userId)
+  if (hasBlockers(blockers)) {
+    return c.json(
+      errorResponse('RESOURCE_CONFLICT', '未精算の割り勘や、他の人が負担する固定費が残っているため退会できません', [
+        { field: 'unsettledSplits', reason: String(blockers.unsettledSplits) },
+        { field: 'fixedCostsWithOthers', reason: String(blockers.fixedCostsWithOthers) },
+      ]),
+      409,
+    )
+  }
+
+  const now = nowIso()
+  // 申し込みと同時に、全端末のリフレッシュトークンと未使用の再設定トークンを失効させる。
+  const [updateResult] = await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ? AND password_hash = ? AND deletion_requested_at IS NULL')
+      .bind(now, userId, user.passwordHash),
+    c.env.DB.prepare('UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(now, userId),
+    c.env.DB.prepare('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL').bind(now, userId),
+  ])
+  if (updateResult.meta.changes === 0) {
+    return c.json(errorResponse('RESOURCE_CONFLICT', 'パスワードが別の操作で変更されました。もう一度お試しください'), 409)
+  }
+  return c.json({ deletionScheduledAt: deletionScheduledAt(now) })
+})
+
+// 取り消しはログインできない状態で行うため、メールアドレスとパスワードで本人確認する。成功したらログイン状態にする。
+authRoute.post('/account/deletion/cancel', async (c) => {
+  const parsed = loginSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const { email, password } = parsed.data
+  const user = await drizzle(c.env.DB).select().from(users).where(eq(users.email, email)).get()
+  if (!user) {
+    await verifyPassword(password, await getDummyPasswordHash())
+    return c.json(errorResponse('UNAUTHORIZED', INVALID_LOGIN_MESSAGE), 401)
+  }
+  if (!(await verifyPassword(password, user.passwordHash)) || user.deletedAt) {
+    return c.json(errorResponse('UNAUTHORIZED', INVALID_LOGIN_MESSAGE), 401)
+  }
+  if (!user.deletionRequestedAt) {
+    return c.json(errorResponse('VALIDATION_ERROR', '退会手続き中のアカウントではありません'), 400)
+  }
+  if (!isWithinGracePeriod(user.deletionRequestedAt)) {
+    return c.json(errorResponse('UNAUTHORIZED', INVALID_LOGIN_MESSAGE), 401)
+  }
+  // 期限の直前に日次処理と競合しても削除済みの行は復活させず、並行してパスワードが変わっていたら取り消さない。
+  const result = await c.env.DB.prepare(
+    'UPDATE users SET deletion_requested_at = NULL WHERE id = ? AND deleted_at IS NULL AND deletion_requested_at = ? AND password_hash = ?',
+  )
+    .bind(user.id, user.deletionRequestedAt, user.passwordHash)
+    .run()
+  if (result.meta.changes === 0) {
+    return c.json(errorResponse('UNAUTHORIZED', INVALID_LOGIN_MESSAGE), 401)
+  }
+  return c.json(await issueTokens(c, user.id))
 })
