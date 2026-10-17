@@ -1,5 +1,7 @@
 # HomeLog — Claude Code ワークフロールール
 
+本番は TypeScript / Cloudflare Workers 版（`backend-workers/` ＋ `frontend/`）で動いている。Java/Spring Boot 版（`backend/`）は移行元として残しているだけで、新しい機能は追加しない。Codex など他のエージェント向けの同じ内容は [`AGENTS.md`](AGENTS.md) にまとめている。
+
 ## 絶対に守るルール
 
 1. **作業は必ずイシューから始める**
@@ -11,15 +13,15 @@
    - 必ず作業ブランチから PR を作成し、マージで取り込む。
 
 3. **PR はレビュー・動作確認後にマージする**
-   - 自分でセルフレビューを行い、チェックリストを埋めてからマージする。
-   - CI（整備後）が通っていることを確認する。
+   - セルフレビューと Codex レビューを行い、CI（backend-quality / frontend-quality / e2e / gitleaks）が通っていることを確認してからマージする。
 
-4. **内部設定・周知不要なものはGitHubに上げない**
+4. **本番への反映はユーザーの指示があったときだけ**
+   - ユーザーが「本番に出して」と言ったときに限り、`production` ブランチへ push する（[`docs/deployment.md`](docs/deployment.md)）。マージしただけでは本番に出さない。
+
+5. **内部設定・周知不要なものはGitHubに上げない**
    - `.claude/`（スキル・エージェント・設定等、Claude Codeの内部動作設定）は `.gitignore` で除外し、リポジトリにコミットしない。
    - 同様に、チーム外への周知が不要な個人環境依存の設定ファイルはコミット対象外とする。
-
-5. **MyBatisのSQLは必ずXMLマッパーファイルに書く**
-   - Mapperの実装ではSQLをJavaアノテーション（`@Select`等）に書かず、`resources/mapper/<feature>/*.xml`に集約する。SQLとコードを分離することで、SQL単体の可読性・保守性を保つ。
+   - テストやレビューの出力ログはリポジトリ内に保存せず、スクラッチ領域など外部のディレクトリに出す（`*.log` は `.gitignore` 済みだが、作業ディレクトリを散らかさないため）。
 
 ---
 
@@ -37,10 +39,9 @@
 | `docs` | ドキュメントのみの変更 |
 
 **例:**
-- `feature/#1-add-zaiko-entity`
-- `fix/#5-kakeibo-total-not-updating`
-- `chore/#3-update-dependencies`
-- `docs/#2-add-requirements`
+- `feature/#289-menu-recipe-link`
+- `fix/#285-youtube-recipe-title`
+- `docs/#305-sync-requirements`
 
 ---
 
@@ -50,89 +51,95 @@
 0. ドキュメントを必ず読む（プランを立てる前に必ず実施）
      - docs/requirements.md（全体要件定義書）
      - docs/構想.md（全体構想）
-     - docs/details/features/F0x_*.md（対象機能の詳細要件定義書）
+     - docs/details/features/F*.md（対象機能の詳細要件定義書）
      - docs/details/common-notes.md（機能横断の共通事項）
      - docs/details/data-model.md（ER図・テーブル定義）
+     - docs/details/api-design.md（API設計・エンドポイント一覧）
      - docs/技術スタック.md（技術スタック構成）
      - docs/lessons-learned.md（過去の学び・手直しの記録）
      上記のうち対象機能に関係するファイルを全て確認した上で実装プランを立てる。
-1. GitHub で Issue を作成（テンプレートを使う）
+     要件にない設計判断が必要なときは、ユーザーに確認する。
+1. GitHub で Issue を作成する（バックエンドとフロントエンドは別 Issue）
 2. ブランチを切る: git checkout -b feature/#<番号>-<概要>
 3. テスト駆動開発（TDD）で実装する
-     3-1. 対象機能のテスト（Controller/Service/Mapperの単体テスト）を先に書き、red（失敗）になることを確認する
+     3-1. 先にテストを書き、red（失敗）になることを確認する
      3-2. テストを green にする最小限の実装を行う
-          ※ Mapperの実装時はSQLをXMLマッパーファイル（`resources/mapper/<feature>/*.xml`）に書く。アノテーションSQLは使わない
      3-3. リファクタリングする（テストが green のまま保たれることを確認しながら整理する）
-4. 品質チェックを実行する（/品質チェック スキルを使う）
-     4-1. 単体テストが実行可能な状態であれば、単体テストを実行し green であることを確認する
-     4-2. バックエンドに変更がある場合は、結合テストも実行し green であることを確認する
-          ※ backend/ で `.\gradlew.bat integrationTest`（Docker Desktop起動が前提。詳細は docs/結合テスト.md）
-5. ユーザーがブラウザで動作確認する（← ここで一度止まる）
-6. コミット: git commit
-7. git push origin <ブランチ名>
-8. GitHub で PR を作成（テンプレートを使う・Closes #<番号> を記載）
-9. Codex CLI でコードレビューを実行し、指摘があれば Codex 自身に修正させる（次項参照）。指摘ゼロになるまで繰り返す。
-10. セルフレビュー → マージ
-11. ブランチ削除（マージ後は GitHub が自動削除）
+4. 品質チェックを実行する（後述「品質チェック」）
+     - 今回の変更を検証するテスト・E2E が実在するかを中身で確認し、無ければ追加する
+     - バックエンドだけ先にマージする場合は、API 層の E2E で契約の要点を確認する
+5. Codex でレビューする（後述「Codex レビュー」）
+6. コミット → push → PR 作成（Closes #<番号> を記載）
+7. CI が通ったらマージし、ローカルの main を更新する
+8. ユーザーにブラウザでの確認を依頼する（開発サーバーの URL を伝える）
+9. ユーザーの「本番に出して」で production に push し、本番の反映を確認する
 ```
 
-**TDDを採用する理由**：先にテストでインプット/アウトプットの形（entity・dtoの形状）を固めてから実装に入ることで、実装途中で設計ミスや考慮漏れに気づく「手戻り」ではなく、コーディング前の段階でエラーを検出できるようにするため。
-
-**Codex CLIによるレビュー・修正フローについて**：このマシンには Codex CLI（ChatGPTアカウントでログイン済み）が導入されている。`codex review --base main` でブランチの差分を非対話的にレビューできるほか、`codex review --uncommitted` でコミット前の変更、`codex review --commit <SHA>` で特定コミットのレビューも可能。Claude Codeによるセルフレビューに加え、別モデルによる第二の視点として活用する。
-
-指摘が出た場合は、以下の手順を**都度の指示なしに毎回**適用する（恒久ルール）。
-
-1. `codex review --uncommitted`（または `--base main`）でレビューを実行する。
-2. 指摘があれば、指摘内容と対象ファイルを踏まえた具体的な修正指示を添えて `codex exec "<修正指示>"` を実行し、**Codex 自身にコードを修正させる**。Claude Code が直接コードを修正するのは、Codex の応答が得られない・失敗する等、Codex による修正が行えない場合の代替手段とする。
-3. Codex の修正後、Claude Code が `./gradlew.bat test checkstyleMain checkstyleTest` 等で検証する（Codex 自身のサンドボックスからは Gradle が実行できないことがあるため、ビルド・テストの最終検証は必ず Claude Code 側で行う）。
-4. 指摘ゼロになるまで `codex review` の再実行 → `codex exec` による修正を繰り返す。
+**TDDを採用する理由**：先にテストでインプット/アウトプットの形を固めてから実装に入ることで、実装途中で設計ミスや考慮漏れに気づく「手戻り」ではなく、コーディング前の段階でエラーを検出できるようにするため。
 
 ---
 
-## 機能実装の自動連続実行ルール（バックエンド→フロントエンド）
+## 品質チェック
 
-1つの機能（Issue単位で見るとバックエンド・フロントエンドの2Issueに分かれるもの）を実装する際、以下の条件を満たす限り、都度の確認を挟まず一気通貫で進めてよい（恒久ルール）。
+各ディレクトリ全体を対象に実行する（CI も全体を検査する）。
 
-### 対象・全体の流れ
+| 対象 | コマンド |
+| --- | --- |
+| `backend-workers/` | `npm run lint` / `npm run typecheck` / `npm test` |
+| `frontend/` | `npm run lint` / `npx tsc -b` / `npx vitest run` / `npm run build` |
+| `e2e/` | `npm test -- tests/<spec>`（先に `frontend` をビルドする。8787・5181 番ポートを空けておく） |
+
+- `backend-workers/` のテストとローカル実行には `.dev.vars`（`.dev.vars.example` を参考に作成。値はコミットしない）が必要。
+- 画面の変更は E2E で 1280 / 390 / 320px の表示を確認し、必要に応じて画面写真でも確かめる。
+- テストの詳細は [`docs/結合テスト.md`](docs/結合テスト.md) を参照。
+
+---
+
+## Codex レビュー
+
+このマシンには Codex CLI が導入されている。Claude Code のセルフレビューに加え、別モデルによる第二の視点として使う。
+
+1. `codex review --uncommitted < /dev/null`（PR 作成後は `--base main`）でレビューする。標準入力を閉じないと入力待ちで止まる。
+2. 指摘があれば修正する。Codex に修正させる場合は `codex exec -s workspace-write -C . - < 指示ファイル` で渡す。
+3. Codex のサンドボックスでは子プロセスを起動できない（spawn EPERM）ため、テスト・lint・ビルドの最終検証は必ず Claude Code 側で行う。
+4. 指摘ゼロになるまで繰り返す。3回を超えたら Claude Code が直接修正し、同様に検証する。
+5. データ破損・認証バイパス・情報漏えいなどの重大な指摘は、解消するまでレビューを終えない。
+
+---
+
+## 機能実装の連続実行ルール（バックエンド→フロントエンド）
+
+1つの機能（バックエンド・フロントエンドの2 Issue に分かれるもの）は、事前に合意した計画の範囲内で、次の条件をすべて満たす限り確認を挟まず進めてよい。
 
 ```
-バックエンドIssue作成 → ブランチ → TDD実装 → 品質チェック・結合テスト → PR作成
-  → codex review → 指摘ゼロまで codex exec で修正（3章参照）
-  → 全てgreen/指摘ゼロなら確認を挟まず自動マージ → ブランチ削除 → ローカルmainをpull
-  → 続けてフロントエンドIssue作成 → ブランチ → 実装
-  → 品質チェック（vitest/tsc/oxlint/build）→ Chrome DevTools MCP等での実機確認
-  → codex review → 指摘ゼロまで codex exec で修正 → PR作成
-  → ここでユーザーに「ブラウザで確認できる状態」であることを報告し、ユーザー自身の確認・マージ判断を待つ
+バックエンドIssue作成 → ブランチ → TDD実装 → 品質チェック・API層E2E → Codexレビュー
+  → PR作成 → CI成功でマージ → ローカルmainをpull
+  → フロントエンドIssue作成 → ブランチ → 実装 → 品質チェック・E2E（1280/390/320px）
+  → Codexレビュー → PR作成 → CI成功でマージ
+  → ユーザーに「ブラウザで確認できる状態」であることを報告し、本番反映の指示を待つ
 ```
-
-- バックエンド段階は、作業フロー5章「ユーザーがブラウザで動作確認する」をcurl・結合テスト（Testcontainers）・API直叩きでの確認に読み替え、これらが全てgreenであれば人手の確認を待たずに次工程（マージ→pull→フロントエンドIssue着手）へ自動的に進む。
-- フロントエンド段階は、Claude Code自身がChrome DevTools MCP等で実機動作を確認したうえで、最終的な「ユーザー自身によるブラウザ確認」を待つ地点として作業フロー5章の趣旨を維持する。この段階のPRは自動マージしない。
 
 ### 自動で次工程に進んでよい条件（すべて満たすとき）
 
-- 単体テスト・（バックエンドは）結合テストが全てgreenである
-- Checkstyle / oxlint / tsc / build がエラーなしである
-- `codex review` の指摘がゼロになっている（Codexが書き込み拒否の場合はClaude Codeが直接修正し、同様に検証する）
+- 単体テスト・E2E が全て green である
+- lint / typecheck / build がエラーなしである
+- Codex レビューの指摘がゼロになっている
 
 ### 必ず立ち止まる条件
 
 - 上記チェックのいずれかで解決できない問題が起きたとき（原因調査・対応方針の確認をユーザーに求める）
-- フロントエンドの実装が完了し「ブラウザで確認できる状態」に到達したとき（＝ユーザー自身の確認・マージ可否判断を待つ）
 - ドキュメントと実装の間に矛盾を見つけたとき
-- 事前に合意した機能実装の計画（プラン）に無い、新たな設計判断が必要になったとき
-
-このルールはプラン承認等で機能実装の大枠が事前に合意されていることを前提とする。合意のない新規機能や、計画からの逸脱が必要な場合は通常通りユーザーに確認する。
+- 事前に合意した計画に無い、新たな設計判断が必要になったとき
+- 本番への反映（ユーザーの指示が必要）
 
 ---
 
-## テスト方針（単体テスト・結合テスト）
+## テスト方針
 
-- **単体テスト**：TDD（3章参照）で先に書く。Controller/Service/Mapperそれぞれの責務単位でテストを作成する。
-- **結合テスト**：複数レイヤー（Controller→Service→Mapper→DB）やAPI経由の疎通を検証できる状態になった機能から、順次結合テストを整備・実行する。基盤はTestcontainers（PostgreSQL 17）＋`backend/src/test/java/com/homelog/integration/`のIntegrationTestBase。実行手順は`docs/結合テスト.md`を参照。
-- **テストケース設計の基本**：ブラックボックステストとホワイトボックステストの両観点で設計する。
-  - **ブラックボックステスト**：仕様（要件定義書・入力チェック仕様）を基に、同値分割・境界値分析でテストケースを洗い出す（正常系・異常系・境界値）。
-  - **ホワイトボックステスト**：実装コードの分岐・条件を基に、主要な分岐網羅（if/switch等の各分岐、ループの0回・1回・複数回等）を確認するテストケースを洗い出す。
-- 単体テスト・結合テストとも、実行可能な状態になった時点で作業フロー4章の品質チェックの一部として都度実行し、greenであることを都度確認しながら進める。
+- **バックエンド**：Vitest ＋ `@cloudflare/vitest-pool-workers`。miniflare 上の本物の D1 にマイグレーションを適用し、Hono アプリへ HTTP リクエストを送って検証する（`backend-workers/src/test/`）。
+- **フロントエンド**：Vitest ＋ jsdom ＋ Testing Library。API は msw で差し替える（`frontend/src/test/`）。
+- **E2E**：Playwright。ローカルの Workers と Vite を起動し、画面操作と API を通しで確認する（`e2e/tests/`）。spec は `e2e/tests/console-guard.ts` の `test` を使い、最初に `consoleGuard.watch(page)` を呼ぶ。
+- **テストケース設計の基本**：ブラックボックス（同値分割・境界値分析）とホワイトボックス（主要な分岐網羅）の両観点で設計する。並行操作の対策は、対策を外すとテストが失敗することまで確認する。
 
 ---
 
@@ -142,72 +149,37 @@ Codexレビューで採用された指摘や、実装中の手直しは `docs/le
 
 ---
 
-## コミットメッセージ規則
+## コミット・PR の規則
+
+- コミットメッセージ・PR は日本語で書き、先頭の種別だけ英語にする（`feat(frontend):` `fix(backend):` `docs:` `chore:` など）。
+- PR 本文は「概要 / 変更内容 / 担当 / 確認 / `Closes #N`」の構成にする。
 
 ```
-<種別>: <変更内容の要約>（日本語可）
-
-例:
-feat: 在庫アイテム登録機能を追加
-fix: 割り勘精算時の端数計算を修正
-chore: Gradle Wrapper を 9.5.0 に更新
-docs: 要件定義書を追加
+feat(frontend): 献立表のレシピタイトルから元ページ・レシピ詳細を開けるようにする (#289)
+fix(backend): YouTube の URL は oEmbed から動画タイトルを取得する (#285)
+docs: 要件定義書を現在の実装に合わせて更新する (#305)
 ```
 
 ---
 
-## バックエンドアーキテクチャ規約
-
-Spring Boot の基本 3 層構造を必ず守ること。
+## バックエンド構成（`backend-workers/`）
 
 ```
-Controller → Service → Mapper
+backend-workers/
+├── src/
+│   ├── index.ts        … Hono アプリ・ルーティング・Cron（scheduled）
+│   ├── routes/         … 機能ごとの API（auth, household, expenses, expense-splits, recipes …）
+│   ├── lib/            … 共通処理（固定費の自動計上、退会処理、精算、残高補正、OCR など）
+│   ├── middleware/     … 認証（requireAuth）
+│   ├── db/schema.ts    … drizzle のスキーマ定義
+│   └── test/           … routes / lib / middleware ごとのテスト
+├── drizzle/            … D1 マイグレーション（NNNN_*.sql）
+└── wrangler.toml       … バインディング（D1・R2・AI）・Cron・静的アセット
 ```
 
-| 層 | 責務 | 必須 |
-| --- | --- | --- |
-| Controller | HTTP リクエスト受け口。バリデーション・レスポンス組み立てのみ行い、ロジックを持たない | ✅ |
-| Service | ビジネスロジック本体。トランザクション境界 | ✅ |
-| Mapper | MyBatis によるデータアクセス。SQL は全て XML マッパーファイル（`resources/mapper/<feature>/*.xml`）で管理する。アノテーション SQL は使わない | ✅ |
-
-### パッケージ構成
-
-機能パッケージ（`auth`, `household`, `kakeibo`, `zaiko`, `kondate`）は以下のディレクトリ構成に統一する。
-
-```
-com.homelog.<feature>/
-├── controller/
-├── service/
-├── mapper/       … MyBatisマッパーインターフェース
-├── entity/       … DBの行に対応するデータクラス（Mapperの戻り値・引数）
-└── dto/
-    ├── request/  … Controllerが受け取るリクエストボディ
-    └── response/ … Controllerが返すレスポンスボディ
-```
-
-- **entity と dto を分離する理由**：entityはDBの形、dtoはAPI入出力の形。分離することでDBスキーマ変更がAPI仕様に直結せず、Controllerが必要な項目だけをレスポンスに含められる。
-- **dto配下で request/response を分ける理由**：1つの機能で複数エンドポイントを持つ際にファイルが増えても迷わず置き場所が決まるようにするため。
-
-横断的な共通処理は `common` パッケージに集約する。
-
-```
-com.homelog.common/
-├── config/       … SecurityConfig, WebConfig(CORS), OpenApiConfig等 アプリ全体設定
-├── exception/    … GlobalExceptionHandler(@RestControllerAdvice), 独自例外クラス群
-├── security/     … JWTフィルタ・JWTユーティリティ
-├── constant/     … 全機能共通の定数・Enum
-└── util/         … 日付操作等、複数機能から使う純粋ユーティリティ
-```
-
-- **securityをauthではなくcommonに置く理由**：auth機能の中に置くと、他機能のControllerがJWT検証のためだけに`auth`パッケージへ依存する逆転が起きるため、認証基盤は独立させる。
-- **constantとutilを分ける理由**：「値」と「振る舞い」を混在させないための整理。
-
-### テスト構成（単体テストの完結性）
-
-`src/test/java/com/homelog/<feature>/` に本体と同じ `controller/service/mapper` 構成をミラーリングし、機能ごとに「そのパッケージだけ見ればテストが揃っている」状態にする。
-
-- Mapperの単体テスト: H2（インメモリDB）を使用
-- Service/Controllerの単体テスト: Mockito / MockMvc で完結させる
+- 入力は zod で検証し、エラーは `lib/errors.ts` の `errorResponse` で共通形式にする。他人・他世帯のリソースは 404 で返す。
+- 残高の増減や複数テーブルの更新は D1 の `batch` にまとめ、途中で失敗しても中途半端な状態を残さない。並行操作は条件付き更新（更新行数の確認）で防ぐ。
+- マイグレーションは連番で追加し、PR で共有したファイルは編集しない（修正は新しい番号で行う）。
 
 ---
 
@@ -215,35 +187,29 @@ com.homelog.common/
 
 | 役割 | 技術 |
 | --- | --- |
-| フロントエンド | React 19.2.7 + TypeScript 6.0.2 |
-| ビルドツール | Vite 8.1.0 |
-| ルーティング | React Router 7.15.1 |
-| HTTP クライアント | Axios 1.16.1 |
-| Lint | oxlint 1.69.0 |
-| テスト(FE) | Vitest 4.1.9 + Testing Library + msw |
-| バックエンド | Java 25 / Spring Boot 4.0.3 / Gradle 9.5.0 |
-| DBアクセス | MyBatis 3.5.19 + Flyway |
-| 認証 | Spring Security + JWT (jjwt 0.12.6) |
-| データベース | PostgreSQL 17 |
-| 画像ストレージ | AWS S3 |
-| コンテナ | Docker |
-| Lint(BE) | Checkstyle 10.21.4 |
+| フロントエンド | React 19 + TypeScript 6 / Vite 8 / React Router 7 / axios / vite-plugin-pwa |
+| Lint(FE) | oxlint |
+| テスト(FE) | Vitest + Testing Library + msw |
+| バックエンド | Cloudflare Workers / Hono 4 / TypeScript / zod |
+| データベース | Cloudflare D1（SQLite 互換）/ drizzle-orm |
+| ファイル・AI | Cloudflare R2 / Workers AI / Google Cloud Vision |
+| 認証 | 自前 JWT（アクセストークン）＋ リフレッシュトークン（D1）、PBKDF2 |
+| Lint(BE) | ESLint + typescript-eslint |
+| テスト(BE) | Vitest + `@cloudflare/vitest-pool-workers` |
+| E2E | Playwright |
+| デプロイ | Cloudflare Workers Builds（`production` ブランチ） |
 
 詳細は `docs/技術スタック.md` を参照。
 
 ## アプリ起動手順
 
 ```bash
-# 1. データベース起動（backend/ ディレクトリで）
-cd backend
-docker compose up -d
+# 1. API（backend-workers/ で。http://localhost:8787）
+npx wrangler d1 migrations apply DB --local
+npx wrangler dev --local --port 8787
 
-# 2. バックエンド起動（backend/ ディレクトリで）
-.\gradlew.bat bootRun
-
-# 3. フロントエンド起動（frontend/ ディレクトリで）
-cd frontend
-npm run dev
+# 2. 画面（frontend/ で。http://localhost:5181、スマホからは PC の IP アドレス:5181）
+VITE_API_PROXY_TARGET=http://localhost:8787 npx vite --port 5181 --strictPort --host 0.0.0.0
 ```
 
 `.claude/skills/run-dev` スキルを使うと上記手順を自動実行できる。
