@@ -2,7 +2,7 @@
 
 [← 要件定義書に戻る](../requirements.md)
 
-要件定義段階のER図であり、実装時のテーブル名・カラム名は変更されうる（MyBatis Mapper実装時に確定させる）。Issue #160で追加した管理者・例外アクセス・退会関連のエンティティと列は要件上必要な論理モデルであり、物理スキーマ・マイグレーションは対応する実装Issueで確定する。
+要件定義段階のER図であり、型名（BIGSERIAL・VARCHAR等）は当初想定のPostgreSQLの表記で残している。現在の物理スキーマは Cloudflare D1（SQLite）で、`backend-workers/drizzle/*.sql` のマイグレーションと `backend-workers/src/db/schema.ts` を正とする。Issue #160で追加した管理者・例外アクセス・退会関連のエンティティと列は要件上必要な論理モデルであり、物理スキーマ・マイグレーションは対応する実装Issueで確定する。
 
 ---
 
@@ -348,10 +348,10 @@ erDiagram
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | email | VARCHAR(255) | ○ | UNIQUE。ログインに使用 |
-| password_hash | VARCHAR(255) | ○ | BCryptによるハッシュ |
+| password_hash | VARCHAR(255) | ○ | PBKDF2-SHA256（10万回、ソルト付き）によるハッシュ。退会済み行はログインできない値 |
 | display_name | VARCHAR(50) | ○ | 表示名 |
 | deletion_requested_at | TIMESTAMP | — | 削除申請日時。設定中は通常の認証済みAPIとトークン更新を拒否する |
-| deletion_scheduled_at | TIMESTAMP | — | 削除予定日時（申請から30日後） |
+| deleted_at | TIMESTAMP | — | 削除完了日時（#297）。削除予定日は列に持たず、deletion_requested_at の30日後として計算する |
 | created_at | TIMESTAMP | ○ | 登録日時 |
 
 削除確定時は本人専用データを削除し、世帯に残す共有記録から利用者IDとの紐付けを解除した後にユーザー識別情報を削除する。共有記録に必要な表示名は「退会したユーザー」とし、ユーザーアカウントへの外部キーを残さない。具体的な対象列は下記共有データの項で示す。

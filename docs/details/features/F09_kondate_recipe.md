@@ -38,6 +38,8 @@
 | --- | --- |
 | S-12 | レシピ一覧画面 |
 | S-13 | レシピ登録モーダル（手動/OCR/WEB） |
+| S-28 | iPhoneショートカット案内画面 |
+| S-31 | レシピ詳細モーダル（材料・手順、WEBレシピは元ページへのリンク） |
 
 ## 3. 業務フロー
 
@@ -108,6 +110,7 @@ flowchart TD
 `HTMLRewriter` で `<meta property="og:title">` / `<meta property="og:image">` / `<title>` を
 ストリーミング抽出する（レスポンスボディを丸ごとメモリに読み込まない）。
 
+- YouTube（youtube.com・youtu.be・m.youtube.com・music.youtube.com）のURLは、Workersからページを取得すると同意画面などが返りタイトルが「YouTube」になるため、YouTubeの oEmbed API から動画タイトルとサムネイルを取得する。失敗したときは下記のHTML解析に戻る（#285）
 - タイトルは `og:title` → `<title>` → URL文字列 の優先順で必ず何か確定する
 - サムネイルは `og:image` が無ければ保存しない（NULL）
 - `http:`/`https:` 以外のスキーム、`localhost`/ループバック/プライベートIP帯を指定したURL、
@@ -123,6 +126,12 @@ WEBタブが選択された状態でレシピ登録モーダルが自動的に�
 `text`パラメータからURLらしき文字列を正規表現で抽出してフォールバックする。
 iOS SafariはWeb Share Target非対応のため、iOSはショートカット案内 または URL貼り付けで登録する。
 
+### 手書きレシピの画像解析（実装済み）
+
+- `POST /api/recipes/ocr/upload` で画像を R2 に一時保存し、`POST /api/recipes/ocr/analyze` で解析する。
+- 文字認識は Google Cloud Vision、認識した文字の「タイトル・材料・手順」への整理は Workers AI（LLM）で行う。結果は S-13 の確認フォームに入れ、ユーザーが確認・編集してから `source_type=ocr` で保存する。
+- 一時保存した画像は日次処理で削除する。
+
 ## 6. 今後の検討事項
 
-- 手書きレシピ画像解析に使用する外部AI/OCRサービスの選定
+- なし（外部AI/OCRサービスは上記のとおり選定・実装済み）
