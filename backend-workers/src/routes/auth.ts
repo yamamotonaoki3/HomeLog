@@ -66,8 +66,12 @@ function getDummyPasswordHash(): Promise<string> {
   return dummyPasswordHashPromise
 }
 
+// drizzleのupdate().returning()はD1のエラーをDrizzleQueryErrorで包むため、causeも辿って判定する。
 function isUniqueConstraintError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('UNIQUE constraint failed')
+  for (let current = error; current instanceof Error; current = current.cause) {
+    if (current.message.includes('UNIQUE constraint failed')) return true
+  }
+  return false
 }
 
 /**
@@ -300,4 +304,122 @@ authRoute.post('/password-reset/confirm', async (c) => {
   }
 
   return c.body(null, 200)
+})
+
+// ---- アカウント設定(#291) ----
+// パスワード・メールアドレスの変更は現在のパスワードで再認証する(F01_auth.md 8章)。
+// メール送信サービス未導入のため、メールアドレス変更は確認メールなしで即時確定する暫定仕様。
+const INVALID_CURRENT_PASSWORD_MESSAGE = '現在のパスワードが正しくありません'
+
+// 前後の空白を除いてから長さを検証する(空白込みで50文字を超えても、除いた後が50文字以内なら受け付ける)。
+const accountUpdateSchema = z.object({ displayName: z.string().transform((value) => value.trim()).pipe(displayNameSchema) })
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: passwordSchema,
+  // 今使っている端末のリフレッシュトークン。これだけは失効させずに残す。
+  refreshToken: z.string().min(1).optional(),
+})
+const emailChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newEmail: z.string().email(),
+})
+
+function toAccount(user: { id: number; email: string; displayName: string }) {
+  return { id: user.id, email: user.email, displayName: user.displayName }
+}
+
+authRoute.get('/account', requireAuth, async (c) => {
+  const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, c.get('userId'))).get()
+  if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  return c.json(toAccount(user))
+})
+
+authRoute.patch('/account', requireAuth, async (c) => {
+  const parsed = accountUpdateSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const updated = await drizzle(c.env.DB)
+    .update(users)
+    .set({ displayName: parsed.data.displayName })
+    .where(eq(users.id, c.get('userId')))
+    .returning()
+    .get()
+  if (!updated) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  return c.json(toAccount(updated))
+})
+
+authRoute.put('/password', requireAuth, async (c) => {
+  const parsed = passwordChangeSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const { currentPassword, newPassword, refreshToken } = parsed.data
+  const userId = c.get('userId')
+  const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
+  if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    return c.json(errorResponse('VALIDATION_ERROR', INVALID_CURRENT_PASSWORD_MESSAGE, [{ field: 'currentPassword', reason: INVALID_CURRENT_PASSWORD_MESSAGE }]), 400)
+  }
+
+  const newPasswordHash = await hashPassword(newPassword)
+  const now = nowIso()
+  // 検証したハッシュのままの場合だけ更新する(並行してパスワードが変わっていたら上書きしない)。
+  // 後続の失効処理も、この更新が反映された場合(=新しいハッシュになっている場合)だけ行う。
+  const applied = 'EXISTS (SELECT 1 FROM users WHERE id = ? AND password_hash = ?)'
+  // 今の端末(本人のトークンに限る)以外のリフレッシュトークンを失効させ、他端末をログアウトさせる。
+  const keepHash = refreshToken ? await sha256Hex(refreshToken) : ''
+  const [updateResult] = await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?').bind(newPasswordHash, userId, user.passwordHash),
+    // 変更前に発行されたパスワード再設定トークンで上書きされないよう、未使用のものを無効にする。
+    c.env.DB.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL AND ${applied}`).bind(now, userId, userId, newPasswordHash),
+    c.env.DB.prepare(`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ? AND ${applied}`).bind(
+      now,
+      userId,
+      keepHash,
+      userId,
+      newPasswordHash,
+    ),
+  ])
+  if (updateResult.meta.changes === 0) {
+    return c.json(errorResponse('RESOURCE_CONFLICT', 'パスワードが別の操作で変更されました。もう一度お試しください'), 409)
+  }
+  return c.body(null, 200)
+})
+
+authRoute.put('/email', requireAuth, async (c) => {
+  const parsed = emailChangeSchema.safeParse(await parseJsonBody(c))
+  if (!parsed.success) {
+    return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  }
+  const { currentPassword, newEmail } = parsed.data
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const user = await db.select().from(users).where(eq(users.id, userId)).get()
+  if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    return c.json(errorResponse('VALIDATION_ERROR', INVALID_CURRENT_PASSWORD_MESSAGE, [{ field: 'currentPassword', reason: INVALID_CURRENT_PASSWORD_MESSAGE }]), 400)
+  }
+  if (newEmail === user.email) return c.json(toAccount(user))
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, newEmail)).get()
+  if (existing) return c.json(errorResponse('DUPLICATE_RESOURCE', DUPLICATE_EMAIL_MESSAGE), 409)
+
+  try {
+    // 再認証したハッシュのままの場合だけ変更する。旧アドレス宛てに発行済みの再設定トークンも同時に無効にする。
+    const [updateResult] = await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE users SET email = ? WHERE id = ? AND password_hash = ?').bind(newEmail, userId, user.passwordHash),
+      c.env.DB.prepare(
+        'UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL AND EXISTS (SELECT 1 FROM users WHERE id = ? AND email = ?)',
+      ).bind(nowIso(), userId, userId, newEmail),
+    ])
+    if (updateResult.meta.changes === 0) {
+      return c.json(errorResponse('RESOURCE_CONFLICT', 'パスワードが別の操作で変更されました。もう一度お試しください'), 409)
+    }
+    return c.json(toAccount({ ...user, email: newEmail }))
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return c.json(errorResponse('DUPLICATE_RESOURCE', DUPLICATE_EMAIL_MESSAGE), 409)
+    }
+    throw error
+  }
 })
