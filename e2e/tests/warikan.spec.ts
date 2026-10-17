@@ -171,6 +171,15 @@ test.describe('F-04 割り勘・精算', () => {
         await detail.getByRole('button', { name: '精算済みにする' }).click()
         await page.getByTestId('settlement-account-modal').getByRole('button', { name: '精算済みにする' }).click()
         await expect(detail).toContainText('精算済み')
+        // 世帯外の精算済みは削除できる(#302)。
+        await detail.getByRole('button', { name: '削除' }).click()
+        const confirm = page.getByRole('heading', { name: '割り勘の内訳を削除しますか？' }).locator('..')
+        await expect(confirm).toContainText('口座の残高を元に戻します')
+        await expectNoPageOverflow(page)
+        await screenshot(page, viewport.width, 'warikan-settled-delete')
+        await page.getByRole('button', { name: '削除する' }).click()
+        await expect(page.getByText('割り勘の内訳を削除しました', { exact: true })).toBeVisible()
+        await expect(row).toHaveCount(0)
       } finally {
         await context.close()
       }

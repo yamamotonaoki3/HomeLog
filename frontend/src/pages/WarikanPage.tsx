@@ -100,7 +100,8 @@ function WarikanDetailModal({ split, hidden, working, onClose, onPatch, onSettle
           <button type="button" className="btn btn-secondary" onClick={onComments}>
             コメント{split.commentCount > 0 ? `(${split.commentCount})` : ''}
           </button>
-          {payer && open && (
+          {/* 精算済みは世帯外の相手のときだけ削除できる(#302)。世帯内は相手の家計簿にも記録があるため。 */}
+          {payer && (open || split.isExternal) && (
             <button type="button" className="btn btn-secondary" disabled={working} onClick={onDelete}>削除</button>
           )}
           <button data-close type="button" className="btn btn-secondary" onClick={onClose}>閉じる</button>
@@ -186,8 +187,13 @@ export function WarikanPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     setWorking(true)
+    let message = '割り勘の内訳を削除しました'
     try {
-      await apiClient.delete(`/expense-splits/${deleteTarget.id}`)
+      // 精算済みの削除は、精算の収入を消せたかどうかを返す(元の内訳IDを記録する前の精算は消せない)。
+      const response = await apiClient.delete<{ settlementLedgerRemoved?: boolean } | ''>(`/expense-splits/${deleteTarget.id}`)
+      if (response.data && response.data.settlementLedgerRemoved === false) {
+        message = '割り勘の内訳を削除しました。家計簿の「割り勘精算」の収入は手動で削除してください'
+      }
     } catch (err) {
       showToast(getApiErrorMessage(err, '削除に失敗しました'))
       setWorking(false)
@@ -197,7 +203,7 @@ export function WarikanPage() {
     setWorking(false)
     setDeleteTarget(null)
     setDetailId(null)
-    showToast('割り勘の内訳を削除しました')
+    showToast(message)
     await refresh()
   }
 
@@ -303,6 +309,9 @@ export function WarikanPage() {
             <p className="hint">
               「{purposeText(deleteTarget)}」（{deleteTarget.amountDue}円）を削除します。この操作は取り消せません。
             </p>
+            {deleteTarget.status === 'settled' && (
+              <p className="hint">精算で記録した「割り勘精算」の収入も削除し、口座の残高を元に戻します。</p>
+            )}
             <div className="modal-actions">
               <button type="button" className="btn btn-primary" onClick={handleDelete} disabled={working}>
                 削除する
