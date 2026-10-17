@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import { getRefreshToken } from '../api/tokenStorage'
 import { PasswordField } from '../components/PasswordField'
 import { useAuth } from '../context/useAuth'
+import { useDialog } from '../hooks/useDialog'
 
 // 登録画面(RegisterPage)と同じパスワード規則。
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
@@ -191,6 +192,88 @@ export function AccountSettingsPage() {
           <button type="submit" className="btn btn-primary" disabled={!account || emailSaving}>メールアドレスを変更</button>
         </form>
       </AccountSection>
+
+      <AccountDeletionSection />
+    </div>
+  )
+}
+
+interface DeletionCheck {
+  canRequest: boolean
+  unsettledSplits: number
+  fixedCostsWithOthers: number
+}
+
+// 退会(#298、F01_auth.md 8-2章)。未精算などが残る間は申し込めない。申し込むとログアウトし、30日以内なら取り消せる。
+function AccountDeletionSection() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+  const [check, setCheck] = useState<DeletionCheck | null>(null)
+  const [password, setPassword] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<Result>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiClient.get<DeletionCheck>('/auth/account/deletion-check')
+      .then(({ data }) => { if (!cancelled) setCheck(data) })
+      .catch((err) => { if (!cancelled) setResult({ kind: 'error', message: getApiErrorMessage(err, '退会できるかどうかを確認できませんでした') }) })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleConfirm = async () => {
+    setSubmitting(true)
+    setResult(null)
+    try {
+      const { data } = await apiClient.post<{ deletionScheduledAt: string }>('/auth/account/deletion', { currentPassword: password })
+      await logout()
+      navigate('/login', { replace: true, state: { deletionScheduledAt: data.deletionScheduledAt } })
+    } catch (err) {
+      setConfirming(false)
+      setSubmitting(false)
+      setResult({ kind: 'error', message: getApiErrorMessage(err, '退会の申し込みに失敗しました') })
+    }
+  }
+
+  return (
+    <AccountSection id="account-deletion-heading" title="退会" result={result}>
+      <p className="hint">
+        退会を申し込むと、すぐにログインできなくなります。30日以内に同じメールアドレスとパスワードでログインすると取り消せます。
+        30日を過ぎると、口座・支出・収入・自分の固定費などのデータが削除されます。世帯のレシピや精算済みの割り勘などは「退会したユーザー」として世帯に残ります。ただし、世帯のメンバーがあなただけの場合は、世帯とそのデータもすべて削除されます。
+      </p>
+      {check && !check.canRequest && (
+        <div className="account-deletion-blockers">
+          <p>次のものが残っているため、退会できません。精算や削除を済ませてから申し込んでください。</p>
+          <ul>
+            {check.unsettledSplits > 0 && <li>未精算の割り勘：{check.unsettledSplits}件</li>}
+            {check.fixedCostsWithOthers > 0 && <li>他の人が負担する固定費：{check.fixedCostsWithOthers}件</li>}
+          </ul>
+        </div>
+      )}
+      <form onSubmit={(event) => { event.preventDefault(); setConfirming(true) }}>
+        <PasswordField id="account-deletion-password" label="現在のパスワード" value={password} onChange={setPassword} autoComplete="current-password" />
+        <button type="submit" className="btn btn-danger" disabled={!check?.canRequest || password === '' || submitting}>退会を申し込む</button>
+      </form>
+      {confirming && <DeletionConfirmDialog submitting={submitting} onConfirm={() => void handleConfirm()} onCancel={() => setConfirming(false)} />}
+    </AccountSection>
+  )
+}
+
+function DeletionConfirmDialog({ submitting, onConfirm, onCancel }: { submitting: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const ref = useDialog(onCancel, '[data-cancel]')
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deletion-confirm-heading" onClick={(event) => { if (event.target === event.currentTarget) onCancel() }}>
+      <div ref={ref} className="modal">
+        <h2 id="deletion-confirm-heading">本当に退会しますか？</h2>
+        <p className="hint">申し込むとすぐにログアウトします。30日を過ぎると取り消せなくなり、データが削除されます。</p>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-danger" disabled={submitting} onClick={onConfirm}>退会する</button>
+          <button data-cancel type="button" className="btn btn-secondary" disabled={submitting} onClick={onCancel}>キャンセル</button>
+        </div>
+      </div>
     </div>
   )
 }

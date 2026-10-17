@@ -44,15 +44,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setOnAuthExpired(null)
   }, [resetSession])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const response = await apiClient.post<LoginResponse>('/auth/login', { email, password })
-    setTokens(response.data.accessToken, response.data.refreshToken)
+  const startSession = useCallback((tokens: LoginResponse) => {
+    setTokens(tokens.accessToken, tokens.refreshToken)
     generation.current += 1
     setUser(null)
     setUserStatus('loading')
     setSessionVersion((version) => version + 1)
     setIsAuthenticated(true)
   }, [])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const response = await apiClient.post<LoginResponse>('/auth/login', { email, password })
+    startSession(response.data)
+  }, [startSession])
+
+  // 退会の取り消し期間中のアカウントで、取り消しと同時にログインする(#298)。
+  const cancelDeletion = useCallback(async (email: string, password: string) => {
+    const response = await apiClient.post<LoginResponse>('/auth/account/deletion/cancel', { email, password })
+    startSession(response.data)
+  }, [startSession])
 
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken()
@@ -72,8 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ isAuthenticated, user, userStatus, login, logout, updateDisplayName }),
-    [isAuthenticated, user, userStatus, login, logout, updateDisplayName],
+    () => ({ isAuthenticated, user, userStatus, login, cancelDeletion, logout, updateDisplayName }),
+    [isAuthenticated, user, userStatus, login, cancelDeletion, logout, updateDisplayName],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
