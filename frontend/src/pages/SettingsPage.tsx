@@ -30,8 +30,8 @@ export function SettingsPage() {
         </section>
         <section className="panel settings-card">
           <h2>アカウント設定</h2>
-          <p>アカウント情報・メールアドレス・パスワード・退会</p>
-          <p className="settings-coming-soon">アカウント設定機能は順次追加予定です</p>
+          <p>表示名・メールアドレス・パスワードを変更できます。</p>
+          <NavLink to="/settings/account">アカウント設定を開く</NavLink>
         </section>
       </div>
     </div>

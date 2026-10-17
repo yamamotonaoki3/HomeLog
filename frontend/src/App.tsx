@@ -20,6 +20,7 @@ import { RegisterPage } from './pages/RegisterPage'
 import { WarikanPage } from './pages/WarikanPage'
 import { ZaikoPage } from './pages/ZaikoPage'
 import { DisplaySettingsPage, SettingsPage } from './pages/SettingsPage'
+import { AccountSettingsPage } from './pages/AccountSettingsPage'
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
                 <Route path="/household/settings" element={<HouseholdSettingsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/display" element={<DisplaySettingsPage />} />
+                <Route path="/settings/account" element={<AccountSettingsPage />} />
               </Route>
             </Route>
           </Route>
