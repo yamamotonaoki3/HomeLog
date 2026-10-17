@@ -1,4 +1,8 @@
-# API設計（MVPおよび実装済み収入口座連携）
+# API設計
+
+[← 要件定義書に戻る](../requirements.md)
+
+Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンドポイントの一覧は 8章、機能ごとの詳しい契約は各機能の要件定義書（features/F01〜F13）を正とする。
 
 ## 固定費の世帯外割り勘（Workers、#253）
 
@@ -37,7 +41,8 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 ### 1-1. 認証
 
-- 以下のエンドポイントは`Authorization`ヘッダー不要（アクセストークンを前提としない）：`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/password-reset/*`
+- 以下のエンドポイントは`Authorization`ヘッダー不要（アクセストークンを前提としない）：`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/password-reset/*`, `/api/auth/account/deletion/cancel`, `/health`
+- 認証が必要なAPIでは、退会の申し込み中・退会済みのアカウントを有効なアクセストークンでも401にする（#297）
   - `/api/auth/logout`はリクエストボディのリフレッシュトークンのみで失効処理を行う。アクセストークンが期限切れでもログアウトできる必要があるため（[F01_auth](features/F01_auth.md)参照）。
 - 上記以外は`Authorization: Bearer <アクセストークン>`ヘッダーが必須。
 - トークンが無い・無効・期限切れの場合は **401 Unauthorized** を返す。
@@ -83,8 +88,14 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | GET | `/api/auth/me` | 認証済み本人のID・表示名取得（Workers、#258） |
 | POST | `/api/auth/refresh` | リフレッシュトークンでアクセストークン再発行 |
 | POST | `/api/auth/logout` | ログアウト（リフレッシュトークンを失効） |
-| POST | `/api/auth/password-reset/request` | パスワードリセット申請（メール送信） |
+| POST | `/api/auth/password-reset/request` | パスワードリセット申請（メール送信サービス未導入のため、現在はトークンを発行するだけでメールは送らない） |
 | POST | `/api/auth/password-reset/confirm` | パスワードリセット実行 |
+| GET / PATCH | `/api/auth/account` | 本人のメールアドレス・表示名の取得／表示名の変更（#291） |
+| PUT | `/api/auth/password` | 現在のパスワードで再認証してパスワードを変更（#291） |
+| PUT | `/api/auth/email` | 現在のパスワードで再認証してメールアドレスを変更（確認メールなしの暫定仕様、#291） |
+| GET | `/api/auth/account/deletion-check` | 退会を申し込めるか（未精算の割り勘・他者負担の固定費の件数、#297） |
+| POST | `/api/auth/account/deletion` | 再認証して退会を申し込む（30日後に削除、#297） |
+| POST | `/api/auth/account/deletion/cancel` | 30日以内に退会を取り消してログイン（#297） |
 
 ### GET /api/auth/me（Workers、#258）
 
@@ -156,18 +167,9 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 レスポンス：200 OK
 主なエラー：400（トークン無効・期限切れ・使用済み、パスワード強度不足）
 
-### アカウント変更・削除（今後の機能。候補API）
+### アカウント設定・退会（実装済み）
 
-以下はIssue #160の要件を満たすための候補パスであり、実装時にOpenAPIと併せて確定する。
-
-| メソッド | パス | 説明 |
-| --- | --- | --- |
-| POST | `/api/auth/email-change/request` | 再認証後、新アドレス確認用のワンタイムリンクを発行 |
-| POST | `/api/auth/email-change/confirm` | 新アドレス確認後に変更を確定し、必要なセッションを失効 |
-| POST | `/api/auth/account-deletion` | 再認証・明示確認のうえ削除を申請。世帯所属中、未精算義務、後任に引き継がれていない共有固定費がある場合は拒否し、30日後の削除を予約して既存セッションを直ちに停止 |
-| POST | `/api/auth/account-deletion/cancel` | 削除申請メール等で交付されたワンタイム資格情報で申請を取り消す。削除申請中でもこの経路のみ許可 |
-
-削除申請中は新規ログイン・通常API・トークン更新を拒否する。申請時点でリフレッシュトークンを全て失効し、残存するアクセストークンも各リクエストのアカウント状態確認で拒否する。取消後にアカウントを再開する際は、改めて通常のログインを行う。削除完了前に未精算の義務を解決し、保持する共有記録から利用者との識別可能な紐付けを解除する（[data-model.md](data-model.md)、[common-notes.md](common-notes.md) 12章参照）。
+契約・エラーは [F01_auth.md](features/F01_auth.md) 8-1章（アカウント設定）・8-2章（退会）を参照。メール送信サービスが未導入のため、要件で想定していた「新アドレスの確認リンク」「削除申請メールのワンタイム資格情報による取り消し」は採用せず、取り消しはメールアドレスとパスワードで本人確認する。
 
 ---
 
@@ -181,6 +183,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | POST | `/api/households/join` | 招待コードで既存の世帯グループに参加 |
 | GET | `/api/households/me` | 自分が所属する世帯グループ情報を取得（招待コードを含む） |
 | POST | `/api/households/invite-code/regenerate` | 招待コードを再発行する（漏洩時等に無効化する用途） |
+| POST | `/api/households/leave` | 世帯グループから退出する。最後のメンバーなら世帯と世帯のデータを削除する |
 
 ### POST /api/households
 
@@ -227,7 +230,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```
 再発行後、旧コードでの`/api/households/join`は失敗する（404）。
 
-### 世帯管理者・アプリ全体管理者（今後の機能。候補API）
+### 世帯管理者・アプリ全体管理者（未実装。候補API）
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
@@ -402,6 +405,29 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 
 ## 7. 今後の検討事項
 
-- 家計簿（F-03〜F-06, F-11〜F-13）・献立表（F-09, F-10）のAPI設計はPhase 2着手時に本ファイルへ追記する
 - ページネーション方式（一覧系APIの件数が増えた場合の対応）
-- springdoc-openapiによる自動生成ドキュメントとの整合方法
+- OpenAPI 等による API 仕様の自動生成
+
+---
+
+## 8. エンドポイント一覧（Workers 版）
+
+すべて `/api` 配下。`/health` だけは認証不要のヘルスチェック。詳細は各機能の要件定義書を参照。
+
+| 機能 | エンドポイント | 詳細 |
+| --- | --- | --- |
+| 認証・アカウント | `POST auth/register` `POST auth/login` `POST auth/refresh` `POST auth/logout` `GET auth/me` `POST auth/password-reset/request` `POST auth/password-reset/confirm` `GET/PATCH auth/account` `PUT auth/password` `PUT auth/email` `GET auth/account/deletion-check` `POST auth/account/deletion` `POST auth/account/deletion/cancel` | [F01](features/F01_auth.md) |
+| 世帯グループ | `POST households` `POST households/join` `GET households/me` `POST households/invite-code/regenerate` `POST households/leave` | [F02](features/F02_household.md) |
+| 支出 | `GET/POST expenses` `PUT/DELETE expenses/:id` | [F03](features/F03_kakeibo_expense.md) |
+| 支出カテゴリー | `GET/POST kakeibo-categories` `PATCH/DELETE kakeibo-categories/:id` | [F03](features/F03_kakeibo_expense.md) |
+| 割り勘・精算 | `GET expense-splits` `PATCH expense-splits/:id/request` `PATCH expense-splits/:id/mark-paid` `PATCH expense-splits/:id/hold` `PATCH expense-splits/:id/confirm-receipt` `PATCH expense-splits/:id/settle-self` `DELETE expense-splits/:id` `GET/POST expense-splits/:id/comments` | [F04](features/F04_kakeibo_warikan.md) |
+| 固定費 | `GET/POST fixed-costs` `PATCH/DELETE fixed-costs/:id` | [F05](features/F05_kakeibo_fixedcost.md) |
+| イベント | `GET/POST events` `PATCH/DELETE events/:id` `PATCH events/:id/show-on-dashboard` `GET events/:id/summary` | [F06](features/F06_kakeibo_event.md) |
+| 在庫 | `GET/POST inventory-items` `PATCH/DELETE inventory-items/:id` `PATCH inventory-items/:id/quantity` `GET/POST zaiko-categories` `PATCH/DELETE zaiko-categories/:id` `GET/POST stores` `PATCH/DELETE stores/:id` | [F07](features/F07_zaiko_inventory.md) |
+| 買い物リスト | `GET/POST shopping-list-items` `DELETE shopping-list-items/:id` `POST shopping-list-items/update` | [F08](features/F08_zaiko_shoppinglist.md) |
+| レシピ | `GET/POST recipes` `POST recipes/from-url` `PATCH/DELETE recipes/:id` `PATCH recipes/:id/favorite` `POST recipes/ocr/upload` `POST recipes/ocr/analyze` | [F09](features/F09_kondate_recipe.md) |
+| 献立表 | `GET/POST menu-entries` `DELETE menu-entries/:id` | [F10](features/F10_kondate_menu.md) |
+| 口座・カード | `GET/POST accounts` `PATCH/DELETE accounts/:id` `GET accounts/:id/transactions` `POST cards` `PATCH/DELETE cards/:id` `POST cards/:id/charges` | [F11](features/F11_kakeibo_account.md) |
+| 収入 | `GET/POST incomes` `PUT/DELETE incomes/:id` `GET/POST income-categories` `PATCH/DELETE income-categories/:id` | [F13](features/F13_kakeibo_income.md) |
+| ダッシュボード | `GET dashboard/summary` `GET dashboard/calendar` `GET dashboard/notifications/today` | 6章・[F12](features/F12_kakeibo_household_summary.md) |
+| 表示設定 | `GET/PUT user-settings` | [wireframes.md](wireframes.md) S-21 |
