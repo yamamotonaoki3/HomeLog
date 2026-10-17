@@ -168,11 +168,29 @@ describe('WarikanPage(改訂フロー)', () => {
     await waitFor(() => expect(calls).toContainEqual({ path: '1/settle-self', body: { accountId: 7 } }))
   })
 
-  it('精算済みの行には削除ボタンが出ない', async () => {
+  it('世帯内の相手との精算済みには削除ボタンが出ない', async () => {
     setupApi([split({ status: 'settled' })])
     renderPage()
     const row = await openDetail()
     expect(within(row).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    [true, '割り勘の内訳を削除しました'],
+    [false, '割り勘の内訳を削除しました。家計簿の「割り勘精算」の収入は手動で削除してください'],
+  ])('世帯外の精算済みは、精算の収入と残高も戻ることを確認して削除できる (settlementLedgerRemoved=%s) (#302)', async (removed, message) => {
+    const { calls } = setupApi([split({ status: 'settled', isExternal: true, debtorLabel: 'E2EUser A' })])
+    server.use(http.delete('/api/expense-splits/:id', ({ params }) => {
+      calls.push({ path: `DELETE ${params.id}`, body: undefined })
+      return HttpResponse.json({ settlementLedgerRemoved: removed })
+    }))
+    renderPage()
+    const user = userEvent.setup()
+    await user.click(within(await openDetail()).getByRole('button', { name: '削除' }))
+    expect(screen.getByRole('heading', { name: '割り勘の内訳を削除しますか？' }).parentElement).toHaveTextContent('精算で記録した「割り勘精算」の収入も削除し、口座の残高を元に戻します')
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+    await waitFor(() => expect(calls.map((c) => c.path)).toContain('DELETE 1'))
+    expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
   it('未精算の行は確認ダイアログを経て削除できる', async () => {
