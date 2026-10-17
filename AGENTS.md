@@ -9,12 +9,12 @@
 - ER図・テーブル定義: [`docs/details/data-model.md`](docs/details/data-model.md)
 - 画面・API: [`docs/details/wireframes.md`](docs/details/wireframes.md)、[`docs/details/api-design.md`](docs/details/api-design.md)
 - 技術スタック: [`docs/技術スタック.md`](docs/技術スタック.md)
-- Java版からの移行で見つかった食い違い: [`docs/TypeScript移行時の要確認事項.md`](docs/TypeScript移行時の要確認事項.md)
+- Java版からの移行で見つかった食い違い（すべて対応済み）: [`docs/TypeScript移行時の要確認事項.md`](docs/TypeScript移行時の要確認事項.md)
 - 過去の学び・手直し: [`docs/lessons-learned.md`](docs/lessons-learned.md)
 
 ## 現在の実装対象
 
-バックエンドは Java/Spring Boot（`backend/`）から TypeScript/Cloudflare Workers（`backend-workers/`）へ移行済みで、新しい機能は `backend-workers/` に実装する。`backend/` には新機能を追加しない。
+バックエンドは Java/Spring Boot（`backend/`）から TypeScript/Cloudflare Workers（`backend-workers/`）へ移行済みで、本番は Workers 版で動いている。新しい機能は `backend-workers/` に実装する。`backend/` は移行元として残しているだけで、新機能を追加しない。
 
 | 領域 | ディレクトリ | 主な技術 |
 | --- | --- | --- |
@@ -23,7 +23,7 @@
 | E2E | `e2e/` | Playwright（ローカルの `wrangler dev` と Vite を起動して実行） |
 
 - D1のマイグレーションは `backend-workers/drizzle/NNNN_*.sql` に連番で追加する。PRで共有したマイグレーションファイルは編集せず、修正は新しい番号のファイルで行う。
-- Java版の挙動とドキュメントが食い違っている場合は、その場で直さず `docs/TypeScript移行時の要確認事項.md` に記録してユーザーへ判断を求める。
+- 実装とドキュメントが食い違っている場合は、その場で直さずユーザーへ判断を求める（移行は完了したため、`docs/TypeScript移行時の要確認事項.md` への追記は不要）。
 
 ## 必須の開発フロー
 
@@ -40,6 +40,7 @@
 9. Codexでレビューし、指摘ゼロになるまで修正を繰り返す（後述）。
 10. セルフレビュー後、CI成功を確認してマージする。
 11. マージ後、対応するローカル作業ブランチを削除する。
+12. 本番への反映は、ユーザーが「本番に出して」と指示したときだけ `production` ブランチへ push して行う（[`docs/deployment.md`](docs/deployment.md)）。マージしただけでは本番に出さない。
 
 `main` への直接pushは禁止する（GitHub側でも強制）。必ず作業ブランチとPRを経由する。
 
@@ -86,6 +87,8 @@ specは `@playwright/test` ではなく `e2e/tests/console-guard.ts` の `test` 
 
 ## テストデータ・秘密情報
 
+- README 用の GIF（`e2e/tests/readme-gifs.spec.ts`）は、読みやすさのため本文に `[E2E_TEST]` タグを付けない架空のデモデータを使う（ユーザー確認済み）。録画用の D1 は実行ごとに作り直して削除される。
+
 - テストデータは架空のものだけを使う。メールアドレスは `@example.com` 等の予約ドメイン、ユーザー名は `testuser_` / `e2euser_` などの接頭辞、本文には `[E2E_TEST]` などのタグを付ける。
 - テストは本番・ステージングへ接続しない。E2Eは専用のローカルD1保存先を使う。
 - 実値を持つ `.env*` / `.dev.vars`、認証情報、トークン、APIキーを、コミットされるファイル・コミットメッセージ・Issue・PR・チャットに書かない。コミットするファイルには環境変数参照やプレースホルダだけを書く。
@@ -101,7 +104,7 @@ specは `@playwright/test` ではなく `e2e/tests/console-guard.ts` の `test` 
 
 ## レビュー・記録
 
-- PR作成後、`codex review --base main`（コミット前なら `--uncommitted`）でレビューする。標準入力を閉じ、出力をログへ保存して確認する。
+- PR作成後、`codex review --base main`（コミット前なら `--uncommitted`）でレビューする。標準入力を閉じて実行する。出力をファイルに保存する場合は、リポジトリ外（スクラッチ領域など）に出し、リポジトリ直下にログを残さない。
 - 指摘があれば、指摘内容と対象ファイルを踏まえた具体的な修正指示を添えて `codex exec "<修正指示>"` で修正し、ビルド・テストの最終検証は修正を依頼した側が行う。指摘ゼロになるまで繰り返す。
 - 同種の指摘が繰り返されて収穫逓減になった場合は、修正を続けずにユーザーへ「現状で受容するか、さらに修正するか」を確認する。
 - データ破損・認証バイパス・情報漏えいなどの重大な指摘は、解消するまでレビューを終えない。
@@ -115,12 +118,12 @@ specは `@playwright/test` ではなく `e2e/tests/console-guard.ts` の `test` 
 - lint / typecheck / build がエラーなし
 - Codexレビューの指摘がゼロ
 
-バックエンドのPRは上記を満たせば自動でマージし、続けてフロントエンドに着手してよい。フロントエンドは実機で動作を確認したうえでPRを作成し、**ユーザー自身のブラウザ確認とマージ判断を待つ（自動マージしない）**。
+バックエンドのPRは上記を満たし CI が通れば自動でマージし、続けてフロントエンドに着手してよい。フロントエンドも E2E（1280 / 390 / 320px）で実機の表示を確認し、上記を満たし CI が通ればマージしてよい。マージ後はユーザーにブラウザでの確認を依頼し、**本番への反映はユーザーの指示を待つ**。
 
 次の場合は必ず立ち止まり、ユーザーへ判断を求める。
 
 - 品質チェックのいずれかで解決できない問題が起きたとき
-- フロントエンドの実装が完了し、ブラウザで確認できる状態に到達したとき
+- フロントエンドの実装が完了し、ブラウザで確認できる状態に到達したとき（本番反映の指示を待つ）
 - ドキュメントと実装の矛盾を見つけたとき
 - 合意済みの計画にない新たな設計判断が必要になったとき
 
