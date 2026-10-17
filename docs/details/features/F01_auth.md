@@ -189,3 +189,14 @@ flowchart TD
 - **ユーザー行の扱い（data-model.mdからの変更）**: 登録者・投稿者などの列の多くがNOT NULLで外部キーを持つため、外部キーをNULLにする代わりに、ユーザー行を識別情報の無い退会済み行に置き換える。メールアドレスは `deleted-<id>@deleted.invalid`（RFC 2606の予約ドメイン）、パスワードハッシュはログインできない値、表示名は「退会したユーザー」とし、`deleted_at` に日時を記録する。これにより共有記録の表示は自動的に「退会したユーザー」になり、元のメールアドレス・表示名・パスワードは残らない。
 - 退会済み行のメールアドレスは元のアドレスと異なるため、同じメールアドレスで新規登録できる（別のアカウントとして扱う）。
 - バックアップからの消去時期など運用上の扱いは、引き続き[common-notes.md](../common-notes.md) 12.6の未決事項とする。
+
+### API（#297）
+
+| API | 内容 | 主なエラー |
+| --- | --- | --- |
+| `GET /api/auth/account/deletion-check` | `{ canRequest, unsettledSplits, fixedCostsWithOthers }` を返す | 401 |
+| `POST /api/auth/account/deletion` | `currentPassword` で再認証して申し込み、`{ deletionScheduledAt }` を返す | 400（パスワード誤り）/ 401 / 409（未精算などが残る・並行してパスワードが変わった） |
+| `POST /api/auth/account/deletion/cancel` | 認証不要。`email`・`password` で本人確認して取り消し、ログインと同じトークンを返す | 400（申し込んでいない）/ 401（誤り・期限切れ） |
+| `POST /api/auth/login` | 取り消し期間中は 403 `ACCOUNT_DELETION_PENDING`（`details[].field = deletionScheduledAt`）を返す | — |
+
+- 取り消し期間中に他の人が本人を負担者にした割り勘などが増えた場合、日次処理は削除を保留し、解決するまで毎日再判定する。

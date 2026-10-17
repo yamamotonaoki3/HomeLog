@@ -9,6 +9,7 @@ import { expenseSplitsRoute } from './routes/expense-splits'
 import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
+import { purgeExpiredAccounts } from './lib/account-deletion'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { getJstToday } from './lib/date'
 import { householdRoute } from './routes/household'
@@ -96,6 +97,8 @@ const appWithScheduled = Object.assign(app, {
     const results = await Promise.allSettled([
       postDueFixedCosts(env.DB, getJstToday()),
       deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
+      // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
+      purgeExpiredAccounts(env.DB, new Date()),
     ])
     for (const result of results) {
       if (result.status === 'rejected') console.error('日次処理に失敗しました', result.reason)

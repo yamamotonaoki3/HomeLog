@@ -25,5 +25,14 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     return c.json(errorResponse('UNAUTHORIZED', UNAUTHORIZED_MESSAGE), 401)
   }
 
+  // 退会の申し込み中・退会済みのアカウントは、未失効のアクセストークンでも拒否する(F01_auth.md 8-2章)。
+  const active = await c.env.DB
+    .prepare('SELECT 1 AS ok FROM users WHERE id = ? AND deletion_requested_at IS NULL AND deleted_at IS NULL')
+    .bind(c.get('userId'))
+    .first()
+  if (!active) {
+    return c.json(errorResponse('UNAUTHORIZED', UNAUTHORIZED_MESSAGE), 401)
+  }
+
   await next()
 }
