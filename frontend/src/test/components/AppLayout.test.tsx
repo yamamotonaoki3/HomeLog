@@ -88,8 +88,8 @@ describe('AppLayout', () => {
     expect(await screen.findByRole('heading', { name: '設定' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '世帯設定を開く' })).toHaveAttribute('href', '/household/settings')
     expect(screen.getByRole('link', { name: '表示設定を開く' })).toHaveAttribute('href', '/settings/display')
-    expect(screen.getByText('アカウント情報・メールアドレス・パスワード・退会')).toBeInTheDocument()
-    expect(screen.getByText('アカウント設定機能は順次追加予定です')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'アカウント設定を開く' })).toHaveAttribute('href', '/settings/account')
+    expect(screen.getByText('表示名・メールアドレス・パスワードを変更できます。')).toBeInTheDocument()
   })
 
   it('下部ナビで現在の主要機能が判別できる', () => {

@@ -39,7 +39,6 @@ a:hover { text-decoration: underline; }
 .settings-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .settings-card h2, .settings-card p { margin: 0; }
 .settings-card p { line-height: 1.6; }
-.settings-coming-soon { color: #64748b; font-size: 14px; }
 
 /* 認証画面 */
 .center-screen { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
@@ -369,3 +368,11 @@ input[type="checkbox"], input[type="radio"] {
 }
 .modal-overlay[hidden] { display: none; }
 .menu-entry-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; background: none; color: #2563eb; font: inherit; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.account-settings-page { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+.account-settings-section h2 { margin-top: 0; }
+.account-settings-section form { display: flex; flex-direction: column; align-items: stretch; }
+.account-settings-section label { display: block; margin-top: 12px; margin-bottom: 4px; font-size: 13px; color: #555; }
+.account-settings-section input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+.account-settings-section .btn { align-self: flex-start; margin-top: 16px; min-height: 44px; }
+.account-settings-current span { overflow-wrap: anywhere; }
+.account-settings-success { color: #15803d; }
