@@ -105,7 +105,7 @@ flowchart TD
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | expense_split ID |
-| 処理 | 未精算（`unpaid`/`requested`/`payment_reported`/`pending`）の内訳のみ削除可。`settled` は現金が動いた後なので削除不可（400） |
+| 処理 | 未精算（`unpaid`/`requested`/`payment_reported`/`pending`）の内訳は削除可。`settled` は、世帯外の相手（`debtor_external_id` あり）の場合のみ削除可（#301）。そのとき精算で自動作成した「割り勘精算」の収入（支出）も削除し、動かした口座残高を戻す（1バッチ、200 `{ settlementLedgerRemoved }`）。元の内訳IDを記録する前（migration 0018以前）の精算は収入を特定できないため内訳だけを消し、`settlementLedgerRemoved: false` を返して画面で家計簿の手動削除を案内する。世帯内の相手との `settled` は相手の家計簿にも記録があるため削除不可（400） |
 | 出力 | — |
 
 ## 5. 世帯外の相手との精算
