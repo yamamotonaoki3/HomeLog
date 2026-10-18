@@ -228,7 +228,7 @@ export function DashboardPage() {
                 <li className="dashboard-stock-row" key={item.id}>
                   <span className="dashboard-stock-name">{item.name}</span>
                   <span className="dashboard-stock-value">残{item.quantity}
-                  {item.quantity < item.threshold && <span className="dashboard-low-stock">（不足）</span>}
+                  {item.quantity <= item.threshold && <span className="dashboard-low-stock">（不足）</span>}
                   </span>
                 </li>
               )}

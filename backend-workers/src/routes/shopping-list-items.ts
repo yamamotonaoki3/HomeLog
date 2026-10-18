@@ -271,7 +271,7 @@ shoppingListItemsRoute.post('/update', async (c) => {
              AND (
                ? = 1
                OR NOT EXISTS (
-                 SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+                 SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths <= threshold_tenths
                )
              )`,
         )
@@ -285,7 +285,7 @@ shoppingListItemsRoute.post('/update', async (c) => {
            WHERE id = ?
              AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
              AND ? = 0 AND EXISTS (
-               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths < threshold_tenths
+               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths <= threshold_tenths
              )`,
         )
         .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),

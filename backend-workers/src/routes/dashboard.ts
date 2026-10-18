@@ -38,7 +38,7 @@ dashboardRoute.get('/summary', async (c) => {
 
   // 低在庫件数(既存JavaのInventoryItemMapper.countBelowThresholdのtenths版)。
   const lowStockCountRow = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS count FROM inventory_items WHERE household_id = ? AND quantity_tenths < threshold_tenths',
+    'SELECT COUNT(*) AS count FROM inventory_items WHERE household_id = ? AND quantity_tenths <= threshold_tenths',
   )
     .bind(householdId)
     .first<{ count: number }>()

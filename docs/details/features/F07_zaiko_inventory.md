@@ -6,7 +6,7 @@
 
 ## 1. 概要
 
-世帯内の食材等の在庫を一元管理する。在庫が閾値を下回ると自動的に買い物リストへ連携される（[F08_zaiko_shoppinglist](F08_zaiko_shoppinglist.md)参照）。
+世帯内の食材等の在庫を一元管理する。在庫が閾値以下（在庫 ≦ 閾値、#314）になると自動的に買い物リストへ連携される（[F08_zaiko_shoppinglist](F08_zaiko_shoppinglist.md)参照）。
 
 ## 2. 対象画面
 
