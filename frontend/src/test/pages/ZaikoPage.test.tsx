@@ -235,6 +235,37 @@ describe('ZaikoPage', () => {
     expect(within(eggRow).getByText('2')).toBeInTheDocument()
   })
 
+  it('在庫一覧と買い物リストをキーワードで絞り込める (#315)', async () => {
+    const butter: InventoryItem = { id: 3, name: 'Ｂｕｔｔｅｒ', categoryId: 2, storeId: null, quantity: 0, threshold: 1 }
+    setupApi({
+      inventory: [milk, egg, butter],
+      shopping: [
+        { id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 },
+        { id: 11, inventoryItemId: 3, name: 'Ｂｕｔｔｅｒ', isManual: false, purchased: false, purchasedQuantity: 0 },
+      ],
+    })
+    const user = userEvent.setup()
+    renderZaikoPage()
+    const inventoryPanel = await screen.findByTestId('inventory-panel')
+    await within(inventoryPanel).findByRole('button', { name: '牛乳の詳細' })
+
+    // 全角・半角、大文字・小文字を区別しない
+    await user.type(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }), 'butter')
+    expect(within(inventoryPanel).getByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).toBeInTheDocument()
+    expect(within(inventoryPanel).queryByRole('button', { name: '牛乳の詳細' })).not.toBeInTheDocument()
+    await user.clear(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }))
+    await user.type(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }), 'チーズ')
+    expect(within(inventoryPanel).getByText('該当する品目がありません')).toBeInTheDocument()
+
+    await openTab(user, '買い物リスト')
+    const shoppingPanel = screen.getByTestId('shopping-panel')
+    await user.type(within(shoppingPanel).getByRole('searchbox', { name: 'キーワード検索' }), '卵')
+    expect(within(shoppingPanel).getByRole('button', { name: '卵の詳細' })).toBeInTheDocument()
+    expect(within(shoppingPanel).queryByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).not.toBeInTheDocument()
+    await user.clear(within(shoppingPanel).getByRole('searchbox', { name: 'キーワード検索' }))
+    expect(within(shoppingPanel).getByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).toBeInTheDocument()
+  })
+
   it('在庫・買い物リストが空のときプレースホルダーを表示する', async () => {
     setupApi()
     const user = userEvent.setup()
