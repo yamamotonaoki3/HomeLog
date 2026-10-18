@@ -252,11 +252,11 @@ describe('DashboardPage', () => {
     expect(screen.getByText('値段')).toBeInTheDocument()
   })
 
-  it('在庫は参考値段を表示せず、残数と閾値未満だけ不足を表示する', async () => {
+  it('在庫は参考値段を表示せず、残数と閾値以下だけ不足を表示する (#314)', async () => {
     setupApi({ inventory: [0, 0.5, 2].map((quantity, index) => ({ id: index + 1, name: `[E2E_TEST] 在庫${index}`, quantity, threshold: 0.5, categoryId: 1, storeId: null, price: 1280 })) })
     renderDashboardPage()
     const list = await screen.findByRole('list', { name: '在庫リスト' })
-    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 在庫0残0（不足）', '[E2E_TEST] 在庫1残0.5', '[E2E_TEST] 在庫2残2'])
+    expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 在庫0残0（不足）', '[E2E_TEST] 在庫1残0.5（不足）', '[E2E_TEST] 在庫2残2'])
     expect(within(list).queryByText('1,280円')).not.toBeInTheDocument()
     expect(screen.getByText('残数')).toBeInTheDocument()
   })

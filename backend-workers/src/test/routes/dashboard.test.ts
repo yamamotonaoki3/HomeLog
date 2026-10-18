@@ -255,16 +255,16 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.shoppingListCount).toBe(2)
   })
 
-  it('quantity_tenths < threshold_tenthsの在庫のみを低在庫としてカウントする', async () => {
+  it('quantity_tenths <= threshold_tenthsの在庫を低在庫としてカウントする (#314)', async () => {
     const { householdId, headers } = await createUserWithHousehold('taro@example.com')
     await createInventoryItem(householdId, 5, 10) // 低在庫
-    await createInventoryItem(householdId, 10, 10) // 閾値と同値は低在庫に含まない
+    await createInventoryItem(householdId, 10, 10) // 閾値と同値も低在庫に含む
     await createInventoryItem(householdId, 20, 10) // 閾値超過
 
     const res = await app.request('/api/dashboard/summary', { headers }, env)
 
     const body = await res.json<{ lowStockCount: number }>()
-    expect(body.lowStockCount).toBe(1)
+    expect(body.lowStockCount).toBe(2)
   })
 
   it('世帯合計対象フラグがtrueの当月支出・固定費のみを合算する', async () => {

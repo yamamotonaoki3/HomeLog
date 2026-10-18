@@ -233,6 +233,19 @@ describe('POST /api/shopping-list-items/update', () => {
     expect(updatedItem.quantity).toBe(1)
   })
 
+  it('自動追加分は購入後に閾値ちょうどなら削除されずリセットされる (#314)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    await createItem(headers, { name: '卵', categoryId, storeId: null, quantity: 1, threshold: 3 })
+    const [autoEntry] = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number }[]>()
+    const res = await app.request('/api/shopping-list-items/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ items: [{ id: autoEntry.id, purchasedQuantity: 2 }] }),
+    }, env)
+    expect((await res.json<{ removedShoppingListItemIds: number[] }>()).removedShoppingListItemIds).toEqual([])
+    const [afterEntry] = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number; purchased: boolean }[]>()
+    expect(afterEntry).toMatchObject({ id: autoEntry.id, purchased: false })
+  })
+
   it('自動追加分でも購入後に閾値を上回れば削除される', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await createCategory(headers)

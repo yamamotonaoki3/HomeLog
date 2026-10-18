@@ -49,7 +49,7 @@ function setupApi(initial: Partial<MockState> = {}) {
         threshold: body.threshold as number,
       }
       state.inventory.push(item)
-      if (item.quantity < item.threshold) {
+      if (item.quantity <= item.threshold) {
         state.shopping.push({
           id: 200,
           inventoryItemId: item.id,
@@ -66,7 +66,7 @@ function setupApi(initial: Partial<MockState> = {}) {
       calls.push({ method: 'PATCH', url: `/api/inventory-items/${params.id}/quantity`, body })
       const item = state.inventory.find((i) => i.id === Number(params.id))!
       item.quantity = Math.round((item.quantity + body.delta) * 10) / 10
-      if (item.quantity < item.threshold && !state.shopping.some((s) => s.inventoryItemId === item.id)) {
+      if (item.quantity <= item.threshold && !state.shopping.some((s) => s.inventoryItemId === item.id)) {
         state.shopping.push({
           id: 201,
           inventoryItemId: item.id,

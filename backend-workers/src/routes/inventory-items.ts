@@ -79,11 +79,11 @@ async function validateStore(db: DrizzleD1Database, householdId: number, storeId
 
 /**
  * 在庫個数と閾値の関係に応じて買い物リストを同期する(既存Java実装のsyncShoppingListと同じロジック)。
- * 閾値未満かつ自動追加分が無ければ追加し、閾値以上になれば自動追加分のみ除外する
+ * 閾値以下(#314)かつ自動追加分が無ければ追加し、閾値を超えれば自動追加分のみ除外する
  * (手動追加分はここでは削除しない)。
  */
 async function syncShoppingList(db: DrizzleD1Database, item: typeof inventoryItems.$inferSelect): Promise<void> {
-  const belowThreshold = item.quantityTenths < item.thresholdTenths
+  const belowThreshold = item.quantityTenths <= item.thresholdTenths
   // 挿入要否の判定は(手動追加分も含めて)「いずれかの買い物リスト項目が既に存在するか」で行う
   // (既存Java実装のexistsByInventoryItemIdと同じ)。手動追加済みの項目に対して重複して
   // 自動追加してしまうことを防ぐ。一方、削除対象は自動追加分(is_manual=false)のみに限定する

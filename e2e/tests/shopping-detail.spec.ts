@@ -24,7 +24,7 @@ for (const width of [1280, 390, 320]) {
       const first = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId, storeId, quantity: 0, threshold: 5, price: 9999999999 } })
       expect(first.status()).toBe(201)
       const firstId = (await first.json()).id
-      const second = await page.request.post('/api/inventory-items', { headers, data: { name: secondName, categoryId, storeId: null, quantity: 0, threshold: 0, price: 0 } })
+      const second = await page.request.post('/api/inventory-items', { headers, data: { name: secondName, categoryId, storeId: null, quantity: 1, threshold: 0, price: 0 } })
       expect(second.status()).toBe(201)
       const secondId = (await second.json()).id
       expect((await page.request.post('/api/shopping-list-items', { headers, data: { inventoryItemId: secondId } })).status()).toBe(201)
@@ -98,7 +98,7 @@ for (const width of [1280, 390, 320]) {
       const inventoryResponse = await page.request.get('/api/inventory-items', { headers })
       const inventory = await inventoryResponse.json()
       expect(inventory.find((item: { id: number }) => item.id === firstId).quantity).toBe(1)
-      expect(inventory.find((item: { id: number }) => item.id === secondId).quantity).toBe(1)
+      expect(inventory.find((item: { id: number }) => item.id === secondId).quantity).toBe(2)
       await press(row)
       await press(dialog.getByRole('button', { name: `${name}を削除` }))
       await expect(row).toHaveCount(0)

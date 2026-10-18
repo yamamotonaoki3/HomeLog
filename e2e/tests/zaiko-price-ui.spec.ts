@@ -21,7 +21,7 @@ for (const width of [1280, 390, 320]) {
     await page.getByLabel('店名', { exact: true }).fill('[E2E_TEST]' + '長い店名'.repeat(10))
     await page.getByRole('button', { name: '店を追加', exact: true }).click()
     await page.getByLabel('在庫個数', { exact: true }).fill('0')
-    await page.getByLabel('買い物リスト追加閾値').fill('1')
+    await page.getByLabel('買い物リスト追加閾値').fill('0.5')
     await page.getByLabel('値段（円・任意）').fill('9999999999')
     await screenshot('register')
     await page.getByRole('button', { name: '保存', exact: true }).click()

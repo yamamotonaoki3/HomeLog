@@ -13,7 +13,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
     await page.getByRole('button', { name: '在庫を登録' }).click()
     await page.getByLabel('品名').fill(name)
     await page.getByLabel('在庫個数').fill('0')
-    await page.getByLabel('買い物リスト追加閾値').fill('1')
+    await page.getByLabel('買い物リスト追加閾値').fill('0.5')
     await page.getByRole('button', { name: '保存' }).click()
 
     const inventoryRow = page.getByRole('button', { name: `${name}の詳細`, exact: true })
@@ -61,7 +61,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         await page.getByLabel('カテゴリー', { exact: true }).selectOption({ label: categoryName })
         await page.locator('#inv-store').selectOption({ label: storeName })
         await page.getByLabel('在庫個数', { exact: true }).fill('1')
-        await page.getByLabel('買い物リスト追加閾値').fill('1')
+        await page.getByLabel('買い物リスト追加閾値').fill('0.5')
         await page.getByRole('button', { name: '保存', exact: true }).click()
         const row = page.getByTestId('inventory-panel').getByRole('button', { name: `${name}の詳細`, exact: true })
         await row.click()

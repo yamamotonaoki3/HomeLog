@@ -133,6 +133,32 @@ describe('POST /api/inventory-items', () => {
     expect(res.status).toBe(400)
   })
 
+  it.each([
+    [0.5, 0.5, true],
+    [0.6, 0.5, false],
+    [0, 0, true],
+  ])('登録時に数量%sと閾値%sで、閾値以下なら自動追加される(%s) (#314)', async (quantity, threshold, added) => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    const item = await createItem(headers, { name: '牛乳', categoryId, storeId: null, quantity, threshold })
+    const list = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ inventoryItemId: number }[]>()
+    expect(list.some((i) => i.inventoryItemId === item.id)).toBe(added)
+  })
+
+  it('減算で閾値ちょうどになると自動追加され、加算で閾値を超えると除外される (#314)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const categoryId = await createCategory(headers)
+    const item = await createItem(headers, { name: '卵', categoryId, storeId: null, quantity: 4, threshold: 3 })
+    const change = (delta: number) => app.request(`/api/inventory-items/${item.id}/quantity`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ delta }),
+    }, env)
+    const listed = async () => (await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ inventoryItemId: number }[]>()).some((i) => i.inventoryItemId === item.id)
+    await change(-1)
+    expect(await listed()).toBe(true)
+    await change(1)
+    expect(await listed()).toBe(false)
+  })
+
   it('登録時に数量が閾値未満なら買い物リストへ自動追加される', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const categoryId = await createCategory(headers)

@@ -19,7 +19,7 @@
 | UC-09 | ユーザー | 固定費（家賃・水道代等）を登録し、毎月自動計上させる | [F05_kakeibo_fixedcost](features/F05_kakeibo_fixedcost.md) |
 | UC-10 | ユーザー | イベントを日付・繰り返し設定（なし/毎日/毎週/毎月/毎年）付きで作成し、複数の支出を紐付けて集計する。トップ画面カレンダーに表示され、繰り返しイベントはアプリ内通知される | [F06_kakeibo_event](features/F06_kakeibo_event.md) |
 | UC-11 | ユーザー | 食材の在庫を登録・編集する | [F07_zaiko_inventory](features/F07_zaiko_inventory.md) |
-| UC-12 | システム | 在庫が閾値を下回った品目を自動的に買い物リストへ追加する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
+| UC-12 | システム | 在庫が閾値以下になった品目を自動的に買い物リストへ追加する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
 | UC-13 | ユーザー | 買い物リストの購入チェックを入れ、在庫に一括反映する | [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md) |
 | UC-14 | ユーザー | レシピを手動登録する、または手書きレシピを画像解析で登録する | [F09_kondate_recipe](features/F09_kondate_recipe.md) |
 | UC-15 | ユーザー | WEBレシピのURLを貼り付けて登録し、独自メモを残す | [F09_kondate_recipe](features/F09_kondate_recipe.md) |

@@ -151,7 +151,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
           />
-          <p className="hint">在庫個数がこの閾値を下回ると、買い物リストに自動追加されます</p>
+          <p className="hint">在庫個数がこの数以下になると、買い物リストに自動追加されます</p>
           <p className="error">{error}</p>
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={submitting}>

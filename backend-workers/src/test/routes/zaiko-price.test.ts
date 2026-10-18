@@ -91,13 +91,13 @@ describe('在庫ID単位の参考値段', () => {
     await call('shopping-list-items', 'POST', { inventoryItemId: item.id })
     expect((await shopping())[0].price).toBe(980)
   })
-  it('閾値到達で自動リストを除外した後、再追加しても値段を保持する', async () => {
+  it('閾値を超えて自動リストを除外した後、再追加しても値段を保持する', async () => {
     const item = await create(1280, { quantity: 0 })
     expect((await shopping())[0].price).toBe(1280)
-    expect((await call(`inventory-items/${item.id}/quantity`, 'PATCH', { delta: 1 })).status).toBe(200)
+    expect((await call(`inventory-items/${item.id}/quantity`, 'PATCH', { delta: 2 })).status).toBe(200)
     expect(await shopping()).toEqual([])
-    expect((await inventory())[0]).toMatchObject({ quantity: 1, price: 1280 })
-    expect((await call(`inventory-items/${item.id}/quantity`, 'PATCH', { delta: -1 })).status).toBe(200)
+    expect((await inventory())[0]).toMatchObject({ quantity: 2, price: 1280 })
+    expect((await call(`inventory-items/${item.id}/quantity`, 'PATCH', { delta: -2 })).status).toBe(200)
     expect((await shopping())[0]).toMatchObject({ inventoryItemId: item.id, price: 1280 })
   })
   it('競合する手動追加は成功した1件のpriceだけを反映する', async () => {

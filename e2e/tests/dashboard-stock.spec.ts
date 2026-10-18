@@ -32,9 +32,9 @@ for (const width of [1280, 390, 320]) {
     for (const item of items) {
       const stockRow = inventory.getByRole('listitem').filter({ hasText: item.name })
       await expect(stockRow.locator('.dashboard-stock-name')).toHaveText(item.name)
-      await expect(stockRow.locator('.dashboard-stock-value')).toHaveText(`残${item.quantity}${Number(item.quantity) < Number(item.threshold) ? '（不足）' : ''}`)
+      await expect(stockRow.locator('.dashboard-stock-value')).toHaveText(`残${item.quantity}${Number(item.quantity) <= Number(item.threshold) ? '（不足）' : ''}`)
       const shoppingRow = shopping.getByRole('listitem').filter({ hasText: item.name })
-      if (Number(item.quantity) < Number(item.threshold)) {
+      if (Number(item.quantity) <= Number(item.threshold)) {
         await expect(shoppingRow.locator('.dashboard-stock-value')).toHaveText(item.want)
       } else await expect(shoppingRow).toHaveCount(0)
     }
