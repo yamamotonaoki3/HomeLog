@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
 import { addWeeks, getMondayOf } from '../lib/week'
 import { Toast } from '../components/Toast'
+import { normalizeKeyword } from '../lib/keyword'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 
 // リストへの追加方法は「レシピを選ぶ(確定登録)」「自由メモを入力する(ラフ登録)」の
@@ -29,11 +30,6 @@ function EntryTitle({ entry, recipe, onOpen }: { entry: MenuEntry; recipe: Recip
     return <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">{label}</a>
   }
   return <button type="button" className="menu-entry-link" onClick={() => onOpen(recipe)}>{label}</button>
-}
-
-// 全角・半角の英数字や大文字・小文字の違いを無視して比較するための正規化。
-function normalizeKeyword(value: string) {
-  return value.normalize('NFKC').toLowerCase().trim()
 }
 
 export function MenuPage() {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { filterByKeyword } from '../../lib/keyword'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import { validPrice, PRICE_ERROR } from './price'
@@ -30,6 +31,7 @@ export function ShoppingListPanel({
   onRefresh,
   onNotify,
 }: Props) {
+  const [keyword, setKeyword] = useState('')
   const [addFormOpen, setAddFormOpen] = useState(false)
   const [addItemId, setAddItemId] = useState('')
   const [addPrice, setAddPrice] = useState('')
@@ -121,6 +123,8 @@ export function ShoppingListPanel({
     }
   }
 
+  const visibleShopping = filterByKeyword(shopping, keyword, (item) => item.name)
+
   return (
     <div className="panel" data-testid="shopping-panel">
       <div className="toolbar">
@@ -155,9 +159,10 @@ export function ShoppingListPanel({
           </button>
         </div>
       )}
+      <input type="search" className="zaiko-search" aria-label="キーワード検索" placeholder="キーワードで絞り込み" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
       <div aria-label="買い物リスト一覧">
         <div className="shopping-list-grid list-row-heading"><span>品名</span><span>買う店</span><span>購入個数</span></div>
-        {shopping.length === 0 ? <p>買い物リストは空です</p> : shopping.map((item) => <button type="button" key={item.id} className="list-row-button shopping-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
+        {shopping.length === 0 ? <p>買い物リストは空です</p> : visibleShopping.length === 0 ? <p>該当する品目がありません</p> : visibleShopping.map((item) => <button type="button" key={item.id} className="list-row-button shopping-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
           <span>{item.name}</span><span>{storeName(inventoryOf(item.inventoryItemId)?.storeId) || 'なし'}</span><span>{purchaseOf(item.id).quantity}</span>
         </button>)}
       </div>

@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
 import { InventoryDetailModal } from './InventoryDetailModal'
+import { filterByKeyword } from '../../lib/keyword'
 
 interface Props {
   inventory: InventoryItem[]
@@ -19,10 +20,12 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
   const [formOpen, setFormOpen] = useState(false)
   const [steps, setSteps] = useState<Record<number, number>>({})
   const [busy, setBusy] = useState(false)
+  const [keyword, setKeyword] = useState('')
   const pending = useRef(false)
   const origin = useRef<HTMLButtonElement | null>(null)
   const register = useRef<HTMLButtonElement>(null)
   const selected = inventory.find((item) => item.id === selectedId)
+  const visible = filterByKeyword(inventory, keyword, (item) => item.name)
   const restoreFocus = () => (origin.current?.isConnected ? origin.current : register.current)?.focus()
   const closeDetail = () => { setSelectedId(undefined); restoreFocus() }
   useEffect(() => {
@@ -48,9 +51,10 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
 
   return <div className="panel" data-testid="inventory-panel">
     <div className="toolbar"><h2>在庫一覧</h2><button ref={register} type="button" className="btn btn-primary" onClick={() => { origin.current = register.current; setFormOpen(true) }}>在庫を登録</button></div>
+    <input type="search" className="zaiko-search" aria-label="キーワード検索" placeholder="キーワードで絞り込み" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
     <div className="inventory-list" aria-label="在庫一覧">
       <div className="inventory-list-grid list-row-heading"><span>品名</span><span>在庫数</span><span>閾値</span></div>
-      {inventory.length === 0 ? <p>在庫がありません</p> : inventory.map((item) =>
+      {inventory.length === 0 ? <p>在庫がありません</p> : visible.length === 0 ? <p>該当する品目がありません</p> : visible.map((item) =>
         <button type="button" key={item.id} className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
           <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
         </button>)}
