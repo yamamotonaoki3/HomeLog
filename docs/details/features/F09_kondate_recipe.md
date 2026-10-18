@@ -111,7 +111,7 @@ flowchart TD
 ストリーミング抽出する（レスポンスボディを丸ごとメモリに読み込まない）。
 
 - YouTube（youtube.com・youtu.be・m.youtube.com・music.youtube.com）のURLは、Workersからページを取得すると同意画面などが返りタイトルが「YouTube」になるため、YouTubeの oEmbed API から動画タイトルとサムネイルを取得する。失敗したときは下記のHTML解析に戻る（#285）
-- タイトルは `og:title` → `<title>` → URL文字列 の優先順で必ず何か確定する
+- タイトルは `og:title` → `<title>` → URL文字列 の優先順で必ず何か確定する。HTMLRewriter は文字参照を戻さないため、取り出した値の数値文字参照（`&#x30ec;` など）と主な名前付き文字参照（`&amp;` `&quot;` など）は元の文字に戻してから保存する（Instagram の文字化け対策、#312）
 - サムネイルは `og:image` が無ければ保存しない（NULL）
 - `http:`/`https:` 以外のスキーム、`localhost`/ループバック/プライベートIP帯を指定したURL、
   非HTMLレスポンス、fetch失敗（タイムアウト・DNS失敗・非2xx）は400エラーとする（SSRF対策）

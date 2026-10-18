@@ -1,5 +1,6 @@
 // drizzle-ormは「SQLを直接書かずにTypeScriptの関数呼び出しでクエリを組み立てる」ためのライブラリ
 // (Java/MyBatisで言うとMapper層に相当)。and/eqはWHERE句の条件を作るためのヘルパー関数。
+import { decodeHtmlEntities } from '../lib/html-entities'
 import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 // Honoはこのプロジェクトで使っているWebフレームワーク(Java/Spring MVCのControllerに相当)。
@@ -138,8 +139,9 @@ class MetaCollector {
     if (element.tagName === 'meta') {
       const property = element.getAttribute('property')
       const content = element.getAttribute('content')
-      if (property === 'og:title' && content) this.ogTitle = content
-      if (property === 'og:image' && content) this.ogImage = content
+      // 文字参照(&#x30ec; や &amp; など)は元の文字に戻してから保持する(#312)。
+      if (property === 'og:title' && content) this.ogTitle = decodeHtmlEntities(content)
+      if (property === 'og:image' && content) this.ogImage = decodeHtmlEntities(content)
     } else if (element.tagName === 'title') {
       this.inTitleTag = true
       element.onEndTag(() => {
@@ -332,7 +334,7 @@ recipesRoute.post('/from-url', async (c) => {
       // 2MB超過時などはここに到達するが、その時点までに取得できたメタ情報で処理を続行する。
     }
 
-    title = collector.ogTitle ?? (collector.titleTagText.trim() || null) ?? parsedUrl.toString()
+    title = collector.ogTitle ?? (decodeHtmlEntities(collector.titleTagText).trim() || null) ?? parsedUrl.toString()
     thumbnailUrl = collector.ogImage ?? null
   }
 

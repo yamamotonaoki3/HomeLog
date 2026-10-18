@@ -284,6 +284,21 @@ describe('POST /api/recipes/from-url', () => {
     expect(requested.searchParams.get('url')).toBe(url)
   })
 
+  it.each([
+    ['数値文字参照(16進・10進)', '<meta property="og:title" content="&#x30ec;&#X30B7;&#12500; 肉じゃが">', 'レシピ 肉じゃが'],
+    ['名前付き文字参照', '<meta property="og:title" content="&quot;簡単&quot; &amp; 早い &lt;3&gt; It&#39;s &apos;ok&apos;&nbsp;!">', '"簡単" & 早い <3> It\'s \'ok\' !'],
+    ['<title>の文字参照', '<title>&#x30ab;&#x30ec;&#x30fc; | Tom &amp; Jerry</title>', 'カレー | Tom & Jerry'],
+    ['不正な参照はそのまま残す', '<meta property="og:title" content="&#x110000; &#xD800; &unknown; &constructor; &toString; &amp">', '&#x110000; &#xD800; &unknown; &constructor; &toString; &amp'],
+  ])('タイトルの%sを元の文字に戻して保存する (#312)', async (_label, head, expected) => {
+    const { headers } = await createUserWithHousehold('testuser_entity@example.com')
+    stubFetch(htmlResponse(`<html><head>${head}<meta property="og:image" content="https://cdn.example.com/a.jpg?w=1&amp;h=2"></head></html>`))
+    const res = await app.request('/api/recipes/from-url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: 'https://recipe.example.com/entity' }),
+    }, env)
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ title: expected, thumbnailUrl: 'https://cdn.example.com/a.jpg?w=1&h=2' })
+  })
+
   it('YouTubeのoEmbedが失敗したらHTML解析にフォールバックする', async () => {
     const { headers } = await createUserWithHousehold('testuser_youtube_fallback@example.com')
     vi.stubGlobal('fetch', vi.fn()
