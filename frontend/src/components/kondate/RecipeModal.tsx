@@ -223,7 +223,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
   // 画面に表示する内容(JSX。HTMLに似た構文でReactの画面を組み立てる)。
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div className="modal recipe-modal">
         {/* isEditの値によって見出しの文言を切り替える(三項演算子)。 */}
         <h2>{isEdit ? 'レシピを編集' : 'レシピを登録'}</h2>
         {/* 新規登録時のみ「手動」「WEB」タブを表示する(編集時は元のsourceTypeのフォームのまま)。 */}
@@ -301,7 +301,7 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
               <textarea id="recipe-steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
             </>
           )}
-          <p className="error">{error}</p>
+          {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
             {/* submitting中はボタンを押せなくする(disabled)。 */}
             <button type="submit" className="btn btn-primary" disabled={submitting || ocrStatus === 'analyzing'}>

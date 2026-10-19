@@ -302,6 +302,9 @@ input[type="checkbox"], input[type="radio"] {
 /* S-10 値段入力と編集 */
 .inventory-modal { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
 .inventory-modal input, .inventory-modal select { min-width: 0; max-width: 100%; }
+.recipe-modal { width: min(420px, calc(100vw - 32px)); min-width: 0; overflow-wrap: anywhere; }
+.recipe-modal input, .recipe-modal textarea { min-width: 0; max-width: 100%; }
+.recipe-modal .modal-actions { flex-wrap: wrap; }
 .shopping-add-form { flex-wrap: wrap; }
 .shopping-add-form input, .shopping-add-form select { min-width: 0; max-width: 100%; }
 .price-cell { white-space: nowrap; }

@@ -91,6 +91,27 @@ function renderRecipesPage(initialPath = '/recipes') {
 }
 
 describe('RecipesPage', () => {
+  it('URL登録で409ならモーダル内にサーバーのエラーを表示しURLとメモを保持する', async () => {
+    setupApi()
+    server.use(http.post('/api/recipes/from-url', () => HttpResponse.json({
+      code: 'DUPLICATE_RECIPE_URL',
+      message: 'このURLのレシピは既に登録されています',
+    }, { status: 409 })))
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await user.click(await screen.findByRole('button', { name: 'レシピを登録' }))
+    await user.click(screen.getByRole('tab', { name: 'WEB' }))
+    await user.type(screen.getByLabelText('レシピURL'), 'https://example.com/recipe')
+    await user.type(screen.getByLabelText('メモ'), '[[E2E_TEST] 残すメモ')
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('このURLのレシピは既に登録されています')
+    expect(screen.getByRole('heading', { name: 'レシピを登録' })).toBeVisible()
+    expect(screen.getByLabelText('レシピURL')).toHaveValue('https://example.com/recipe')
+    expect(screen.getByLabelText('メモ')).toHaveValue('[E2E_TEST] 残すメモ')
+    expect(screen.getByRole('button', { name: '登録' })).toBeEnabled()
+    expect(screen.queryByText('レシピを登録しました')).not.toBeInTheDocument()
+  })
+
   it('PC案内の下にiPhone手順への入口を表示する', async () => {
     const { calls } = setupApi()
     renderRecipesPage()
