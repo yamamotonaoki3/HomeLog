@@ -92,6 +92,13 @@ flowchart TD
 | 処理 | URLからタイトル・サムネイルを取得 → recipes テーブルに `source_type=web` で保存（材料・手順は保持しない） |
 | 出力 | 登録したレシピ |
 
+### URLの重複防止（#318）
+
+`POST /api/recipes/from-url` は入力URLを `new URL()` で解析し、正規化した文字列（`parsedUrl.toString()`）と同一世帯の保存済みURLとの一致で比較する。
+一致すれば外部ページの取得・保存を行わず409を返す（`DUPLICATE_RECIPE_URL`、message: 「このURLのレシピは既に登録されています」）。
+保存も従来どおり `parsedUrl.toString()` の形式とする。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
+別世帯の同一URLとURLなし（null・空文字）のレシピの複数登録は許可する。既存重複は維持し、UNIQUE制約は追加しない。
+
 ### お気に入り登録
 
 | 項目 | 内容 |

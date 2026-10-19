@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -54,6 +54,18 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   } catch {
     return null
   }
+}
+
+function normalizeName(name: string): string {
+  return name.normalize('NFKC').toLowerCase().trim()
+}
+
+// normalized_nameがNULLの既存行も含め、世帯内の品名をJSで比較する。
+async function hasDuplicateName(db: DrizzleD1Database, householdId: number, name: string, excludeId?: number): Promise<boolean> {
+  const normalizedName = normalizeName(name)
+  const rows = await db.select({ id: inventoryItems.id, name: inventoryItems.name })
+    .from(inventoryItems).where(eq(inventoryItems.householdId, householdId)).all()
+  return rows.some((row) => row.id !== excludeId && normalizeName(row.name) === normalizedName)
 }
 
 async function validateCategory(db: DrizzleD1Database, householdId: number, categoryId: number): Promise<boolean> {
@@ -157,19 +169,34 @@ inventoryItemsRoute.post('/', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', STORE_NOT_FOUND_MESSAGE), 400)
   }
 
+  if (await hasDuplicateName(db, householdId, name)) {
+    return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+  }
+
+  // 事前チェック後の競合も、保存した正規化名を比較して書き込み時に原子的に拒否する。
+  const trimmedName = name.trim()
+  const normalizedName = normalizeName(name)
   const inserted = await db
     .insert(inventoryItems)
-    .values({
-      householdId,
-      name,
-      categoryId,
-      storeId,
-      quantityTenths: toTenths(quantity),
-      thresholdTenths: toTenths(threshold),
-      price: price ?? null,
-    })
+    .select(db.select({
+      id: sql<number>`null`.as('id'),
+      householdId: sql<number>`${householdId}`.as('householdId'),
+      name: sql<string>`${trimmedName}`.as('name'),
+      normalizedName: sql<string>`${normalizedName}`.as('normalizedName'),
+      categoryId: sql<number>`${categoryId}`.as('categoryId'),
+      storeId: sql<number | null>`${storeId}`.as('storeId'),
+      price: sql<number | null>`${price ?? null}`.as('price'),
+      quantityTenths: sql<number>`${toTenths(quantity)}`.as('quantityTenths'),
+      thresholdTenths: sql<number>`${toTenths(threshold)}`.as('thresholdTenths'),
+    }).from(sql`(select 1)`).where(sql`not exists (
+      select 1 from ${inventoryItems}
+      where ${inventoryItems.householdId} = ${householdId} and ${inventoryItems.normalizedName} = ${normalizedName}
+    )`))
     .returning()
     .get()
+  if (!inserted) {
+    return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+  }
   await syncShoppingList(db, inserted)
 
   return c.json(toResponse(inserted), 201)
@@ -204,13 +231,34 @@ inventoryItemsRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', STORE_NOT_FOUND_MESSAGE), 400)
   }
 
+  if (await hasDuplicateName(db, householdId, name, itemId)) {
+    return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+  }
+
   const thresholdTenths = toTenths(threshold)
+  const normalizedName = normalizeName(name)
   const updatedItem = await db
     .update(inventoryItems)
-    .set({ name, categoryId, storeId, thresholdTenths, ...(price === undefined ? {} : { price }) })
-    .where(eq(inventoryItems.id, itemId))
+    .set({ name: name.trim(), normalizedName, categoryId, storeId, thresholdTenths, ...(price === undefined ? {} : { price }) })
+    .where(and(
+      eq(inventoryItems.id, itemId),
+      eq(inventoryItems.householdId, householdId),
+      sql`not exists (
+        select 1 from inventory_items as duplicate
+        where duplicate.household_id = ${householdId}
+          and duplicate.normalized_name = ${normalizedName} and duplicate.id <> ${itemId}
+      )`,
+    ))
     .returning()
     .get()
+  if (!updatedItem) {
+    const existing = await db.select({ id: inventoryItems.id }).from(inventoryItems)
+      .where(and(eq(inventoryItems.id, itemId), eq(inventoryItems.householdId, householdId))).get()
+    if (!existing) {
+      return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+    }
+    return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+  }
   await syncShoppingList(db, updatedItem)
 
   return c.json(toResponse(updatedItem))

@@ -1,7 +1,7 @@
 // drizzle-ormは「SQLを直接書かずにTypeScriptの関数呼び出しでクエリを組み立てる」ためのライブラリ
 // (Java/MyBatisで言うとMapper層に相当)。and/eqはWHERE句の条件を作るためのヘルパー関数。
 import { decodeHtmlEntities } from '../lib/html-entities'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 // Honoはこのプロジェクトで使っているWebフレームワーク(Java/Spring MVCのControllerに相当)。
 // `type Context`のように`type`を付けてimportすると型情報だけを取り込む(実行時には影響しない)。
@@ -291,6 +291,18 @@ recipesRoute.post('/from-url', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', FROM_URL_VALIDATION_MESSAGE), 400)
   }
 
+  const db = drizzle(c.env.DB)
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(db, userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+  const existingUrls = await db.select({ url: recipes.url }).from(recipes)
+    .where(eq(recipes.householdId, householdId)).all()
+  if (existingUrls.some((recipe) => recipe.url === parsedUrl.toString())) {
+    return c.json(errorResponse('DUPLICATE_RECIPE_URL', 'このURLのレシピは既に登録されています'), 409)
+  }
+
   let title: string
   let thumbnailUrl: string | null
   const oembed = await fetchYoutubeOembed(parsedUrl)
@@ -338,29 +350,31 @@ recipesRoute.post('/from-url', async (c) => {
     thumbnailUrl = collector.ogImage ?? null
   }
 
-  const db = drizzle(c.env.DB)
-  const userId = c.get('userId')
-  const householdId = await resolveHouseholdId(db, userId)
-  if (householdId === null) {
-    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
-  }
-
+  // 存在確認と挿入を1文で行い、fetch中に同じURLが登録された場合も重複を防ぐ。
   const inserted = await db
     .insert(recipes)
-    .values({
-      householdId,
-      createdByUserId: userId,
-      title,
-      ingredients: null,
-      steps: null,
-      sourceType: 'web',
-      url: parsedUrl.toString(),
-      thumbnailUrl,
-      memo: memo ?? null,
-      isFavorite: false,
-    })
+    .select(db.select({
+      id: sql<number>`null`.as('id'),
+      householdId: sql<number>`${householdId}`.as('householdId'),
+      createdByUserId: sql<number>`${userId}`.as('createdByUserId'),
+      title: sql<string>`${title}`.as('title'),
+      ingredients: sql<string | null>`null`.as('ingredients'),
+      steps: sql<string | null>`null`.as('steps'),
+      sourceType: sql<string>`'web'`.as('sourceType'),
+      url: sql<string>`${parsedUrl.toString()}`.as('url'),
+      thumbnailUrl: sql<string | null>`${thumbnailUrl}`.as('thumbnailUrl'),
+      memo: sql<string | null>`${memo ?? null}`.as('memo'),
+      isFavorite: sql<boolean>`0`.as('isFavorite'),
+      createdAt: sql<string>`current_timestamp`.as('createdAt'),
+    }).from(sql`(select 1)`).where(sql`not exists (
+      select 1 from ${recipes}
+      where ${recipes.householdId} = ${householdId} and ${recipes.url} = ${parsedUrl.toString()}
+    )`))
     .returning()
     .get()
+  if (!inserted) {
+    return c.json(errorResponse('DUPLICATE_RECIPE_URL', 'このURLのレシピは既に登録されています'), 409)
+  }
 
   return c.json(toResponse(inserted), 201)
 })

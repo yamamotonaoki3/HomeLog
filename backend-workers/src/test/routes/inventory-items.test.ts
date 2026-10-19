@@ -340,3 +340,90 @@ describe('DELETE /api/inventory-items/:id', () => {
     expect(list.some((i) => i.inventoryItemId === item.id)).toBe(false)
   })
 })
+
+describe('在庫品名の重複 (#318)', () => {
+  const request = (headers: Record<string, string>, body: Record<string, unknown>, id?: number) => app.request(
+    id === undefined ? '/api/inventory-items' : `/api/inventory-items/${id}`,
+    { method: id === undefined ? 'POST' : 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, env,
+  )
+
+  it('正規化後に同じ品名を同時登録すると201と409になり、DBには1件だけ残る', async () => {
+    const { headers } = await createUserWithHousehold('testuser_normalized_post@example.com')
+    const categoryId = await createCategory(headers)
+    const names = ['[E2E_TEST] Milk', '[E2E_TEST] ＭＩＬＫ']
+    const responses = await Promise.all(names.map((name) => request(headers, {
+      name, categoryId, storeId: null, quantity: 1, threshold: 0,
+    })))
+    expect(responses.map((res) => res.status).sort()).toEqual([201, 409])
+    const rows = await env.DB.prepare('SELECT name, normalized_name FROM inventory_items')
+      .all<{ name: string; normalized_name: string }>()
+    expect(rows.results).toHaveLength(1)
+    expect(names).toContain(rows.results[0].name)
+    expect(rows.results[0].normalized_name).toBe('[e2e_test] milk')
+  })
+
+  it('別の在庫を正規化後に同じ品名へ同時編集すると200と409になり、変更されるのは1件だけ', async () => {
+    const { headers } = await createUserWithHousehold('testuser_normalized_patch@example.com')
+    const categoryId = await createCategory(headers)
+    const body = { categoryId, storeId: null, quantity: 1, threshold: 0 }
+    const originals = ['[E2E_TEST] 元の品名A', '[E2E_TEST] 元の品名B']
+    const items: { id: number }[] = []
+    for (const name of originals) {
+      items.push(await createItem(headers, { ...body, name }))
+    }
+    const names = ['[E2E_TEST] Milk', '[E2E_TEST] ＭＩＬＫ']
+    const responses = await Promise.all(items.map((item, index) =>
+      request(headers, { ...body, name: names[index] }, item.id)))
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 409])
+    const rows = await env.DB.prepare('SELECT id, name, normalized_name FROM inventory_items')
+      .all<{ id: number; name: string; normalized_name: string }>()
+    expect(rows.results).toHaveLength(2)
+    expect(rows.results.filter((row) => row.normalized_name === '[e2e_test] milk')).toHaveLength(1)
+    for (const [index, res] of responses.entries()) {
+      const row = rows.results.find((row) => row.id === items[index].id)!
+      expect(row.name).toBe(res.status === 200 ? names[index] : originals[index])
+    }
+  })
+
+  it('同じ品名を同時登録すると201と409になり、在庫と買い物リストは1件だけ残る', async () => {
+    const { headers } = await createUserWithHousehold('testuser_concurrent@example.com')
+    const categoryId = await createCategory(headers)
+    const body = { name: ' [E2E_TEST] 牛乳 ', categoryId, storeId: null, quantity: 0, threshold: 1 }
+    const responses = await Promise.all([request(headers, body), request(headers, body)])
+    expect(responses.map((res) => res.status).sort()).toEqual([201, 409])
+    expect(await responses.find((res) => res.status === 409)!.json()).toMatchObject({ code: 'DUPLICATE_INVENTORY_ITEM_NAME' })
+    const rows = await env.DB.prepare('SELECT name FROM inventory_items').all<{ name: string }>()
+    expect(rows.results).toEqual([{ name: body.name.trim() }])
+    const shopping = await env.DB.prepare('SELECT COUNT(*) AS count FROM shopping_list_items').first<{ count: number }>()
+    expect(shopping?.count).toBe(1)
+  })
+
+  it.each(['MILK', 'milk', 'ＭＩＬＫ', '　 milk \t', 'ﾐﾙｸ'])('登録・編集で正規化した品名の重複を拒否する: %s', async (name) => {
+    const { headers } = await createUserWithHousehold('testuser_duplicate@example.com')
+    const categoryId = await createCategory(headers)
+    const body = { name: name === 'ﾐﾙｸ' ? 'ミルク' : 'Milk', categoryId, storeId: null, quantity: 1, threshold: 0 }
+    expect((await request(headers, body)).status).toBe(201)
+    const other = await request(headers, { ...body, name: '[E2E_TEST] 別品' })
+    const { id } = await other.json<{ id: number }>()
+    for (const itemId of [undefined, id]) {
+      const res = await request(headers, { ...body, name }, itemId)
+      expect(res.status).toBe(409)
+      expect(await res.json()).toEqual({ code: 'DUPLICATE_INVENTORY_ITEM_NAME', message: '同じ品名の在庫が既に登録されています', details: [] })
+    }
+    const listed = await (await app.request('/api/inventory-items', { headers }, env)).json<{ name: string }[]>()
+    expect(listed.map((item) => item.name)).toEqual([body.name, '[E2E_TEST] 別品'])
+  })
+
+  it('自己除外と別世帯の同名登録を許可する', async () => {
+    for (const email of ['testuser_one@example.com', 'testuser_two@example.com']) {
+      const { headers } = await createUserWithHousehold(email)
+      const categoryId = await createCategory(headers)
+      const body = { name: 'Milk', categoryId, storeId: null, quantity: 1, threshold: 0 }
+      const created = await request(headers, body)
+      expect(created.status).toBe(201)
+      const { id } = await created.json<{ id: number }>()
+      expect((await request(headers, body, id)).status).toBe(200)
+      expect((await request(headers, { ...body, name: ' ＭＩＬＫ ' }, id)).status).toBe(200)
+    }
+  })
+})
