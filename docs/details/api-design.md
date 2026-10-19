@@ -267,7 +267,11 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```json
 { "id": 100, "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280 }
 ```
-主なエラー：400（quantity/thresholdが負数等）
+主なエラー：400（quantity/thresholdが負数等）／409（品名重複、#318）
+
+POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名をNFKC正規化・小文字化・前後空白除去して同一世帯内で比較する。
+編集対象自身を除いて一致すれば409、共通形式 `{ code: "DUPLICATE_INVENTORY_ITEM_NAME", message: "同じ品名の在庫が既に登録されています", details: [] }` を返す。
+別世帯は対象外。失敗時は在庫・買い物リストを変更しない。既存重複データは維持し、UNIQUE制約は追加しない。
 
 ### 値段の共通契約（#235：バックエンド先行）
 
@@ -431,3 +435,11 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 | 収入 | `GET/POST incomes` `PUT/DELETE incomes/:id` `GET/POST income-categories` `PATCH/DELETE income-categories/:id` | [F13](features/F13_kakeibo_income.md) |
 | ダッシュボード | `GET dashboard/summary` `GET dashboard/calendar` `GET dashboard/notifications/today` | 6章・[F12](features/F12_kakeibo_household_summary.md) |
 | 表示設定 | `GET/PUT user-settings` | [wireframes.md](wireframes.md) S-21 |
+
+
+### レシピURLの重複防止（#318）
+
+`POST /api/recipes/from-url` は、入力URLを `new URL()` で解析し、正規化した文字列（`parsedUrl.toString()`）と同一世帯の保存済みURLとの一致で比較する。
+一致すれば外部取得・保存を行わず409、共通形式 `{ code: "DUPLICATE_RECIPE_URL", message: "このURLのレシピは既に登録されています", details: [] }` を返す。
+保存も従来どおり `parsedUrl.toString()` の形式とする。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
+別世帯は対象外。URLなし（null・空文字）のレシピは複数可。既存重複データは維持し、UNIQUE制約は追加しない。

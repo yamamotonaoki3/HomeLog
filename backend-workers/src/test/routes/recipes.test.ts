@@ -516,3 +516,74 @@ describe('PATCH /api/recipes/:id (web種別)', () => {
     expect((await res.json<{ title: string }>()).title).toBe('肉じゃが(改)')
   })
 })
+
+describe('レシピURLの重複 (#318)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const register = (headers: Record<string, string>, url: string) => app.request('/api/recipes/from-url', {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ url, memo: '[E2E_TEST]' }),
+  }, env)
+
+  it('同じURLを同時登録すると201と409になり、DBには1件だけ残る', async () => {
+    const { headers } = await createUserWithHousehold('testuser_concurrent_url@example.com')
+    const url = 'https://example.com/recipe'
+    // 両リクエストが事前チェックを通ってfetchするまで待ち、書き込み時の競合を検証する。
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => { release = resolve })
+    let fetchCount = 0
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (++fetchCount === 2) release()
+      await ready
+      return new Response('<title>[E2E_TEST] レシピ</title>', { headers: { 'content-type': 'text/html' } })
+    }))
+    const responses = await Promise.all([register(headers, url), register(headers, url)])
+    expect(responses.map((res) => res.status).sort()).toEqual([201, 409])
+    expect(await responses.find((res) => res.status === 409)!.json()).toMatchObject({ code: 'DUPLICATE_RECIPE_URL' })
+    const rows = await env.DB.prepare('SELECT url FROM recipes').all<{ url: string }>()
+    expect(rows.results).toEqual([{ url }])
+  })
+
+  it.each(['https://EXAMPLE.com', 'https://example.com/'])('URL正規化で一致するURLは取得前に409になる: %s', async (url) => {
+    const { headers } = await createUserWithHousehold('testuser_normalized_url@example.com')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<title>[E2E_TEST]</title>', { headers: { 'content-type': 'text/html' } })))
+    const created = await register(headers, 'https://EXAMPLE.com')
+    expect(created.status).toBe(201)
+    expect((await created.json<{ url: string }>()).url).toBe('https://example.com/')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect((await register(headers, url)).status).toBe(409)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['https://example.com/recipe', '  https://example.com/recipe  '])('保存済みと同じURL(前後空白は無視)は取得前に409を返す: %s', async (url) => {
+    const { headers, userId } = await createUserWithHousehold('testuser_url@example.com')
+    await env.DB.prepare(`INSERT INTO recipes (household_id, created_by_user_id, title, source_type, url)
+      SELECT household_id, ?, ?, 'web', ? FROM household_members WHERE user_id = ?`)
+      .bind(userId, '[E2E_TEST] レシピ', 'https://example.com/recipe', userId).run()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await register(headers, url)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ code: 'DUPLICATE_RECIPE_URL', message: 'このURLのレシピは既に登録されています', details: [] })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('別世帯の同一URLと文字列の異なるURLを許可する', async () => {
+    for (const email of ['testuser_url_one@example.com', 'testuser_url_two@example.com']) {
+      const { headers } = await createUserWithHousehold(email)
+      for (const url of ['https://example.com/Recipe', 'https://example.com/recipe']) {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<title>[E2E_TEST] レシピ</title>', { headers: { 'content-type': 'text/html' } })))
+        expect((await register(headers, url)).status).toBe(201)
+      }
+    }
+  })
+
+  it('URLなしのレシピは複数登録できる', async () => {
+    const { headers } = await createUserWithHousehold('testuser_manual@example.com')
+    for (let i = 0; i < 2; i++) {
+      const res = await app.request('/api/recipes', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '[E2E_TEST] レシピ' }) }, env)
+      expect(res.status).toBe(201)
+      expect((await res.json<{ url: string | null }>()).url).toBeNull()
+    }
+  })
+})

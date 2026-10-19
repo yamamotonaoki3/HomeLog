@@ -659,11 +659,15 @@ Workersの#253では `debtor_user_id` をnullableにし、`debtor_external_id` �
 Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレーション0014でNULLとなる。
 買い物リストには値段列を追加せず、在庫へJOINして現在値を参照する。履歴・比較・更新日時は追加しない。
 
+マイグレーション0020でnullable TEXT `normalized_name`を追加する（#318）。POST・PATCH時に品名をNFKC正規化 → 小文字化 → 前後空白除去して保存し、同一世帯内の書き込み時の重複ガードに使う。
+既存行はbackfillせずNULLのまま残し、JSの事前チェックで品名を正規化して比較する。既存重複を許容するためUNIQUE制約は付けず、`(household_id, normalized_name)`の通常インデックスを設ける。
+
 | カラム名 | 型 | 必須 | 備考 |
 | --- | --- | --- | --- |
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | name | VARCHAR(50) | ○ | 品名 |
+| normalized_name | TEXT（D1） | — | NFKC正規化・小文字化・前後空白除去した品名。既存行はNULL |
 | category_id | BIGINT | ○ | FK → zaiko_categories.id |
 | store_id | BIGINT | — | FK → stores.id（任意） |
 | quantity | NUMERIC(6,1) | ○ | 在庫個数（小数点第一位まで） |

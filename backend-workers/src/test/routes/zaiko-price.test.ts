@@ -45,9 +45,9 @@ describe('在庫ID単位の参考値段', () => {
     expect(item.price).toBe(price ?? null)
     expect((await inventory())[0].price).toBe(price ?? null)
   })
-  it('PATCHで上書き・省略維持・nullクリアを行い、同名の別IDは変えない', async () => {
+  it('PATCHで上書き・省略維持・nullクリアを行い、別IDは変えない (#318で同名登録は不可)', async () => {
     const item = await create(1280)
-    await create(300)
+    await create(300, { name: '[E2E_TEST] testuser_item_2' })
     for (const [input, expected] of [[{ price: 980 }, 980], [{}, 980], [{ price: null }, null]] as const) {
       const response = await call(`inventory-items/${item.id}`, 'PATCH', { ...base(), ...input })
       expect(response.status).toBe(200)

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { integer, real, sqliteTable, text, primaryKey, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { integer, real, sqliteTable, text, primaryKey, index, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 // 既存Java実装のFlyway V1相当のテーブル定義をSQLite(D1)向けに翻訳したもの。
 // Phase 2以降、household等のテーブルをこのファイルに追加していく。
@@ -85,6 +85,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
     .notNull()
     .references(() => households.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
+  normalizedName: text('normalized_name'),
   categoryId: integer('category_id')
     .notNull()
     .references(() => zaikoCategories.id),
@@ -94,7 +95,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   // 「小数点第一位までの値を10倍した整数」として保持する。API入出力時にのみ10で除算/乗算する。
   quantityTenths: integer('quantity_tenths').notNull(),
   thresholdTenths: integer('threshold_tenths').notNull(),
-})
+}, (table) => [index('inventory_items_household_normalized_name_idx').on(table.householdId, table.normalizedName)])
 
 export const shoppingListItems = sqliteTable('shopping_list_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
