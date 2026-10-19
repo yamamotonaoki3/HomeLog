@@ -148,6 +148,39 @@ const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, 
 const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0 }
 
 describe('ZaikoPage', () => {
+  it.each(['登録', '編集'] as const)('在庫の%sで409ならモーダル内にサーバーのエラーを表示し入力を保持する', async (mode) => {
+    setupApi({ inventory: [{ ...milk }, { ...egg }] })
+    const conflict = () => HttpResponse.json({
+      code: 'DUPLICATE_INVENTORY_ITEM_NAME',
+      message: '同じ品名の在庫が既に登録されています',
+    }, { status: 409 })
+    server.use(
+      http.post('/api/inventory-items', conflict),
+      http.patch('/api/inventory-items/:id', conflict),
+    )
+    const user = userEvent.setup()
+    renderZaikoPage()
+    await screen.findByRole('button', { name: '牛乳の詳細' })
+    if (mode === '編集') {
+      await user.click(screen.getByRole('button', { name: '卵の詳細' }))
+      await user.click(screen.getByRole('button', { name: '卵を編集' }))
+    } else {
+      await user.click(screen.getByRole('button', { name: '在庫を登録' }))
+    }
+    const modal = screen.getByRole('dialog', { name: `在庫を${mode}` })
+    await user.clear(within(modal).getByLabelText('品名'))
+    await user.type(within(modal).getByLabelText('品名'), '牛乳')
+    await user.type(within(modal).getByLabelText('値段（円・任意）'), '123')
+    await user.click(within(modal).getByRole('button', { name: '保存' }))
+    expect(await within(modal).findByRole('alert')).toHaveTextContent('同じ品名の在庫が既に登録されています')
+    expect(modal).toBeVisible()
+    expect(within(modal).getByLabelText('品名')).toHaveValue('牛乳')
+    expect(within(modal).getByLabelText('値段（円・任意）')).toHaveValue('123')
+    expect(within(modal).getByRole('button', { name: '保存' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '卵の詳細' })).toBeInTheDocument()
+    expect(screen.queryByText(`在庫を${mode}しました`)).not.toBeInTheDocument()
+  })
+
   it('在庫操作は＋、個数、−、ステップの順で、品目ごとのステップを保持する', async () => {
     const { calls } = setupApi({ inventory: [{ ...milk }, { ...egg, quantity: 2 }] })
     const user = userEvent.setup()
