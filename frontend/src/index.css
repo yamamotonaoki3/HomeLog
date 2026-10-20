@@ -25,7 +25,7 @@ a:hover { text-decoration: underline; }
 .nav-link { color: #cbd5e1; padding: 6px 10px; border-radius: 6px; }
 .nav-link:hover, .nav-link.is-active { background: #334155; color: #fff; text-decoration: none; }
 .nav-logout { margin-left: auto; background: none; border: 1px solid #64748b; color: #cbd5e1; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-.secondary-nav { display: flex; justify-content: center; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.secondary-nav { display: flex; justify-content: flex-start; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
 /* 上部タブは白背景なので、下部ナビ(濃色背景)用の文字色を上書きする */
 .secondary-nav .nav-link { color: #334155; border: 1px solid #cbd5e1; font-weight: 500; }
 .secondary-nav .nav-link:hover { background: #f1f5f9; color: #0f172a; }
