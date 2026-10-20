@@ -16,6 +16,9 @@ test('在庫の重複は409で保存せず、自分自身の編集とURLなし�
   const duplicate = await page.request.post('/api/inventory-items', { headers, data: { ...data, name: '　[E2E_TEST] ＭＩＬＫ　' } })
   expect(duplicate.status()).toBe(409)
   expect(await duplicate.json()).toEqual({ code: 'DUPLICATE_INVENTORY_ITEM_NAME', message: '同じ品名の在庫が既に登録されています', details: [] })
+  // カタカナとひらがなも同じ品名として扱う(#325)。
+  expect((await page.request.post('/api/inventory-items', { headers, data: { ...data, name: '[E2E_TEST] ミルク' } })).status()).toBe(201)
+  expect((await page.request.post('/api/inventory-items', { headers, data: { ...data, name: '[E2E_TEST] みるく' } })).status()).toBe(409)
   expect((await page.request.patch(`/api/inventory-items/${item.id}`, { headers, data })).status()).toBe(200)
   const otherResponse = await page.request.post('/api/inventory-items', { headers, data: { ...data, name: '[E2E_TEST] Other' } })
   expect(otherResponse.status()).toBe(201)

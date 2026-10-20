@@ -56,8 +56,10 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   }
 }
 
+// フロントエンドの normalizeKeyword(frontend/src/lib/keyword.ts)と同じ規則。カタカナはひらがなに揃える(#325)。
 function normalizeName(name: string): string {
   return name.normalize('NFKC').toLowerCase().trim()
+    .replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60))
 }
 
 // normalized_nameがNULLの既存行も含め、世帯内の品名をJSで比較する。
