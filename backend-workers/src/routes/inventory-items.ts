@@ -1,13 +1,15 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { inventoryItems, shoppingListItems, stores, zaikoCategories } from '../db/schema'
+import { inventoryItems, stores, zaikoCategories } from '../db/schema'
 import { fromTenths, isOneDecimalPlace, MAX_VALUE, toTenths } from '../lib/decimal'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
 import { priceSchema } from '../lib/price'
+import { inventoryShoppingSync } from '../lib/inventory-shopping-sync'
+import { consumptionDate, consumptionDays, latestConsumptionDate } from '../lib/inventory-consumption'
 import type { AppEnv } from '../index'
 
 const NOT_FOUND_MESSAGE = '在庫アイテムが見つかりません'
@@ -29,6 +31,8 @@ const createItemSchema = z.object({
   quantity: quantityValueSchema,
   price: priceSchema,
   threshold: quantityValueSchema,
+  dailyConsumption: quantityValueSchema.refine((value) => value > 0).nullable().optional(),
+  autoConsumptionEnabled: z.boolean().optional(),
 })
 
 const updateItemSchema = z.object({
@@ -37,6 +41,8 @@ const updateItemSchema = z.object({
   categoryId: z.number().int(),
   storeId: z.number().int().nullable(),
   threshold: quantityValueSchema,
+  dailyConsumption: quantityValueSchema.refine((value) => value > 0).nullable().optional(),
+  autoConsumptionEnabled: z.boolean().optional(),
 })
 
 // deltaは負数も許容するため0以上の制約は付けない(±の増減幅)。
@@ -91,39 +97,6 @@ async function validateStore(db: DrizzleD1Database, householdId: number, storeId
   return store !== undefined
 }
 
-/**
- * 在庫個数と閾値の関係に応じて買い物リストを同期する(既存Java実装のsyncShoppingListと同じロジック)。
- * 閾値以下(#314)かつ自動追加分が無ければ追加し、閾値を超えれば自動追加分のみ除外する
- * (手動追加分はここでは削除しない)。
- */
-async function syncShoppingList(db: DrizzleD1Database, item: typeof inventoryItems.$inferSelect): Promise<void> {
-  const belowThreshold = item.quantityTenths <= item.thresholdTenths
-  // 挿入要否の判定は(手動追加分も含めて)「いずれかの買い物リスト項目が既に存在するか」で行う
-  // (既存Java実装のexistsByInventoryItemIdと同じ)。手動追加済みの項目に対して重複して
-  // 自動追加してしまうことを防ぐ。一方、削除対象は自動追加分(is_manual=false)のみに限定する
-  // (手動追加分はここでは削除しない)。
-  const anyEntry = await db.select().from(shoppingListItems).where(eq(shoppingListItems.inventoryItemId, item.id)).get()
-
-  if (belowThreshold && !anyEntry) {
-    // 同時に複数リクエストが「まだ項目が無い」と判定して同時に挿入しようとした場合、
-    // shopping_list_items.inventory_item_idのUNIQUE制約により片方が例外になる。
-    // 既に同期済みという扱いで問題ないため、競合時は例外にせず何もしない
-    // (onConflictDoNothingでINSERT ... ON CONFLICT DO NOTHINGにする)。
-    await db
-      .insert(shoppingListItems)
-      .values({
-        householdId: item.householdId,
-        inventoryItemId: item.id,
-        isManual: false,
-        purchased: false,
-        purchasedQuantityTenths: 0,
-      })
-      .onConflictDoNothing()
-  } else if (!belowThreshold && anyEntry && !anyEntry.isManual) {
-    await db.delete(shoppingListItems).where(eq(shoppingListItems.id, anyEntry.id))
-  }
-}
-
 function toResponse(item: typeof inventoryItems.$inferSelect) {
   return {
     id: item.id,
@@ -133,6 +106,8 @@ function toResponse(item: typeof inventoryItems.$inferSelect) {
     quantity: fromTenths(item.quantityTenths),
     threshold: fromTenths(item.thresholdTenths),
     price: item.price,
+    dailyConsumption: item.dailyConsumptionTenths === null ? null : fromTenths(item.dailyConsumptionTenths),
+    autoConsumptionEnabled: item.autoConsumptionEnabled,
   }
 }
 
@@ -175,31 +150,29 @@ inventoryItemsRoute.post('/', async (c) => {
     return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
   }
 
-  // 事前チェック後の競合も、保存した正規化名を比較して書き込み時に原子的に拒否する。
-  const trimmedName = name.trim()
+  const daily = parsed.data.dailyConsumption == null ? null : toTenths(parsed.data.dailyConsumption)
+  const enabled = parsed.data.autoConsumptionEnabled ?? (daily !== null)
+  if (enabled && daily === null) {
+    return c.json(errorResponse('VALIDATION_ERROR', '自動消費には1日の消費量が必要です'), 400)
+  }
   const normalizedName = normalizeName(name)
-  const inserted = await db
-    .insert(inventoryItems)
-    .select(db.select({
-      id: sql<number>`null`.as('id'),
-      householdId: sql<number>`${householdId}`.as('householdId'),
-      name: sql<string>`${trimmedName}`.as('name'),
-      normalizedName: sql<string>`${normalizedName}`.as('normalizedName'),
-      categoryId: sql<number>`${categoryId}`.as('categoryId'),
-      storeId: sql<number | null>`${storeId}`.as('storeId'),
-      price: sql<number | null>`${price ?? null}`.as('price'),
-      quantityTenths: sql<number>`${toTenths(quantity)}`.as('quantityTenths'),
-      thresholdTenths: sql<number>`${toTenths(threshold)}`.as('thresholdTenths'),
-    }).from(sql`(select 1)`).where(sql`not exists (
-      select 1 from ${inventoryItems}
-      where ${inventoryItems.householdId} = ${householdId} and ${inventoryItems.normalizedName} = ${normalizedName}
-    )`))
-    .returning()
-    .get()
-  if (!inserted) {
+  // Read last_insert_rowid() before the shopping INSERT changes it, in the same transaction.
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO inventory_items
+      (household_id, name, normalized_name, category_id, store_id, price, quantity_tenths, threshold_tenths,
+        daily_consumption_tenths, auto_consumption_enabled, last_consumed_on)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+        SELECT 1 FROM inventory_items WHERE household_id = ? AND normalized_name = ?
+      ) RETURNING id`).bind(householdId, name.trim(), normalizedName, categoryId, storeId, price ?? null,
+        toTenths(quantity), toTenths(threshold), daily, enabled ? 1 : 0, consumptionDate(), householdId, normalizedName),
+    ...inventoryShoppingSync(c.env.DB, null, householdId),
+  ])
+  const insertedId = (result[0].results[0] as { id: number } | undefined)?.id
+  if (insertedId === undefined) {
     return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
   }
-  await syncShoppingList(db, inserted)
+  const inserted = await db.select().from(inventoryItems).where(eq(inventoryItems.id, insertedId)).get()
+  if (!inserted) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
 
   return c.json(toResponse(inserted), 201)
 })
@@ -237,33 +210,48 @@ inventoryItemsRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
   }
 
-  const thresholdTenths = toTenths(threshold)
   const normalizedName = normalizeName(name)
-  const updatedItem = await db
-    .update(inventoryItems)
-    .set({ name: name.trim(), normalizedName, categoryId, storeId, thresholdTenths, ...(price === undefined ? {} : { price }) })
-    .where(and(
-      eq(inventoryItems.id, itemId),
-      eq(inventoryItems.householdId, householdId),
-      sql`not exists (
-        select 1 from inventory_items as duplicate
-        where duplicate.household_id = ${householdId}
-          and duplicate.normalized_name = ${normalizedName} and duplicate.id <> ${itemId}
-      )`,
-    ))
-    .returning()
-    .get()
-  if (!updatedItem) {
-    const existing = await db.select({ id: inventoryItems.id }).from(inventoryItems)
+  // Settlement and setting changes are ONE conditional UPDATE. Retry stale snapshots.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await db.select().from(inventoryItems)
       .where(and(eq(inventoryItems.id, itemId), eq(inventoryItems.householdId, householdId))).get()
-    if (!existing) {
-      return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+    if (!current) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+    const daily = parsed.data.dailyConsumption === undefined ? current.dailyConsumptionTenths
+      : parsed.data.dailyConsumption === null ? null : toTenths(parsed.data.dailyConsumption)
+    const enabled = parsed.data.dailyConsumption === null
+      ? false : parsed.data.autoConsumptionEnabled ?? current.autoConsumptionEnabled
+    if ((enabled && daily === null) || (parsed.data.dailyConsumption === null && parsed.data.autoConsumptionEnabled === true)) {
+      return c.json(errorResponse('VALIDATION_ERROR', '自動消費には1日の消費量が必要です'), 400)
     }
-    return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+    const changed = daily !== current.dailyConsumptionTenths || enabled !== current.autoConsumptionEnabled
+    const now = Date.now()
+    const days = changed && current.autoConsumptionEnabled && current.lastConsumedOn
+      ? consumptionDays(current.lastConsumedOn, latestConsumptionDate(now)) : 0
+    const deduction = days * (current.dailyConsumptionTenths ?? 0)
+    // New settings start tomorrow. Never move an already-future baseline backwards.
+    const baseline = changed ? [current.lastConsumedOn ?? '', consumptionDate(now)].sort().at(-1)! : current.lastConsumedOn
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE inventory_items SET name = ?, normalized_name = ?, category_id = ?, store_id = ?,
+        threshold_tenths = ?, ${price === undefined ? '' : 'price = ?,'} quantity_tenths = max(0, quantity_tenths - ?),
+        daily_consumption_tenths = ?, auto_consumption_enabled = ?, last_consumed_on = ?, consumption_revision = ?
+        WHERE id = ? AND household_id = ? AND consumption_revision = ? AND last_consumed_on IS ?
+          AND NOT EXISTS (SELECT 1 FROM inventory_items AS duplicate WHERE duplicate.household_id = ?
+            AND duplicate.normalized_name = ? AND duplicate.id <> ?) RETURNING id`)
+        .bind(name.trim(), normalizedName, categoryId, storeId, toTenths(threshold), ...(price === undefined ? [] : [price]),
+          deduction, daily, enabled ? 1 : 0, baseline, current.consumptionRevision + (changed ? 1 : 0),
+          itemId, householdId, current.consumptionRevision, current.lastConsumedOn, householdId, normalizedName, itemId),
+      ...inventoryShoppingSync(c.env.DB, itemId, householdId),
+    ])
+    if (results[0].meta.changes > 0) {
+      const updated = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).get()
+      if (!updated) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+      return c.json(toResponse(updated))
+    }
+    if (await hasDuplicateName(db, householdId, name, itemId)) {
+      return c.json(errorResponse('DUPLICATE_INVENTORY_ITEM_NAME', '同じ品名の在庫が既に登録されています'), 409)
+    }
   }
-  await syncShoppingList(db, updatedItem)
-
-  return c.json(toResponse(updatedItem))
+  return c.json(errorResponse('VALIDATION_ERROR', '他の操作と競合しました。再度保存してください'), 409)
 })
 
 inventoryItemsRoute.patch('/:id/quantity', async (c) => {
@@ -294,13 +282,14 @@ inventoryItemsRoute.patch('/:id/quantity', async (c) => {
   // 同時に複数のリクエストが同じアイテムの数量を増減させても、片方の更新が失われないようにする
   // (既存Java実装のupdateQuantity相当のSQLパターン)。範囲外ならWHERE句が0件マッチとなり
   // 更新が行われない(meta.changesで判定)。
-  const updateResult = await c.env.DB.prepare(
+  const [updateResult] = await c.env.DB.batch([c.env.DB.prepare(
     `UPDATE inventory_items
      SET quantity_tenths = quantity_tenths + ?
-     WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+     WHERE id = ? AND household_id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
   )
-    .bind(deltaTenths, itemId, deltaTenths, deltaTenths, maxTenths)
-    .run()
+    .bind(deltaTenths, itemId, householdId, deltaTenths, deltaTenths, maxTenths),
+    ...inventoryShoppingSync(c.env.DB, itemId, householdId),
+  ])
   if (updateResult.meta.changes === 0) {
     return c.json(errorResponse('VALIDATION_ERROR', QUANTITY_OUT_OF_RANGE_MESSAGE), 400)
   }
@@ -309,7 +298,6 @@ inventoryItemsRoute.patch('/:id/quantity', async (c) => {
   if (!updatedItem) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
-  await syncShoppingList(db, updatedItem)
 
   return c.json({ id: itemId, quantity: fromTenths(updatedItem.quantityTenths) })
 })

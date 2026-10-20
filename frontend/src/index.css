@@ -389,3 +389,7 @@ input[type="checkbox"], input[type="radio"] {
 .deletion-pending h2, .deletion-pending p { margin: 0; }
 .deletion-pending p { line-height: 1.6; }
 .zaiko-search { width: 100%; max-width: 360px; margin: 8px 0 12px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+
+.inventory-modal .hint { overflow-wrap: anywhere; }
+.inventory-consumption-switch { max-width: 100%; white-space: normal; }
+.inventory-consumption-switch[aria-checked="true"] { border-color: var(--primary, #2563eb); }

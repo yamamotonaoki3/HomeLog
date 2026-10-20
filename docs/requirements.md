@@ -93,7 +93,7 @@
 | F-04 | 割り勘・精算管理 | 世帯内外の割り勘・精算（請求/受領/保留） | [F04_kakeibo_warikan.md](details/features/F04_kakeibo_warikan.md) |
 | F-05 | 固定費管理 | 家賃・水道代等の固定費を毎月自動計上 | [F05_kakeibo_fixedcost.md](details/features/F05_kakeibo_fixedcost.md) |
 | F-06 | イベント管理 | イベントに支出を紐付けて集計 | [F06_kakeibo_event.md](details/features/F06_kakeibo_event.md) |
-| F-07 | 在庫管理 | 食材等の在庫を管理し、カテゴリー・店舗マスタを持つ | [F07_zaiko_inventory.md](details/features/F07_zaiko_inventory.md) |
+| F-07 | 在庫管理 | 食材等の在庫と日次自動消費（任意）を管理し、カテゴリー・店舗マスタを持つ | [F07_zaiko_inventory.md](details/features/F07_zaiko_inventory.md) |
 | F-08 | 買い物リスト | 在庫と密連携した買い物リスト | [F08_zaiko_shoppinglist.md](details/features/F08_zaiko_shoppinglist.md) |
 | F-09 | レシピ登録・管理 | 手動/手書き画像解析/WEB引用（PCのブックマーク・iPhoneのショートカット・Androidの共有から登録可）によるレシピ登録 | [F09_kondate_recipe.md](details/features/F09_kondate_recipe.md) |
 | F-10 | 献立表 | 週単位の「作りたい料理リスト」にレシピまたは自由メモを追加 | [F10_kondate_menu.md](details/features/F10_kondate_menu.md) |

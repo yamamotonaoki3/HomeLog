@@ -16,6 +16,8 @@ export interface InventoryItem {
   storeId: number | null
   quantity: number
   threshold: number
+  dailyConsumption: number | null
+  autoConsumptionEnabled: boolean
   price?: number | null
 }
 

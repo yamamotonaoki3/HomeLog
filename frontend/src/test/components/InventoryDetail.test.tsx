@@ -5,13 +5,13 @@ import { InventoryPanel } from '../../components/zaiko/InventoryPanel'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 
-const item = { id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 2, threshold: 1, price: 1280 }
+const item = { id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false, price: 1280 }
 const props = { inventory: [item], categories: [{ id: 1, name: '食品', isDefault: true }], stores: [], onStoresChange: vi.fn(), onRefresh: vi.fn(), onNotify: vi.fn() }
 
 describe('在庫の一覧と詳細', () => {
   it('3列の行全体がボタンになり詳細と編集を切り替えてフォーカスを戻す', async () => {
     const user = userEvent.setup()
-    render(<InventoryPanel inventory={[{ id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 2, threshold: 1, price: 1280 }]} categories={[{ id: 1, name: '食品', isDefault: true }]} stores={[]} onStoresChange={vi.fn()} onRefresh={vi.fn()} onNotify={vi.fn()} />)
+    render(<InventoryPanel inventory={[{ id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false, price: 1280 }]} categories={[{ id: 1, name: '食品', isDefault: true }]} stores={[]} onStoresChange={vi.fn()} onRefresh={vi.fn()} onNotify={vi.fn()} />)
     expect(screen.queryByText('値段')).not.toBeInTheDocument()
     const row = screen.getByRole('button', { name: 'testuser_牛乳の詳細' })
     expect(within(row).getByText('2.0')).toBeInTheDocument()

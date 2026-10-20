@@ -88,10 +88,10 @@ function renderDashboardPage() {
 }
 
 const inventory: InventoryItem[] = [
-  { id: 1, name: '卵', categoryId: 5, storeId: null, quantity: 2, threshold: 1 },
-  { id: 2, name: '牛乳', categoryId: 4, storeId: null, quantity: 1, threshold: 0.5 },
-  { id: 3, name: '醤油', categoryId: 6, storeId: null, quantity: 0.5, threshold: 1 },
-  { id: 4, name: '味噌', categoryId: 6, storeId: null, quantity: 3, threshold: 1 },
+  { id: 1, name: '卵', categoryId: 5, storeId: null, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false },
+  { id: 2, name: '牛乳', categoryId: 4, storeId: null, quantity: 1, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false },
+  { id: 3, name: '醤油', categoryId: 6, storeId: null, quantity: 0.5, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false },
+  { id: 4, name: '味噌', categoryId: 6, storeId: null, quantity: 3, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false },
 ]
 
 const shoppingList: ShoppingListItem[] = [
@@ -253,7 +253,7 @@ describe('DashboardPage', () => {
   })
 
   it('在庫は参考値段を表示せず、残数と閾値以下だけ不足を表示する (#314)', async () => {
-    setupApi({ inventory: [0, 0.5, 2].map((quantity, index) => ({ id: index + 1, name: `[E2E_TEST] 在庫${index}`, quantity, threshold: 0.5, categoryId: 1, storeId: null, price: 1280 })) })
+    setupApi({ inventory: [0, 0.5, 2].map((quantity, index) => ({ id: index + 1, name: `[E2E_TEST] 在庫${index}`, quantity, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false, categoryId: 1, storeId: null, price: 1280 })) })
     renderDashboardPage()
     const list = await screen.findByRole('list', { name: '在庫リスト' })
     expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 在庫0残0（不足）', '[E2E_TEST] 在庫1残0.5（不足）', '[E2E_TEST] 在庫2残2'])
@@ -274,7 +274,7 @@ describe('DashboardPage', () => {
 
   it('長い品名の全文を保持する', async () => {
     const name = '[E2E_TEST]' + '長'.repeat(41)
-    setupApi({ inventory: [{ id: 1, name, quantity: 2, threshold: 1, categoryId: 1, storeId: null }] })
+    setupApi({ inventory: [{ id: 1, name, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false, categoryId: 1, storeId: null }] })
     renderDashboardPage()
     expect(within(await screen.findByRole('list', { name: '在庫リスト' })).getByText(name)).toHaveTextContent(name)
   })

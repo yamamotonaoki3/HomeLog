@@ -267,3 +267,15 @@ describe('POST /api/shopping-list-items/update', () => {
     expect(body.removedShoppingListItemIds).toEqual([autoEntry.id])
   })
 })
+
+it('購入は自動消費設定・基準日・revisionを維持する (#329)', async () => {
+  const { headers } = await createUserWithHousehold('testuser_consumption_purchase@example.com')
+  const categoryId = await createCategory(headers)
+  const item = await createItem(headers, { name: '[E2E_TEST] testuser_purchase', categoryId, storeId: null, quantity: 0, threshold: 1, dailyConsumption: 0.2 })
+  const before = await env.DB.prepare('SELECT daily_consumption_tenths, auto_consumption_enabled, last_consumed_on, consumption_revision FROM inventory_items WHERE id = ?').bind(item.id).first()
+  const [entry] = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number }[]>()
+  const res = await app.request('/api/shopping-list-items/update', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: [{ id: entry.id, purchasedQuantity: 0.5 }] }) }, env)
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({ updatedInventoryItems: [{ id: item.id, quantity: 0.5 }], removedShoppingListItemIds: [] })
+  expect(await env.DB.prepare('SELECT daily_consumption_tenths, auto_consumption_enabled, last_consumed_on, consumption_revision FROM inventory_items WHERE id = ?').bind(item.id).first()).toEqual(before)
+})

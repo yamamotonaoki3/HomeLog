@@ -11,6 +11,7 @@ import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
 import { purgeExpiredAccounts } from './lib/account-deletion'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
+import { consumeInventoryForDate, consumptionDate } from './lib/inventory-consumption'
 import { getJstToday } from './lib/date'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
@@ -92,9 +93,10 @@ app.route('/api/user-settings', userSettingsRoute)
 // (既存JavaのFixedCostPostingService.runMonthlyPostingに相当。JSTには夏時間が無いため、
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
-  async scheduled(_controller: ScheduledController, env: Bindings): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Bindings): Promise<void> {
     // 一方が失敗しても、もう一方の日次処理は実行する。
     const results = await Promise.allSettled([
+      consumeInventoryForDate(env.DB, consumptionDate(controller.scheduledTime)),
       postDueFixedCosts(env.DB, getJstToday()),
       deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
       // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
