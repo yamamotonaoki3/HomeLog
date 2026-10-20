@@ -245,6 +245,10 @@ erDiagram
         numeric quantity
         numeric threshold
         integer price "nullable・整数円（Workers/D1）"
+        integer daily_consumption_tenths "nullable・10倍整数"
+        integer auto_consumption_enabled "default 0"
+        text last_consumed_on "nullable・JST日付"
+        integer consumption_revision "default 0"
     }
     shopping_list_items {
         bigserial id PK
@@ -673,6 +677,17 @@ Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレー�
 | quantity | NUMERIC(6,1) | ○ | 在庫個数（小数点第一位まで） |
 | threshold | NUMERIC(6,1) | ○ | 買い物リスト追加閾値 |
 | price | INTEGER（D1） | — | 日本円の整数0〜9,999,999,999。NULLは未設定。数量とは独立し購入・削除・再追加後も在庫に保持 |
+
+マイグレーション0021で以下のD1物理列を追加する。既存行の数量・閾値・リストは不変。quantity/thresholdの物理列も `quantity_tenths` / `threshold_tenths` の10倍整数であり、API境界だけで換算する。
+
+| 物理列 | 型・初期値 | 制約・意味 |
+| --- | --- | --- |
+| daily_consumption_tenths | INTEGER NULL DEFAULT NULL | NULLまたは整数1〜999999（APIでは0.1〜99999.9） |
+| auto_consumption_enabled | INTEGER NOT NULL DEFAULT 0 | 0/1。有効時は消費量と基準日必須 |
+| last_consumed_on | TEXT NULL DEFAULT NULL | JSTのYYYY-MM-DD。日付の実在性はアプリで保証 |
+| consumption_revision | INTEGER NOT NULL DEFAULT 0 | 0以上の整数。設定の実変更時に加算 |
+
+基準日・revisionは内部状態でありAPIでは返さない。数量・基準日・設定とリスト同期を単一batchにまとめる。履歴テーブルは追加しない。
 
 ### shopping_list_items（買い物リスト）
 

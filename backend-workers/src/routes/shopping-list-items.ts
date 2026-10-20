@@ -253,43 +253,19 @@ shoppingListItemsRoute.post('/update', async (c) => {
       c.env.DB.prepare(
         `UPDATE inventory_items
          SET quantity_tenths = quantity_tenths + ?
-         WHERE id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
-      ).bind(deltaTenths, item.id, deltaTenths, deltaTenths, maxTenths),
+         WHERE id = ? AND household_id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?
+           AND EXISTS (SELECT 1 FROM shopping_list_items WHERE id = ? AND inventory_item_id = inventory_items.id AND household_id = ?)`,
+      ).bind(deltaTenths, item.id, householdId, deltaTenths, deltaTenths, maxTenths, entry.id, householdId),
     )
-    // 手動追加分は削除、自動追加分は直前のUPDATE後の実際の閾値判定結果をライブサブクエリで
-    // 参照して削除するかを決める。どちらの場合も、まず「直前のUPDATEが実際に適用されたか」
-    // (quantity_tenthsが期待した新しい値になっているか)をEXISTS句で確認し、他リクエストとの
-    // 競合でUPDATEが不発(0件)だった場合は、手動・自動を問わずここで買い物リストを一切
-    // 変更しない(在庫が変わっていないのに購入済み扱いで削除してしまう事故を防ぐ)。
-    const expectedNewQuantityTenths = item.quantityTenths + deltaTenths
-    statements.push(
-      c.env.DB
-        .prepare(
-          `DELETE FROM shopping_list_items
-           WHERE id = ?
-             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
-             AND (
-               ? = 1
-               OR NOT EXISTS (
-                 SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths <= threshold_tenths
-               )
-             )`,
-        )
-        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
-    )
-    statements.push(
-      c.env.DB
-        .prepare(
-          `UPDATE shopping_list_items
-           SET purchased = 0, purchased_quantity_tenths = 0
-           WHERE id = ?
-             AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths = ?)
-             AND ? = 0 AND EXISTS (
-               SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths <= threshold_tenths
-             )`,
-        )
-        .bind(entry.id, item.id, expectedNewQuantityTenths, entry.isManual ? 1 : 0, item.id),
-    )
+    // changes() is captured immediately after the inventory update. Reset first,
+    // then use that UPDATE's changes() to guard deletion; no stale quantity equality.
+    statements.push(c.env.DB.prepare(`UPDATE shopping_list_items
+      SET purchased = 0, purchased_quantity_tenths = 0
+      WHERE id = ? AND household_id = ? AND changes() > 0`).bind(entry.id, householdId))
+    statements.push(c.env.DB.prepare(`DELETE FROM shopping_list_items
+      WHERE id = ? AND household_id = ? AND changes() > 0 AND
+        (is_manual = 1 OR EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths > threshold_tenths))`)
+      .bind(entry.id, householdId, item.id))
   }
 
   const results = await c.env.DB.batch(statements)
@@ -306,7 +282,7 @@ shoppingListItemsRoute.post('/update', async (c) => {
     if (refreshed) {
       updatedInventoryItems.push({ id: item.id, quantity: fromTenths(refreshed.quantityTenths) })
     }
-    const deleteResult = results[index * 3 + 1]
+    const deleteResult = results[index * 3 + 2]
     if (deleteResult.meta.changes > 0) {
       removedShoppingListItemIds.push(entry.id)
     }

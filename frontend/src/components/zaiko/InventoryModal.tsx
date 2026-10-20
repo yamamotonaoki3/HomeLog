@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, Store, InventoryItem } from '../../api/zaikoTypes'
@@ -21,10 +21,15 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 1))
   const [threshold, setThreshold] = useState(String(item?.threshold ?? 0.5))
   const [price, setPrice] = useState(item?.price == null ? '' : String(item.price))
+  const [dailyConsumption, setDailyConsumption] = useState(item?.dailyConsumption == null ? '' : String(item.dailyConsumption))
+  const [autoConsumptionEnabled, setAutoConsumptionEnabled] = useState(item?.autoConsumptionEnabled ?? false)
+  const consumptionTouched = useRef(!!item)
+  const pending = useRef(false)
   const [storeFormOpen, setStoreFormOpen] = useState(false)
   const [newStoreName, setNewStoreName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [saved, setSaved] = useState(false)
   const close = () => { if (!submitting) onClose() }
   const dialogRef = useInventoryDialog(close, '#inv-name')
 
@@ -48,6 +53,12 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (pending.current) return
+    const daily = dailyConsumption.trim() === '' ? null : Number(dailyConsumption)
+    if (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7)) {
+      setError('1日の消費量は0.1〜99999.9、小数点第一位までで入力してください')
+      return
+    }
     if (!validPrice(price)) { setError(PRICE_ERROR); return }
     const trimmedName = name.trim()
     if (trimmedName.length < 1 || trimmedName.length > 50) {
@@ -67,9 +78,12 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
       return
     }
     setError('')
+    pending.current = true
     setSubmitting(true)
     try {
       const body = {
+        dailyConsumption: daily,
+        autoConsumptionEnabled: daily !== null && autoConsumptionEnabled,
         name: trimmedName,
         categoryId: Number(categoryId),
         storeId: storeId === '' ? null : Number(storeId),
@@ -78,11 +92,16 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
       }
       if (item) await apiClient.patch(`/inventory-items/${item.id}`, body)
       else await apiClient.post('/inventory-items', { ...body, quantity: quantityValue })
-      await onSaved()
     } catch (err) {
       setError(getApiErrorMessage(err, item ? '在庫の編集に失敗しました' : '在庫の登録に失敗しました'))
+      pending.current = false
       setSubmitting(false)
+      return
     }
+    // The save already succeeded. A refresh failure must never enable resending it.
+    setSaved(true)
+    try { await onSaved() }
+    catch { setSubmitting(false); setError('保存しました。一覧の再取得に失敗しました。閉じて再読み込みしてください') }
   }
 
   return (
@@ -152,9 +171,25 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             onChange={(e) => setThreshold(e.target.value)}
           />
           <p className="hint">在庫個数がこの数以下になると、買い物リストに自動追加されます</p>
+          <label htmlFor="inv-consumption">1日の消費量（任意）</label>
+          <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
+            disabled={submitting || saved} value={dailyConsumption} aria-describedby="inv-consumption-hint"
+            onChange={(event) => {
+              const value = event.target.value
+              setDailyConsumption(value)
+              if (value === '') setAutoConsumptionEnabled(false)
+              else if (!consumptionTouched.current) { setAutoConsumptionEnabled(true); consumptionTouched.current = true }
+            }} />
+          <p id="inv-consumption-hint" className="hint">空欄の場合は自動消費しません</p>
+          <button type="button" role="switch" aria-label="自動消費" aria-checked={autoConsumptionEnabled}
+            className="btn inventory-consumption-switch" disabled={submitting || saved || dailyConsumption.trim() === ''}
+            onClick={() => { consumptionTouched.current = true; setAutoConsumptionEnabled((enabled) => !enabled) }}>
+            自動消費：{autoConsumptionEnabled ? 'オン' : 'オフ'}
+          </button>
+          <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || saved}>
               保存
             </button>
             <button type="button" className="btn btn-secondary" disabled={submitting} onClick={close}>

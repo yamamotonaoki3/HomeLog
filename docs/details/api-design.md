@@ -261,11 +261,11 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 リクエスト:
 ```json
-{ "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280 }
+{ "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280, "dailyConsumption": 0.2, "autoConsumptionEnabled": true }
 ```
 レスポンス（201 Created）:
 ```json
-{ "id": 100, "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280 }
+{ "id": 100, "name": "牛乳", "categoryId": 3, "storeId": 5, "quantity": 1.0, "threshold": 0.5, "price": 1280, "dailyConsumption": 0.2, "autoConsumptionEnabled": true }
 ```
 主なエラー：400（quantity/thresholdが負数等）／409（品名重複、#318）
 
@@ -282,6 +282,23 @@ POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名�
 - 値段は在庫ID単位で世帯共有し、同名の別IDは独立。世帯メンバーは閲覧・編集可。未認証401、他世帯PATCHは404。
 - 数量増減・購入更新はpriceを変更・乗算しない。同時更新は最後に成功した書き込みを保持する。履歴・比較・ダッシュボードへの追加は行わない。
 - UIの値段入力・表示は後続Issue。#235では画面を変更しない。
+
+### 日次自動消費の共通契約（#329）
+
+在庫GETの各行・POST・PATCHレスポンスは常に `dailyConsumption: number | null` と `autoConsumptionEnabled: boolean` を含む。基準日・revisionは内部状態であり入出力に公開しない。トグル専用APIは追加しない。
+
+| POST入力 | 結果 |
+| --- | --- |
+| 両方省略／消費量NULL | 未設定・オフ |
+| 正の消費量のみ | 消費量を保存しオン |
+| 正の消費量＋enabled=false | 消費量を保存しオフ |
+| 消費量NULL／未設定＋enabled=true | 400 |
+
+PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィールド省略は現在値維持。消費量NULLはクリアしてオフ、正の消費量だけの指定では現在の有効状態を維持する。enabled=trueは更新後の消費量が設定済みの場合だけ許可する。NULLとtrueの同時指定は400。同値保存は基準日を変えない。
+
+消費量は有限の数値0.1〜99999.9、小数第一位まで、またはNULL。0・負数・小数第二位・上限超過・文字列を拒否し、enabledはbooleanのみとする。未認証401、他世帯404、品名重複409を維持する。競合が連続して保存できない場合は409で再保存を案内する。
+
+登録・再開は操作日のJST日付を基準に翌日1:00から開始。停止・クリア・オン中の消費量変更は直近到来済みの1:00まで旧設定で精算する（JST 0:00〜0:59では前日）。新消費量は翌日から適用し、オフ期間は消費しない。手動数量変更・購入は消費設定・基準日を維持する。日次処理・競合時の詳細は[F07](features/F07_zaiko_inventory.md)を参照。
 
 ### PATCH /api/inventory-items/{id}/quantity
 

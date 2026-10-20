@@ -47,6 +47,8 @@ function setupApi(initial: Partial<MockState> = {}) {
         storeId: (body.storeId as number | null) ?? null,
         quantity: body.quantity as number,
         threshold: body.threshold as number,
+        dailyConsumption: body.dailyConsumption as number | null,
+        autoConsumptionEnabled: body.autoConsumptionEnabled as boolean,
       }
       state.inventory.push(item)
       if (item.quantity <= item.threshold) {
@@ -144,8 +146,8 @@ async function openTab(user: ReturnType<typeof userEvent.setup>, name: '在庫�
   await user.click(screen.getByRole('link', { name }))
 }
 
-const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 2.0, threshold: 0.5 }
-const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0 }
+const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 2.0, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false }
+const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0, dailyConsumption: null, autoConsumptionEnabled: false }
 
 describe('ZaikoPage', () => {
   it.each(['登録', '編集'] as const)('在庫の%sで409ならモーダル内にサーバーのエラーを表示し入力を保持する', async (mode) => {
@@ -269,7 +271,7 @@ describe('ZaikoPage', () => {
   })
 
   it('在庫一覧と買い物リストをキーワードで絞り込める (#315)', async () => {
-    const butter: InventoryItem = { id: 3, name: 'Ｂｕｔｔｅｒ', categoryId: 2, storeId: null, quantity: 0, threshold: 1 }
+    const butter: InventoryItem = { id: 3, name: 'Ｂｕｔｔｅｒ', categoryId: 2, storeId: null, quantity: 0, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }
     setupApi({
       inventory: [milk, egg, butter],
       shopping: [
@@ -337,7 +339,7 @@ describe('ZaikoPage', () => {
   })
 
   it('在庫減で閾値を下回ると買い物リストに自動追加が反映される', async () => {
-    setupApi({ inventory: [{ id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 1.0, threshold: 0.5 }] })
+    setupApi({ inventory: [{ id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 1.0, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false }] })
     const user = userEvent.setup()
     renderZaikoPage()
     await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
@@ -369,7 +371,7 @@ describe('ZaikoPage', () => {
 
     await waitFor(() => expect(screen.getByText('トマト')).toBeInTheDocument())
     const postCall = calls.find((c) => c.method === 'POST' && c.url === '/api/inventory-items')
-    expect(postCall?.body).toEqual({ name: 'トマト', categoryId: 1, storeId: null, quantity: 3, threshold: 1, price: null })
+    expect(postCall?.body).toEqual({ name: 'トマト', categoryId: 1, storeId: null, quantity: 3, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false, price: null })
   })
 
   it('在庫登録モーダルで品名未入力はクライアント側エラーを表示しAPIを呼ばない', async () => {

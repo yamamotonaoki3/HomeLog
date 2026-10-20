@@ -95,6 +95,10 @@ export const inventoryItems = sqliteTable('inventory_items', {
   // 「小数点第一位までの値を10倍した整数」として保持する。API入出力時にのみ10で除算/乗算する。
   quantityTenths: integer('quantity_tenths').notNull(),
   thresholdTenths: integer('threshold_tenths').notNull(),
+  dailyConsumptionTenths: integer('daily_consumption_tenths'),
+  autoConsumptionEnabled: integer('auto_consumption_enabled', { mode: 'boolean' }).notNull().default(false),
+  lastConsumedOn: text('last_consumed_on'),
+  consumptionRevision: integer('consumption_revision').notNull().default(0),
 }, (table) => [index('inventory_items_household_normalized_name_idx').on(table.householdId, table.normalizedName)])
 
 export const shoppingListItems = sqliteTable('shopping_list_items', {

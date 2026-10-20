@@ -29,6 +29,7 @@ export function InventoryDetailModal({ item, category, store, step, busy, onStep
           <button type="button" className="btn btn-tiny" disabled={busy} aria-label={`${item.name}を減らす`} onClick={() => onAdjust(-1)}>－</button>
           <select className="step-select" disabled={busy} aria-label={`${item.name}の増減ステップ`} value={String(step)} onChange={(event) => onStep(Number(event.target.value))}><option value="1">1</option><option value="0.1">0.1</option></select>
         </div></dd>
+        <dt>自動消費</dt><dd>{item.dailyConsumption == null ? '未設定' : `${item.dailyConsumption.toFixed(1)}／日・${item.autoConsumptionEnabled ? 'オン' : 'オフ'}`}</dd>
         <dt>閾値</dt><dd>{item.threshold.toFixed(1)}</dd>
         <dt>値段</dt><dd>{formatPrice(item.price)}</dd>
       </dl>

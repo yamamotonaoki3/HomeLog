@@ -445,3 +445,18 @@ describe('在庫品名の重複 (#318)', () => {
     }
   })
 })
+
+it('GET/POST/PATCHは消費量と有効状態を常に返し内部状態は公開しない (#329)', async () => {
+  const { headers } = await createUserWithHousehold('testuser_consumption_route@example.com')
+  const categoryId = await createCategory(headers)
+  const data = { name: '[E2E_TEST] testuser_consumption', categoryId, storeId: null, quantity: 1, threshold: 0 }
+  const item = await createItem(headers, { ...data, dailyConsumption: 0.2 })
+  const listed = await app.request('/api/inventory-items', { headers }, env)
+  const rows = await listed.json<Record<string, unknown>[]>()
+  expect(rows).toEqual([expect.objectContaining({ id: item.id, dailyConsumption: 0.2, autoConsumptionEnabled: true })])
+  expect(rows[0]).not.toHaveProperty('lastConsumedOn')
+  expect(rows[0]).not.toHaveProperty('consumptionRevision')
+  const patched = await app.request(`/api/inventory-items/${item.id}`, { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, env)
+  expect(patched.status).toBe(200)
+  expect(await patched.json()).toMatchObject({ dailyConsumption: 0.2, autoConsumptionEnabled: true })
+})
