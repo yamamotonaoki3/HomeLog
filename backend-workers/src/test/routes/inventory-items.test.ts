@@ -414,6 +414,24 @@ describe('在庫品名の重複 (#318)', () => {
     expect(listed.map((item) => item.name)).toEqual([body.name, '[E2E_TEST] 別品'])
   })
 
+  it.each([['ミルク', 'みるく'], ['みるく', 'ミルク'], ['みるく', 'ﾐﾙｸ'], ['ヴィーガン', 'ゔぃーがん']])('カタカナとひらがなを同じ品名として重複を拒否する: %s と %s (#325)', async (saved, input) => {
+    const { headers } = await createUserWithHousehold('testuser_kana@example.com')
+    const categoryId = await createCategory(headers)
+    const body = { name: `[E2E_TEST] ${saved}`, categoryId, storeId: null, quantity: 1, threshold: 0 }
+    expect((await request(headers, body)).status).toBe(201)
+    expect((await request(headers, { ...body, name: `[E2E_TEST] ${input}` })).status).toBe(409)
+    const row = await env.DB.prepare('SELECT normalized_name FROM inventory_items').first<{ normalized_name: string }>()
+    expect(row?.normalized_name).not.toMatch(/[ァ-ヶ]/)
+  })
+
+  it('長音と「う」は別の品名として登録できる (#325)', async () => {
+    const { headers } = await createUserWithHousehold('testuser_kana_long@example.com')
+    const categoryId = await createCategory(headers)
+    const body = { categoryId, storeId: null, quantity: 1, threshold: 0 }
+    expect((await request(headers, { ...body, name: '[E2E_TEST] ぎゅうにゅう' })).status).toBe(201)
+    expect((await request(headers, { ...body, name: '[E2E_TEST] ぎゅうにゅー' })).status).toBe(201)
+  })
+
   it('自己除外と別世帯の同名登録を許可する', async () => {
     for (const email of ['testuser_one@example.com', 'testuser_two@example.com']) {
       const { headers } = await createUserWithHousehold(email)

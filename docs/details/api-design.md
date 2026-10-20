@@ -269,7 +269,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```
 主なエラー：400（quantity/thresholdが負数等）／409（品名重複、#318）
 
-POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名をNFKC正規化・小文字化・前後空白除去して同一世帯内で比較する。
+POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名をNFKC正規化・小文字化・前後空白除去・カタカナのひらがな化（#325）をして同一世帯内で比較する。
 編集対象自身を除いて一致すれば409、共通形式 `{ code: "DUPLICATE_INVENTORY_ITEM_NAME", message: "同じ品名の在庫が既に登録されています", details: [] }` を返す。
 別世帯は対象外。失敗時は在庫・買い物リストを変更しない。既存重複データは維持し、UNIQUE制約は追加しない。
 
