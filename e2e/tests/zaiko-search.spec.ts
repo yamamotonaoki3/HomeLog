@@ -19,7 +19,7 @@ for (const width of [1280, 390, 320]) {
     const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     const headers = { Authorization: `Bearer ${token}` }
     const categories = await (await page.request.get('/api/zaiko-categories', { headers })).json()
-    for (const [name, quantity] of [['[E2E_TEST] 牛乳', 0], ['[E2E_TEST] Butter', 0], ['[E2E_TEST] お米', 5]] as const) {
+    for (const [name, quantity] of [['[E2E_TEST] 牛乳', 0], ['[E2E_TEST] Butter', 0], ['[E2E_TEST] お米', 5], ['[E2E_TEST] ミルクティー', 5]] as const) {
       const res = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId: categories[0].id, storeId: null, quantity, threshold: 1 } })
       expect(res.status()).toBe(201)
     }
@@ -32,6 +32,10 @@ for (const width of [1280, 390, 320]) {
     await expectFits(page, width)
     const dir = process.env.ZAIKO_SEARCH_SCREENSHOT_DIR
     if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `inventory-${width}.png`) }) }
+    // カタカナの品名もひらがなで見つかる(#326)。
+    await search.fill('みるく')
+    await expect(inventory.getByRole('button', { name: '[E2E_TEST] ミルクティーの詳細' })).toBeVisible()
+    await expect(inventory.getByRole('button', { name: '[E2E_TEST] お米の詳細' })).toHaveCount(0)
     await search.fill('チーズ')
     await expect(inventory.getByText('該当する品目がありません')).toBeVisible()
 
