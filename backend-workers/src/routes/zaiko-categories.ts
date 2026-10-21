@@ -11,12 +11,15 @@ import type { AppEnv } from '../index'
 const NOT_FOUND_MESSAGE = 'カテゴリーが見つかりません'
 const IN_USE_MESSAGE = '使用中のカテゴリーは削除できません'
 const DEFAULT_IMMUTABLE_MESSAGE = 'デフォルトカテゴリーは編集・削除できません'
+const DUPLICATE_MESSAGE = '同じ名前のカテゴリーが既に登録されています'
+// Match String.trim(), including full-width spaces in legacy names.
+const NAME_WHITESPACE = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
 const DEFAULT_CATEGORY_NAMES = ['野菜', '肉', '魚介', '乳製品', '卵', '調味料', '飲料', '冷凍食品', '乾物', 'その他']
 
 const categoryNameSchema = z.object({
-  name: z.string().max(50).refine((value) => value.trim().length > 0, { message: 'カテゴリー名を入力してください' }),
+  name: z.string().trim().min(1, { message: 'カテゴリー名を入力してください' }).max(50),
 })
 
 async function parseJsonBody(c: Context): Promise<unknown | null> {
@@ -81,13 +84,24 @@ zaikoCategoriesRoute.post('/', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  const inserted = await db
-    .insert(zaikoCategories)
-    .values({ householdId, name: parsed.data.name, isDefault: false })
-    .returning()
-    .get()
-
-  return c.json({ id: inserted.id, name: inserted.name, isDefault: inserted.isDefault }, 201)
+  // Default names are reserved even before the first GET seeds them.
+  if (DEFAULT_CATEGORY_NAMES.includes(parsed.data.name)) {
+    return c.json(errorResponse('DUPLICATE_ZAIKO_CATEGORY_NAME', DUPLICATE_MESSAGE), 409)
+  }
+  // Check and write in one SQLite statement so concurrent requests cannot both insert.
+  const inserted = await c.env.DB.prepare(
+    `INSERT INTO zaiko_categories (household_id, name, is_default)
+     SELECT ?, ?, 0
+     WHERE NOT EXISTS (
+       SELECT 1 FROM zaiko_categories WHERE household_id = ? AND trim(name, ?) = ?
+     )
+     RETURNING id, name`,
+  ).bind(householdId, parsed.data.name, householdId, NAME_WHITESPACE, parsed.data.name)
+    .first<{ id: number; name: string }>()
+  if (!inserted) {
+    return c.json(errorResponse('DUPLICATE_ZAIKO_CATEGORY_NAME', DUPLICATE_MESSAGE), 409)
+  }
+  return c.json({ id: inserted.id, name: inserted.name, isDefault: false }, 201)
 })
 
 zaikoCategoriesRoute.patch('/:id', async (c) => {
@@ -116,9 +130,26 @@ zaikoCategoriesRoute.patch('/:id', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', DEFAULT_IMMUTABLE_MESSAGE), 400)
   }
 
-  await db.update(zaikoCategories).set({ name: parsed.data.name }).where(eq(zaikoCategories.id, categoryId))
-
-  return c.json({ id: category.id, name: parsed.data.name, isDefault: false })
+  if (DEFAULT_CATEGORY_NAMES.includes(parsed.data.name)) {
+    return c.json(errorResponse('DUPLICATE_ZAIKO_CATEGORY_NAME', DUPLICATE_MESSAGE), 409)
+  }
+  const updated = await c.env.DB.prepare(
+    `UPDATE zaiko_categories SET name = ?
+     WHERE id = ? AND household_id = ? AND is_default = 0
+       AND NOT EXISTS (
+         SELECT 1 FROM zaiko_categories AS existing
+         WHERE existing.household_id = ? AND existing.id <> ? AND trim(existing.name, ?) = ?
+       )
+     RETURNING id, name`,
+  ).bind(parsed.data.name, categoryId, householdId, householdId, categoryId, NAME_WHITESPACE, parsed.data.name)
+    .first<{ id: number; name: string }>()
+  if (!updated) {
+    const remaining = await db.select({ id: zaikoCategories.id }).from(zaikoCategories)
+      .where(and(eq(zaikoCategories.id, categoryId), eq(zaikoCategories.householdId, householdId))).get()
+    if (!remaining) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+    return c.json(errorResponse('DUPLICATE_ZAIKO_CATEGORY_NAME', DUPLICATE_MESSAGE), 409)
+  }
+  return c.json({ id: updated.id, name: updated.name, isDefault: false })
 })
 
 zaikoCategoriesRoute.delete('/:id', async (c) => {

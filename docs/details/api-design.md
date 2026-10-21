@@ -257,6 +257,13 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | GET/POST/PATCH/DELETE | `/api/zaiko-categories` | カテゴリーマスタ管理 |
 | GET/POST/PATCH/DELETE | `/api/stores` | 店舗マスタ管理 |
 
+### 在庫カテゴリー名（#337）
+
+POST /api/zaiko-categories と PATCH /api/zaiko-categories/:id のnameは前後空白を除去して1〜50文字。世帯内の前後空白除去後の完全一致を重複とする（大文字小文字・全半角などは追加正規化しない）。デフォルト名は初回GET前も予約し、別世帯の同名は許可する。PATCHは自身を除外し、デフォルトの編集不可は維持する。
+
+重複時は409、code: DUPLICATE_ZAIKO_CATEGORY_NAME、message:「同じ名前のカテゴリーが既に登録されています」、details: []。競合時も新しい重複を作らず、失敗時は保存しない。既存データの一括変更・削除はしない。詳細は[F07](features/F07_zaiko_inventory.md)「在庫カテゴリー名の重複防止」を参照。
+
+
 ### POST /api/inventory-items
 
 リクエスト:
