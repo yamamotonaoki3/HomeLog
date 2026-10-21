@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 
 const item = { id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false, price: 1280 }
-const props = { inventory: [item], categories: [{ id: 1, name: '食品', isDefault: true }], stores: [], onStoresChange: vi.fn(), onRefresh: vi.fn(), onNotify: vi.fn() }
+const props = { inventory: [item], categories: [{ id: 1, name: '食品', isDefault: true }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onRefresh: vi.fn(), onNotify: vi.fn() }
 
 describe('在庫の一覧と詳細', () => {
   it('保存後の一覧再取得が終わるまで閉じず古い設定で開き直させない', async () => {

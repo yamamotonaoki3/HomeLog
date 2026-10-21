@@ -109,3 +109,7 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 ### 在庫カテゴリーAPI（#337）
 
 [zaiko-categories-api.spec.ts](tests/zaiko-categories-api.spec.ts)は実行中のローカルWorkersへ直接要求し、追加・前後空白・デフォルト名の予約・重複409・自己更新・他世帯分離・並行追加の単一成功を確認する。既定は127.0.0.1:8787。別のローカル検証用ポートを使う場合はE2E_WORKERS_API_ORIGINで指定する（localhostまたは127.0.0.1のHTTPのみ許可）。
+
+### 在庫モーダル内のカテゴリー追加（#338）
+
+[zaiko-categories-ui.spec.ts](tests/zaiko-categories-ui.spec.ts)は1280／390／320pxで、登録・編集の追加フォーム、重複409の入力保持、同じモーダル内での追加と自動選択、追加中の操作ガード、Enter追加、在庫キャンセル後もカテゴリーが残ること、再読込後の在庫との関連を実ローカルAPIで検証する。390／320pxはタッチ対応。CATEGORY_SCREENSHOT_DIRをリポジトリ外に指定すると、重複エラー・追加選択後・編集画面をcategory-duplicate-<幅>.png、category-selected-<幅>.png、category-edit-<幅>.pngへ保存する。
