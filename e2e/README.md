@@ -99,3 +99,7 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 | 3 | `accounts.spec.ts` | 口座登録 → 口座指定の支出が残高・取引履歴に反映 |
 
 `zaiko-price-api.spec.ts` の画面画像はPlaywrightのテスト別出力先（`test-results/` 配下）へ保存する。値段の入力・表示UIは後続Issueのため、このspecの画面検証は既存一覧の表示と横幅を対象とする。
+
+### 直接編集（#332 / #333）
+
+在庫の行は詳細編集を直接開き、左の現在数・その右の上下＋／－と増減幅1／0.1ボタンで個数の即時増減・未保存入力保持・保存／キャンセル・再読込後の永続化をinventory-detail.spec.tsで1280／390／320px検証する。イベント行は登録者のみ編集を直接開き、集計・削除確認まで編集モーダル内で行う。events.spec.tsで編集・閲覧権限とキーボード操作を検証する。

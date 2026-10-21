@@ -1,12 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
+import { useDialog } from '../../hooks/useDialog'
+import { EventSummary } from './EventSummary'
 import type { Event } from '../../api/eventTypes'
 
 interface Props {
   event: Event | null
   onClose: () => void
   onSaved: () => Promise<void>
+  onDeleted?: () => void
 }
 
 const RECURRENCE_OPTIONS: { value: Event['recurrenceType']; label: string }[] = [
@@ -17,7 +20,7 @@ const RECURRENCE_OPTIONS: { value: Event['recurrenceType']; label: string }[] = 
   { value: 'yearly', label: '毎年' },
 ]
 
-export function EventModal({ event, onClose, onSaved }: Props) {
+export function EventModal({ event, onClose, onSaved, onDeleted }: Props) {
   const isEdit = event !== null
   const [name, setName] = useState(event?.name ?? '')
   const [eventDate, setEventDate] = useState(event?.eventDate ?? '')
@@ -32,8 +35,33 @@ export function EventModal({ event, onClose, onSaved }: Props) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  const cancelDeleteButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (confirmDelete) cancelDeleteButton.current?.focus() }, [confirmDelete])
+  const pending = useRef(false)
+  const close = () => { if (!pending.current) onClose() }
+  const dialogRef = useDialog(close, '#event-name')
+
+  const handleDelete = async () => {
+    if (!event?.editable || pending.current || !onDeleted) return
+    pending.current = true
+    setSubmitting(true)
+    setError('')
+    try {
+      await apiClient.delete(`/events/${event.id}`)
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'イベントの削除に失敗しました'))
+      pending.current = false
+      setSubmitting(false)
+      return
+    }
+    onDeleted()
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (pending.current || confirmDelete) return
     const trimmedName = name.trim()
     if (trimmedName.length < 1 || trimmedName.length > 50) {
       setError('イベント名は1〜50文字で入力してください')
@@ -58,6 +86,7 @@ export function EventModal({ event, onClose, onSaved }: Props) {
     }
 
     setError('')
+    pending.current = true
     setSubmitting(true)
     const payload = {
       name: trimmedName,
@@ -79,6 +108,7 @@ export function EventModal({ event, onClose, onSaved }: Props) {
       }
     } catch (err) {
       setError(getApiErrorMessage(err, isEdit ? 'イベントの更新に失敗しました' : 'イベントの登録に失敗しました'))
+      pending.current = false
       setSubmitting(false)
       return
     }
@@ -93,8 +123,8 @@ export function EventModal({ event, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal event-modal">
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) close() }}>
+      <div ref={dialogRef} className="modal event-modal" role="dialog" aria-modal="true" aria-label={isEdit ? 'イベントを編集' : 'イベントを登録'}>
         <h2>{isEdit ? 'イベントを編集' : 'イベントを登録'}</h2>
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="event-name">イベント名</label>
@@ -167,12 +197,21 @@ export function EventModal({ event, onClose, onSaved }: Props) {
               個人
             </label>
           </fieldset>
-          <p className="error">{error}</p>
+          {event && <EventSummary event={event} />}
+          {error && <p className="error" role="alert">{error}</p>}
+          {confirmDelete && <section className="event-delete-confirm" aria-label="削除確認">
+            <p>「{event?.name}」を削除しますか？この操作は取り消せません。</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-danger" disabled={submitting} onClick={handleDelete}>削除する</button>
+              <button ref={cancelDeleteButton} type="button" className="btn btn-secondary" disabled={submitting} onClick={() => { setConfirmDelete(false); setError(''); requestAnimationFrame(() => deleteButton.current?.focus()) }}>削除をやめる</button>
+            </div>
+          </section>}
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            {event?.editable && onDeleted && <button ref={deleteButton} type="button" className="btn btn-danger" disabled={submitting || confirmDelete} onClick={() => { setError(''); setConfirmDelete(true) }}>削除</button>}
+            <button type="submit" className="btn btn-primary" disabled={submitting || confirmDelete}>
               {isEdit ? '更新' : '登録'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+            <button type="button" className="btn btn-secondary" onClick={close} disabled={submitting}>
               キャンセル
             </button>
           </div>

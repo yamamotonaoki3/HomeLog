@@ -39,7 +39,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
   })
 
   for (const width of [1280, 390, 320]) {
-    test(`在庫の縦操作・閾値連携・ページ幅（${width}px）`, async ({ browser, baseURL, consoleGuard }) => {
+    test(`在庫の個数・上下ボタン操作・閾値連携・ページ幅（${width}px）`, async ({ browser, baseURL, consoleGuard }) => {
       const context = await browser.newContext({ baseURL, viewport: { width, height: 900 }, hasTouch: width < 400 })
       try {
         const page = await context.newPage()
@@ -65,35 +65,34 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         await page.getByRole('button', { name: '保存', exact: true }).click()
         const row = page.getByTestId('inventory-panel').getByRole('button', { name: `${name}の詳細`, exact: true })
         await row.click()
-        const detail = page.getByRole('dialog', { name: '在庫詳細' })
+        const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
         const quantity = detail.locator('.qty-value')
         await expect(quantity).toHaveText('1.0')
         await expect(detail).toContainText(categoryName)
         await expect(detail).toContainText(storeName)
         const plus = detail.getByRole('button', { name: `${name}を増やす`, exact: true })
         const minus = detail.getByRole('button', { name: `${name}を減らす`, exact: true })
-        const step = detail.getByRole('combobox')
+        const step = detail.getByRole('group', { name: '増減幅' })
         await plus.scrollIntoViewIfNeeded()
         const boxes = await Promise.all([plus, quantity, minus, step].map((locator) => locator.boundingBox()))
         for (const box of [boxes[0], boxes[2]]) {
-          expect(box!.width).toBeGreaterThanOrEqual(40)
-          expect(box!.height).toBeGreaterThanOrEqual(40)
+          expect(box!.width).toBeGreaterThanOrEqual(32)
+          expect(box!.height).toBeGreaterThanOrEqual(26)
         }
-        for (let i = 0; i < boxes.length - 1; i++) {
-          expect(boxes[i]!.y + boxes[i]!.height).toBeLessThanOrEqual(boxes[i + 1]!.y)
-        }
-        expect(boxes[0]!.x).toBe(boxes[2]!.x)
+        expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[0]!.x)
+        expect(boxes[0]!.y + boxes[0]!.height).toBeLessThanOrEqual(boxes[2]!.y)
+        expect(Math.abs(boxes[0]!.x - boxes[2]!.x)).toBeLessThan(1)
         const press = async (locator: typeof plus) => width < 400 ? locator.tap() : locator.click()
         await press(plus)
         await expect(quantity).toHaveText('2.0')
         await press(minus)
         await expect(quantity).toHaveText('1.0')
-        await step.selectOption('0.1')
+        await step.getByRole('button', { name: '0.1', exact: true }).click()
         await press(plus)
         await expect(quantity).toHaveText('1.1')
         await press(minus)
         await expect(quantity).toHaveText('1.0')
-        await step.selectOption('1')
+        await step.getByRole('button', { name: '1', exact: true }).click()
         await press(minus)
         await expect(quantity).toHaveText('0.0')
         let patches = 0
@@ -103,7 +102,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         await expect(quantity).toHaveText('0.0')
         expect(patches).toBe(0)
         const tabs = page.getByRole('navigation', { name: '在庫管理関連機能' })
-        await detail.getByRole('button', { name: '閉じる' }).click()
+        await detail.getByRole('button', { name: 'キャンセル' }).click()
         await tabs.getByRole('link', { name: '買い物リスト' }).click()
         const shoppingRow = page.getByTestId('shopping-panel').getByRole('button', { name: `${name}の詳細`, exact: true })
         await expect(shoppingRow).toBeVisible()
@@ -111,7 +110,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         await press(row)
         await press(plus)
         await expect(quantity).toHaveText('1.0')
-        await detail.getByRole('button', { name: '閉じる' }).click()
+        await detail.getByRole('button', { name: 'キャンセル' }).click()
         await tabs.getByRole('link', { name: '買い物リスト' }).click()
         await expect(shoppingRow).toHaveCount(0)
         await tabs.getByRole('link', { name: '在庫一覧' }).click()

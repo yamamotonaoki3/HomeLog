@@ -3,7 +3,6 @@ import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
-import { InventoryDetailModal } from './InventoryDetailModal'
 import { filterByKeyword } from '../../lib/keyword'
 
 interface Props {
@@ -27,7 +26,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
   const selected = inventory.find((item) => item.id === selectedId)
   const visible = filterByKeyword(inventory, keyword, (item) => item.name)
   const restoreFocus = () => (origin.current?.isConnected ? origin.current : register.current)?.focus()
-  const closeDetail = () => { setSelectedId(undefined); restoreFocus() }
+  const closeForm = () => { setSelectedId(undefined); setFormOpen(false); restoreFocus() }
   useEffect(() => {
     if (selectedId !== undefined && !selected) {
       setSelectedId(undefined)
@@ -55,16 +54,13 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
     <div className="inventory-list" aria-label="在庫一覧">
       <div className="inventory-list-grid list-row-heading"><span>品名</span><span>在庫数</span><span>閾値</span></div>
       {inventory.length === 0 ? <p>在庫がありません</p> : visible.length === 0 ? <p>該当する品目がありません</p> : visible.map((item) =>
-        <button type="button" key={item.id} className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
+        <button type="button" key={item.id} className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>
           <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
         </button>)}
     </div>
-    {selected && !formOpen && <InventoryDetailModal item={selected} category={categories.find((category) => category.id === selected.categoryId)?.name ?? ''} store={stores.find((store) => store.id === selected.storeId)?.name ?? ''} step={steps[selected.id] ?? 1} busy={busy} onStep={(step) => setSteps((previous) => ({ ...previous, [selected.id]: step }))} onAdjust={(sign) => { void adjustQuantity(selected, sign) }} onEdit={() => setFormOpen(true)} onClose={closeDetail} />}
-    {formOpen && <InventoryModal item={selected} categories={categories} stores={stores} onStoresChange={onStoresChange} onClose={() => { setFormOpen(false); if (!selected) restoreFocus() }} onSaved={async () => {
+    {formOpen && <InventoryModal item={selected} categories={categories} stores={stores} onStoresChange={onStoresChange} busy={busy} step={selected ? steps[selected.id] ?? 1 : 1} onStep={(step) => { if (selected) setSteps((previous) => ({ ...previous, [selected.id]: step })) }} onAdjust={(sign) => { if (selected) void adjustQuantity(selected, sign) }} onClose={closeForm} onSaved={async () => {
       pending.current = true
       setBusy(true)
-      setFormOpen(false)
-      if (!selected) restoreFocus()
       const message = selected ? '在庫を編集しました' : '在庫を登録しました'
       try {
         await onRefresh()
@@ -74,6 +70,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
       } finally {
         pending.current = false
         setBusy(false)
+        closeForm()
       }
     }} />}
   </div>

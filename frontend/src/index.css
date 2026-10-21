@@ -393,3 +393,15 @@ input[type="checkbox"], input[type="radio"] {
 .inventory-modal .hint { overflow-wrap: anywhere; }
 .inventory-consumption-switch { max-width: 100%; white-space: normal; }
 .inventory-consumption-switch[aria-checked="true"] { border-color: var(--primary, #2563eb); }
+
+.inventory-quantity-row { display: flex; align-items: center; gap: 8px; }
+.inventory-quantity-inline { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px 6px; padding: 0; border: none; }
+.inventory-quantity-inline .btn { grid-column: 2; min-width: 32px; min-height: 26px; width: 32px; height: 26px; padding: 0; font-size: 14px; }
+.inventory-modal input, .inventory-modal select { font-size: 14px; }
+.inventory-quantity-inline .qty-value { grid-row: 1 / 3; min-width: 0; width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; text-align: left; overflow-wrap: anywhere; font-size: 14px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.inventory-step-options { display: grid; flex: 0 0 auto; grid-template-columns: repeat(2, 40px); gap: 2px; margin: 0; }
+.inventory-step-options > span { grid-column: 1 / -1; text-align: center; font-size: 11px; color: #6b7280; line-height: 1.2; }
+.inventory-step-options .btn { min-width: 40px; min-height: 40px; padding: 8px 0; }
+.inventory-step-options .btn[aria-pressed="true"] { background: #2563eb; color: white; }
+.event-summary { border-top: 1px solid #d1d5db; margin-top: 16px; padding-top: 12px; }
+.event-delete-confirm { border: 1px solid #b91c1c; border-radius: 8px; padding: 12px; margin-top: 12px; }
