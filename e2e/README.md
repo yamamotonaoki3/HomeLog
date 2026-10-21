@@ -105,3 +105,7 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 - 在庫：[inventory-detail.spec.ts](tests/inventory-detail.spec.ts)は1280／390／320pxで行全域・Enter／Spaceから直接編集を開き、個数の即時増減・増減幅選択・未保存入力保持・キャンセル・保存・再読込後の永続化を検証する。個数は他の入力欄と同じ文字サイズ、数値は左、枠外の右に小型の上下＋／－、増減幅1／0.1は同じ行という配置も確認する。Tab巡回・Escape／背景クリック・起点復帰と横はみ出しを確認する。390／320pxはタッチ対応。`INVENTORY_SCREENSHOT_DIR`をリポジトリ外に指定すると、各幅の編集画面を`inventory-edit-<幅>.png`へ保存する。
 - イベント：[events.spec.ts](tests/events.spec.ts)は1280／390／320pxで登録者の行から編集を直接開き、集計の期間変更・更新・同じモーダル内の削除確認／取りやめ・入力保持・削除・起点復帰を検証する。他の登録者の共有イベントは閲覧でき、変更操作が出ないことも確認する。`ISSUE_246_SHOTS_DIR`をリポジトリ外に指定すると`event-edit-top-<幅>.png`と`event-edit-delete-<幅>.png`を保存する。
 - 支出・収入の[kakeibo-detail.spec.ts](tests/kakeibo-detail.spec.ts)は従来どおり詳細を開く行操作を検証する。イベント統合に合わせてその操作を変更しない。
+
+### 在庫カテゴリーAPI（#337）
+
+[zaiko-categories-api.spec.ts](tests/zaiko-categories-api.spec.ts)は実行中のローカルWorkersへ直接要求し、追加・前後空白・デフォルト名の予約・重複409・自己更新・他世帯分離・並行追加の単一成功を確認する。既定は127.0.0.1:8787。別のローカル検証用ポートを使う場合はE2E_WORKERS_API_ORIGINで指定する（localhostまたは127.0.0.1のHTTPのみ許可）。
