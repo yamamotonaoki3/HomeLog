@@ -77,11 +77,10 @@ for (const width of [1280, 390, 320]) {
     }
     await page.goto('/zaiko')
     await page.getByTestId('inventory-panel').getByRole('button', { name: `${items[0].name}の詳細`, exact: true }).click()
-    const detail = page.getByRole('dialog', { name: '在庫詳細' })
-    await detail.getByRole('button', { name: `${items[0].name}を編集`, exact: true }).click()
+    const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
     await page.getByLabel('値段（円・任意）').fill('980')
     await page.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(detail.locator('dd').last()).toHaveText('980円')
+    await expect(detail).toBeHidden()
     await page.goto('/')
     await expect(shopping.getByRole('listitem').filter({ hasText: items[0].name }).locator('.dashboard-stock-value')).toHaveText('980円')
   })

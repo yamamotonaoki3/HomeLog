@@ -12,17 +12,20 @@ export async function checkRow(page: Page, row: Locator, width: number, dialogNa
   await expect(row).toBeFocused()
   await row.press('Enter')
   const dialog = page.getByRole('dialog', { name: dialogName })
-  const close = dialog.getByRole('button', { name: '閉じる', exact: true })
-  await expect(close).toBeFocused()
+  const editing = dialogName === 'イベントを編集'
+  const close = dialog.getByRole('button', { name: editing ? 'キャンセル' : '閉じる', exact: true })
+  const initial = editing ? dialog.getByLabel('イベント名', { exact: true }) : close
+  await expect(initial).toBeFocused()
   await page.keyboard.press('Tab')
   await expect.poll(() => dialog.evaluate(el => el.contains(document.activeElement))).toBe(true)
   await page.keyboard.press('Shift+Tab')
-  await expect(close).toBeFocused()
+  await expect(initial).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(row).toBeFocused()
   await row.press('Space')
   await close.click()
   await expect(row).toBeFocused()
+  if (editing) { await row.press('Tab'); await page.keyboard.press('Shift+Tab'); await expect(row).toBeFocused() }
   const focus = await row.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, outline: getComputedStyle(el).outlineStyle }))
   expect(focus.outline).toBe('solid')
   if (width === 1280) {

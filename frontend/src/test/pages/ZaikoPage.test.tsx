@@ -165,11 +165,10 @@ describe('ZaikoPage', () => {
     await screen.findByRole('button', { name: '牛乳の詳細' })
     if (mode === '編集') {
       await user.click(screen.getByRole('button', { name: '卵の詳細' }))
-      await user.click(screen.getByRole('button', { name: '卵を編集' }))
     } else {
       await user.click(screen.getByRole('button', { name: '在庫を登録' }))
     }
-    const modal = screen.getByRole('dialog', { name: `在庫を${mode}` })
+    const modal = screen.getByRole('dialog', { name: mode === '編集' ? '在庫詳細・編集' : '在庫を登録' })
     await user.clear(within(modal).getByLabelText('品名'))
     await user.type(within(modal).getByLabelText('品名'), '牛乳')
     await user.type(within(modal).getByLabelText('値段（円・任意）'), '123')
@@ -183,31 +182,30 @@ describe('ZaikoPage', () => {
     expect(screen.queryByText(`在庫を${mode}しました`)).not.toBeInTheDocument()
   })
 
-  it('在庫操作は＋、個数、−、ステップの順で、品目ごとのステップを保持する', async () => {
+  it('在庫操作は個数、＋、−の順で、品目ごとの増減幅を保持する', async () => {
     const { calls } = setupApi({ inventory: [{ ...milk }, { ...egg, quantity: 2 }] })
     const user = userEvent.setup()
     renderZaikoPage()
     await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
     const plus = screen.getByRole('button', { name: '牛乳を増やす' })
-    const row = screen.getByRole('dialog', { name: '在庫詳細' })
-    const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value, select')]
+    const row = screen.getByRole('dialog', { name: '在庫詳細・編集' })
+    const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value')]
     expect(controls).toEqual([
-      plus, row.querySelector('.qty-value'),
+      row.querySelector('.qty-value'), plus,
       within(row).getByRole('button', { name: '牛乳を減らす' }),
-      within(row).getByRole('combobox'),
     ])
-    await user.selectOptions(screen.getByLabelText('牛乳の増減ステップ'), '0.1')
+    await user.click(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' }))
     await user.click(plus)
     await waitFor(() => expect(row.querySelector('.qty-value')).toHaveTextContent(/^2\.1$/))
-    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵を減らす' }))
-    const eggRow = screen.getByRole('dialog', { name: '在庫詳細' })
+    const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
     await waitFor(() => expect(eggRow.querySelector('.qty-value')).toHaveTextContent(/^1\.0$/))
-    expect(screen.getByLabelText('卵の増減ステップ')).toHaveValue('1')
-    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '1' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
-    expect(screen.getByLabelText('牛乳の増減ステップ')).toHaveValue('0.1')
+    expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
     expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
       { method: 'PATCH', url: '/api/inventory-items/1/quantity', body: { delta: 0.1 } },
       { method: 'PATCH', url: '/api/inventory-items/2/quantity', body: { delta: -1 } },
@@ -228,7 +226,7 @@ describe('ZaikoPage', () => {
     await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
     expect(screen.getByText('乳製品')).toBeInTheDocument()
     expect(screen.getByText('スーパーA')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     expect(screen.getByTestId('shopping-panel')).not.toBeVisible()
 
     await openTab(user, '買い物リスト')
@@ -330,7 +328,7 @@ describe('ZaikoPage', () => {
     renderZaikoPage()
     await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
 
-    await user.selectOptions(screen.getByLabelText('牛乳の増減ステップ'), '0.1')
+    await user.click(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' }))
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
 
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('1.9')).toBeInTheDocument())
@@ -347,7 +345,7 @@ describe('ZaikoPage', () => {
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('0.0')).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     // タブを切り替えたときに、在庫の増減で自動追加された最新の買い物リストが表示される
     await openTab(user, '買い物リスト')
     const shoppingPanel = screen.getByTestId('shopping-panel')
@@ -520,7 +518,7 @@ describe('ZaikoPage', () => {
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
     await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
-    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     await user.click(screen.getByRole('button', { name: '更新' }))
 
     // 卵のみ送信され（牛乳は個数未入力）、在庫2.0に更新・閾値1.0を上回るためリストから除外される
@@ -534,7 +532,7 @@ describe('ZaikoPage', () => {
     // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
     await openTab(user, '在庫一覧')
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
-    const eggRow = screen.getByRole('dialog', { name: '在庫詳細' })
+    const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
     expect(within(eggRow).getByText('2.0')).toBeInTheDocument()
   })
 })

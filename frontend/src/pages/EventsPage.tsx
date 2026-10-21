@@ -10,8 +10,6 @@ export function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [modalTarget, setModalTarget] = useState<Event | null | undefined>(undefined)
-  const [deleteTarget, setDeleteTarget] = useState<Event | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const addButton = useRef<HTMLButtonElement>(null)
@@ -19,7 +17,6 @@ export function EventsPage() {
     (detailTrigger.current?.isConnected ? detailTrigger.current : addButton.current)?.focus({ preventScroll: true })
   }, [])
   const closeDetail = useCallback(() => { setDetailId(null); restoreFocus() }, [restoreFocus])
-  const [toggling, setToggling] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -64,41 +61,6 @@ export function EventsPage() {
     showToast(wasEdit ? 'イベントを更新しました' : 'イベントを登録しました')
   }
 
-  const handleToggleShowOnDashboard = async (event: Event) => {
-    if (toggling || !event.editable) return
-    setToggling(true)
-    const nextShowOnDashboard = !event.showOnDashboard
-    try {
-      await apiClient.patch(`/events/${event.id}/show-on-dashboard`, { showOnDashboard: nextShowOnDashboard })
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '表示設定の更新に失敗しました'))
-      setToggling(false)
-      return
-    }
-    setEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, showOnDashboard: nextShowOnDashboard } : e))
-    setToggling(false)
-  }
-
-  const handleDelete = async () => {
-    if (!deleteTarget || deleting || !deleteTarget.editable) return
-    const deletedId = deleteTarget.id
-    setDeleting(true)
-    try {
-      await apiClient.delete(`/events/${deletedId}`)
-    } catch (err) {
-      showToast(getApiErrorMessage(err, 'イベントの削除に失敗しました'))
-      setDeleting(false)
-      setDeleteTarget(null)
-      return
-    }
-    setEvents((prev) => prev.filter((event) => event.id !== deletedId))
-    setDeleting(false)
-    setDeleteTarget(null)
-    setDetailId(null)
-    requestAnimationFrame(restoreFocus)
-    showToast('イベントを削除しました')
-  }
-
   const detailEvent = events.find((event) => event.id === detailId)
 
   if (loading) {
@@ -121,7 +83,7 @@ export function EventsPage() {
             ) : (
               events.map((event) => (
                 <button key={event.id} type="button" className="list-row-button events-grid" aria-label={`${event.name}の詳細`}
-                  onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; setDetailId(event.id) }}>
+                  onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; if (event.editable) { setDetailId(null); setModalTarget(event) } else setDetailId(event.id) }}>
                   <span>{event.name}</span>
                   <span>{event.eventDate}（{timeRangeLabel(event)}）</span>
                   <span>{RECURRENCE_LABELS[event.recurrenceType]}</span>
@@ -130,39 +92,20 @@ export function EventsPage() {
             )}
         </div>
       </div>
-      {detailEvent && modalTarget === undefined && !deleteTarget && (
+      {detailEvent && modalTarget === undefined && (
         <EventDetailModal
           event={detailEvent}
           onClose={closeDetail}
-          onEdit={() => setModalTarget(detailEvent)}
-          onDelete={() => setDeleteTarget(detailEvent)}
-          onToggle={handleToggleShowOnDashboard}
-          toggling={toggling}
         />
       )}
       {modalTarget !== undefined && (
-        <EventModal event={modalTarget} onClose={() => setModalTarget(undefined)} onSaved={handleSaved} />
-      )}
-      {deleteTarget && (
-        <div className="modal-overlay">
-          <div className="modal event-modal">
-            <h2>イベントを削除しますか？</h2>
-            <p className="hint">「{deleteTarget.name}」を削除します。この操作は取り消せません。</p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-primary" onClick={handleDelete} disabled={deleting}>
-                削除する
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
+        <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) requestAnimationFrame(restoreFocus) }} onSaved={handleSaved}
+          onDeleted={modalTarget?.editable ? () => {
+            setEvents(previous => previous.filter(event => event.id !== modalTarget.id))
+            setModalTarget(undefined)
+            requestAnimationFrame(restoreFocus)
+            showToast('イベントを削除しました')
+          } : undefined} />
       )}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
