@@ -155,7 +155,7 @@ flowchart LR
 
 ## ローカルで動かす
 
-必要なもの：Node.js（LTS）、npm
+必要なもの：Node.js 24.22.1（LTS）、npm。開発・CIの指定はルートの[.node-version](.node-version)を正とします。Windowsのnvm-windowsでの切り替え方と、Cloudflareビルド側の設定は[配信手順](docs/deployment.md#nodejsの導入更新)を参照してください。
 
 ```bash
 # 1. 依存関係を入れる
