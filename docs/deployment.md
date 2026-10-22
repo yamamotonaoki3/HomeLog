@@ -6,7 +6,27 @@ WorkersがReactのビルド成果物とAPIを同一originで配信する。画�
 
 ## ローカル検証・CIの前提
 
-Node.js 24と各ディレクトリの依存導入（`npm ci`）が必要。`backend-workers/.dev.vars.example`を参考にローカル専用の`.dev.vars`へJWT_SECRETを設定する。値を出力・コミットしない。
+Node.js 24.22.1（LTS）と各ディレクトリの依存導入（`npm ci`）が必要。開発・GitHub Actionsはルートの[.node-version](../.node-version)、Cloudflare Workers Buildsはビルドルートにある[backend-workers/.node-version](../backend-workers/.node-version)で同じバージョンを指定する。各 `package.json` の `engines.node` は `>=24.22.1 <25`。`backend-workers/.dev.vars.example`を参考にローカル専用の`.dev.vars`へJWT_SECRETを設定する。値を出力・コミットしない。
+
+### Node.jsの導入・更新
+
+Windowsでnvm-windowsを利用している場合は、リポジトリのルートで次を実行する。nvmの保存先が `C:\Program Files\nvm` の場合は管理者権限が必要。
+
+```powershell
+$nodeVersion = (Get-Content .node-version -Raw).Trim()
+nvm install $nodeVersion 64
+nvm use $nodeVersion 64
+node --version
+npm --version
+```
+
+切り替え後は実行中のVite・Wrangler等を再起動し、`frontend/`・`backend-workers/`・`e2e/` それぞれで `npm ci` と本資料・[E2E手順](../e2e/README.md)の品質チェックを実行する。旧Node.jsは検証が終わるまで残す。nvm-windowsではバージョンごとにグローバルCLIが分かれるため、切り替え前に `npm ls -g --depth=0` で記録し、必要なCLIを元と同じバージョン・導入元で引き継ぐ。アプリの依存は各 `package-lock.json` で管理し、Node.jsの更新だけを理由に依存バージョンを変えない。
+
+今後Node.jsを更新する際は、2つの `.node-version` と3つの `package.json` / `package-lock.json` の `engines.node`、本資料のバージョンを揃え、同じバージョンで検証する。CIの `actions/setup-node` はルートの `.node-version` を読み込む。
+
+Cloudflare側にビルド変数 `NODE_VERSION` を設定している場合は、ファイル指定と食い違わないよう同じ値へ更新するか、変数指定を外してファイルに統一する。設定は **Buildsのビルド変数**であり、`wrangler.toml` の実行時 `vars` やWorkerのsecretには追加しない。次回のproductionビルドのログで使用されたNode.jsバージョンを確認する。[公式のビルドイメージ設定](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)参照。
+
+この指定は開発・テスト・ビルド用のNode.jsを揃えるもの。本番APIはCloudflare Workersのランタイムで実行されるため、Node.jsの更新と `compatibility_date` / `nodejs_compat` の変更は別に扱う。設定ファイルを変更しただけでは本番を再デプロイしない。
 
 Wrangler起動・Workersテスト・dry-run・E2Eより前に、必ず`frontend/`で`npm run build`を実行する。Reactを変更した際も再buildする。通常開発のViteと通常E2Eは引き続き別サーバー構成。
 
@@ -69,6 +89,7 @@ Workers & Pages → `homelog-backend-workers` → Settings → Builds で GitHub
 | 本番ブランチ（Production branch） | `production` |
 | 本番以外のブランチのビルド | 無効 |
 | ルートディレクトリ | `backend-workers` |
+| Node.js | `backend-workers/.node-version` の `24.22.1`（`NODE_VERSION` の別指定があれば統一） |
 | ビルドコマンド | `cd ../frontend && npm ci && npm run build && cd ../backend-workers && npm ci` |
 | デプロイコマンド | `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy` |
 
