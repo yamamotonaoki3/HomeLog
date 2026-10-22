@@ -91,6 +91,18 @@ const travelEvent: Event = {
 }
 
 describe('EventsPage', () => {
+  it.each([
+    { isAllDay: true, startTime: null, endTime: null, label: '終日' },
+    { isAllDay: false, startTime: '09:00', endTime: null, label: '09:00〜' },
+    { isAllDay: false, startTime: '09:00', endTime: '12:00', label: '09:00〜12:00' },
+  ])('日時を日付と時間の別段に表示する: $label', async ({ label, ...time }) => {
+    setupApi({ events: [{ ...travelEvent, ...time }] })
+    renderEventsPage()
+    const row = await screen.findByRole('button', { name: '旅行の詳細' })
+    expect(within(row).getByText('2026-09-20', { exact: true })).toBeInTheDocument()
+    expect(within(row).getByText(label, { exact: true })).toBeInTheDocument()
+  })
+
   it('編集・集計・削除確認を同じモーダル内で行い入力を保持する', async () => {
     setupApi({ events: [travelEvent], summaries: { 1: 5000 } })
     const user = userEvent.setup()
