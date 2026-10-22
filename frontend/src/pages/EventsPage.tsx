@@ -85,7 +85,10 @@ export function EventsPage() {
                 <button key={event.id} type="button" className="list-row-button events-grid" aria-label={`${event.name}の詳細`}
                   onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; if (event.editable) { setDetailId(null); setModalTarget(event) } else setDetailId(event.id) }}>
                   <span>{event.name}</span>
-                  <span>{event.eventDate}（{timeRangeLabel(event)}）</span>
+                  <span className="event-datetime">
+                    <time dateTime={event.eventDate}>{event.eventDate}</time>
+                    <span>{timeRangeLabel(event)}</span>
+                  </span>
                   <span>{RECURRENCE_LABELS[event.recurrenceType]}</span>
                 </button>
               ))

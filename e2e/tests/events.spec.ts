@@ -16,6 +16,50 @@ async function fits(page: Page) {
 for (const width of [1280, 390, 320]) {
   test.describe(`${width}px イベント統合モーダル`, () => {
     test.use({ viewport: { width, height: 844 }, hasTouch: width < 500 })
+    test('日時は上段に日付、下段に時刻または終日を揃えて表示する', async ({ page, consoleGuard }) => {
+      consoleGuard.watch(page)
+      await setupUserWithHousehold(page, 'event_datetime' + width)
+      await page.goto('/events')
+      let dateColumnX: number | undefined
+      for (const [index, label] of ['終日', '09:00〜', '09:00〜12:00'].entries()) {
+        const name = `[E2E_TEST] 日時${index}`
+        await page.getByRole('button', { name: 'イベントを登録' }).click()
+        await page.getByLabel('イベント名').fill(name)
+        await page.getByLabel('日付', { exact: true }).fill('2030-01-15')
+        if (index > 0) {
+          await page.getByLabel('終日', { exact: true }).uncheck()
+          await page.getByLabel('開始時刻').fill('09:00')
+          if (index === 2) await page.getByLabel('終了時刻（任意）').fill('12:00')
+        }
+        await page.getByRole('button', { name: '登録', exact: true }).click()
+        const row = page.getByRole('button', { name: `${name}の詳細`, exact: true })
+        const date = row.getByText('2030-01-15', { exact: true })
+        const time = row.getByText(label, { exact: true })
+        await expect(date).toBeVisible()
+        await expect(time).toBeVisible()
+        const dateBox = (await date.boundingBox())!
+        const timeBox = (await time.boundingBox())!
+        expect(timeBox.y).toBeGreaterThanOrEqual(dateBox.y + dateBox.height)
+        expect(timeBox.x).toBeCloseTo(dateBox.x, 0)
+        if (dateColumnX !== undefined) expect(dateBox.x).toBeCloseTo(dateColumnX, 0)
+        dateColumnX = dateBox.x
+        for (const element of [date, time]) {
+          expect(await element.evaluate(el => {
+            const range = document.createRange()
+            range.selectNodeContents(el)
+            return range.getClientRects().length
+          })).toBe(1)
+        }
+        expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+      }
+      await fits(page)
+      const shots = process.env.ISSUE_341_SHOTS_DIR
+      if (shots) {
+        await mkdir(shots, { recursive: true })
+        await page.screenshot({ path: join(shots, `event-datetime-${width}.png`), fullPage: true })
+      }
+    })
+
     test('編集・集計・削除確認を同じモーダルで操作する', async ({ page, consoleGuard }) => {
       consoleGuard.watch(page)
       consoleGuard.allow({ url: /\/api\/events\/\d+\/summary/, message: /404/ })
