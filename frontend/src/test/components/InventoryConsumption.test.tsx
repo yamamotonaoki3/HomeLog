@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { InventoryModal } from '../../components/zaiko/InventoryModal'
 
-const props = { categories: [{ id: 1, name: '[E2E_TEST] food', isDefault: false }], stores: [], onStoresChange: vi.fn(), onClose: vi.fn(), onSaved: vi.fn().mockResolvedValue(undefined) }
+const props = { categories: [{ id: 1, name: '[E2E_TEST] food', isDefault: false }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onClose: vi.fn(), onSaved: vi.fn().mockResolvedValue(undefined) }
 it('初回入力・Space操作・オフの消費量を送信する', async () => {
   const bodies: unknown[] = []
   server.use(http.post('/api/inventory-items', async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({}, { status: 201 }) }))
