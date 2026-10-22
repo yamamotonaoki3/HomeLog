@@ -8,13 +8,14 @@ import { filterByKeyword } from '../../lib/keyword'
 interface Props {
   inventory: InventoryItem[]
   categories: Category[]
+  onCategoriesChange: (categories: Category[]) => void
   stores: Store[]
   onStoresChange: (stores: Store[]) => void
   onRefresh: () => Promise<void>
   onNotify: (message: string) => void
 }
 
-export function InventoryPanel({ inventory, categories, stores, onStoresChange, onRefresh, onNotify }: Props) {
+export function InventoryPanel({ inventory, categories, onCategoriesChange, stores, onStoresChange, onRefresh, onNotify }: Props) {
   const [selectedId, setSelectedId] = useState<number>()
   const [formOpen, setFormOpen] = useState(false)
   const [steps, setSteps] = useState<Record<number, number>>({})
@@ -58,7 +59,7 @@ export function InventoryPanel({ inventory, categories, stores, onStoresChange, 
           <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
         </button>)}
     </div>
-    {formOpen && <InventoryModal item={selected} categories={categories} stores={stores} onStoresChange={onStoresChange} busy={busy} step={selected ? steps[selected.id] ?? 1 : 1} onStep={(step) => { if (selected) setSteps((previous) => ({ ...previous, [selected.id]: step })) }} onAdjust={(sign) => { if (selected) void adjustQuantity(selected, sign) }} onClose={closeForm} onSaved={async () => {
+    {formOpen && <InventoryModal item={selected} categories={categories} onCategoriesChange={onCategoriesChange} stores={stores} onStoresChange={onStoresChange} busy={busy} step={selected ? steps[selected.id] ?? 1 : 1} onStep={(step) => { if (selected) setSteps((previous) => ({ ...previous, [selected.id]: step })) }} onAdjust={(sign) => { if (selected) void adjustQuantity(selected, sign) }} onClose={closeForm} onSaved={async () => {
       pending.current = true
       setBusy(true)
       const message = selected ? '在庫を編集しました' : '在庫を登録しました'

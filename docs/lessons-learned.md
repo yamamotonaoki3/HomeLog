@@ -387,3 +387,9 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
   - 長文を表示するスクロール可能なモーダルは、開いた直後の見出しとスクロール位置も確認する。
   - フォーカス移動とスクロールの副作用を、実ブラウザと画像の両方で確認する。
 - **状態**: 有効
+
+### 2026-10-22: IME確定EnterはisComposingだけで判定しない
+- **事象**: 在庫カテゴリー追加（#338）のレビューで、変換確定のEnterがisComposing=false・keyCode=229となる場合に、意図せずカテゴリーを即時保存する経路が見つかった。
+- **対応**: Enterによる追加はisComposing=trueとkeyCode=229の両方を除外する。両パターンの非送信と、通常Enterでカテゴリーだけを追加する回帰テストを用意した。
+- **次回の行動規則**: 日本語入力欄のEnterで保存するときは、IMEイベントの順序差も確認し、変換確定と送信を区別する。参考: [MDNのkeydownとIMEの説明](https://github.com/mdn/content/blob/main/files/en-us/web/api/element/keydown_event/index.md)。
+- **状態**: 有効

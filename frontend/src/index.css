@@ -406,3 +406,8 @@ input[type="checkbox"], input[type="radio"] {
 .inventory-step-options .btn[aria-pressed="true"] { background: #2563eb; color: white; }
 .event-summary { border-top: 1px solid #d1d5db; margin-top: 16px; padding-top: 12px; }
 .event-delete-confirm { border: 1px solid #b91c1c; border-radius: 8px; padding: 12px; margin-top: 12px; }
+
+.inventory-category-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.inventory-modal .inventory-category-heading label { margin: 0; }
+.inventory-category-form { padding: 10px; margin-top: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+.inventory-category-form .modal-actions { gap: 8px; }

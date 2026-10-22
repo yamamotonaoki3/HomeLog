@@ -87,6 +87,7 @@ export function ZaikoPage() {
         <InventoryPanel
           inventory={inventory}
           categories={categories}
+          onCategoriesChange={setCategories}
           stores={stores}
           onStoresChange={setStores}
           onRefresh={refreshAll}

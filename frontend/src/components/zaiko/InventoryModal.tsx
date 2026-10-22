@@ -8,6 +8,7 @@ import { useInventoryDialog } from './useInventoryDialog'
 interface Props {
   item?: InventoryItem
   categories: Category[]
+  onCategoriesChange: (categories: Category[]) => void
   stores: Store[]
   onStoresChange: (stores: Store[]) => void
   busy?: boolean
@@ -18,7 +19,7 @@ interface Props {
   onSaved: () => Promise<void>
 }
 
-export function InventoryModal({ item, categories, stores, onStoresChange, onClose, onSaved, busy = false, step = 1, onStep, onAdjust }: Props) {
+export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, step = 1, onStep, onAdjust }: Props) {
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(String(item?.categoryId ?? categories[0]?.id ?? ''))
   const [storeId, setStoreId] = useState(item?.storeId == null ? '' : String(item.storeId))
@@ -28,16 +29,52 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
   const [dailyConsumption, setDailyConsumption] = useState(item?.dailyConsumption == null ? '' : String(item.dailyConsumption))
   const [autoConsumptionEnabled, setAutoConsumptionEnabled] = useState(item?.autoConsumptionEnabled ?? false)
   const consumptionTouched = useRef(!!item)
+  const categoryPending = useRef(false)
+  const categoryNameInput = useRef<HTMLInputElement>(null)
+  const categorySelect = useRef<HTMLSelectElement>(null)
+  const categoryToggle = useRef<HTMLButtonElement>(null)
+  const [categoryFormOpen, setCategoryFormOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [categoryError, setCategoryError] = useState('')
+  const [categorySubmitting, setCategorySubmitting] = useState(false)
   const pending = useRef(false)
   const [storeFormOpen, setStoreFormOpen] = useState(false)
   const [newStoreName, setNewStoreName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [saved, setSaved] = useState(false)
-  const close = () => { if (!submitting && !busy) onClose() }
+  const close = () => { if (!submitting && !busy && !categoryPending.current) onClose() }
   const dialogRef = useInventoryDialog(close, '#inv-name')
 
+  const locked = submitting || saved || busy || categorySubmitting
+
+  const handleAddCategory = async () => {
+    if (pending.current || categoryPending.current || busy || saved) return
+    const trimmed = newCategoryName.trim()
+    if (trimmed.length < 1 || trimmed.length > 50) {
+      setCategoryError('カテゴリー名は1〜50文字で入力してください')
+      return
+    }
+    categoryPending.current = true
+    setCategorySubmitting(true)
+    setCategoryError('')
+    try {
+      const response = await apiClient.post<Category>('/zaiko-categories', { name: trimmed })
+      onCategoriesChange([...categories, response.data])
+      setCategoryId(String(response.data.id))
+      setNewCategoryName('')
+      setCategoryFormOpen(false)
+      requestAnimationFrame(() => categorySelect.current?.focus())
+    } catch (err) {
+      setCategoryError(getApiErrorMessage(err, 'カテゴリーの登録に失敗しました'))
+    } finally {
+      categoryPending.current = false
+      setCategorySubmitting(false)
+    }
+  }
+
   const handleAddStore = async () => {
+    if (pending.current || categoryPending.current || busy || saved) return
     const trimmed = newStoreName.trim()
     if (!trimmed) {
       setError('店名を入力してください')
@@ -57,7 +94,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (pending.current || busy) return
+    if (pending.current || busy || categoryPending.current) return
     const daily = dailyConsumption.trim() === '' ? null : Number(dailyConsumption)
     if (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7)) {
       setError('1日の消費量は0.1〜99999.9、小数点第一位までで入力してください')
@@ -115,17 +152,35 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
         <form onSubmit={handleSubmit}>
           <label htmlFor="inv-name">品名</label>
           <input id="inv-name" type="text" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
-          <label htmlFor="inv-category">カテゴリー</label>
-          <select id="inv-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <div className="inventory-category-heading">
+            <label htmlFor="inv-category">カテゴリー</label>
+            <button ref={categoryToggle} type="button" className="btn btn-tiny" disabled={locked}
+              aria-expanded={categoryFormOpen} aria-controls="inventory-category-form"
+              onClick={() => { setCategoryError(''); setCategoryFormOpen(!categoryFormOpen); if (!categoryFormOpen) requestAnimationFrame(() => categoryNameInput.current?.focus()) }}>＋カテゴリーを登録</button>
+          </div>
+          <select ref={categorySelect} id="inv-category" disabled={locked} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
+          {categoryFormOpen && <div id="inventory-category-form" className="inventory-category-form">
+            <label htmlFor="inv-new-category">カテゴリー名</label>
+            <input ref={categoryNameInput} id="inv-new-category" type="text" maxLength={50} disabled={locked}
+              value={newCategoryName} onChange={event => setNewCategoryName(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); void handleAddCategory() } }} />
+            <p className="hint">カテゴリーは追加時に保存され、在庫をキャンセルしても残ります</p>
+            {categoryError && <p className="error" role="alert">{categoryError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-small" disabled={locked} onClick={handleAddCategory}>カテゴリーを追加</button>
+              <button type="button" className="btn btn-small" disabled={locked}
+                onClick={() => { setCategoryFormOpen(false); setCategoryError(''); requestAnimationFrame(() => categoryToggle.current?.focus()) }}>追加をやめる</button>
+            </div>
+          </div>}
           <label htmlFor="inv-store">
             買う店（任意）{' '}
-            <button type="button" className="btn btn-tiny" onClick={() => setStoreFormOpen((open) => !open)}>
+            <button type="button" className="btn btn-tiny" disabled={locked} onClick={() => setStoreFormOpen((open) => !open)}>
               ＋店を登録
             </button>
           </label>
@@ -147,7 +202,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
                 value={newStoreName}
                 onChange={(e) => setNewStoreName(e.target.value)}
               />
-              <button type="button" className="btn btn-small" onClick={handleAddStore}>
+              <button type="button" className="btn btn-small" disabled={locked} onClick={handleAddStore}>
                 店を追加
               </button>
             </div>
@@ -157,13 +212,13 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             <div className="inventory-quantity-row">
               <div className="inventory-quantity-controls inventory-quantity-inline">
                 <span className="qty-value" aria-live="polite">{item.quantity.toFixed(1)}</span>
-                <button type="button" className="btn btn-secondary" disabled={busy || submitting || saved} aria-label={`${item.name}を増やす`} onClick={() => onAdjust?.(1)}>＋</button>
-                <button type="button" className="btn btn-secondary" disabled={busy || submitting || saved} aria-label={`${item.name}を減らす`} onClick={() => onAdjust?.(-1)}>－</button>
+                <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を増やす`} onClick={() => onAdjust?.(1)}>＋</button>
+                <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を減らす`} onClick={() => onAdjust?.(-1)}>－</button>
               </div>
               <div className="inventory-step-options" role="group" aria-label="増減幅">
                 <span>増減幅</span>
                 {[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary"
-                  aria-pressed={step === value} disabled={busy || submitting || saved}
+                  aria-pressed={step === value} disabled={locked}
                   onClick={() => onStep?.(value)}>{value}</button>)}
               </div>
             </div>
@@ -186,7 +241,7 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
           <p className="hint">在庫個数がこの数以下になると、買い物リストに自動追加されます</p>
           <label htmlFor="inv-consumption">1日の消費量（任意）</label>
           <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
-            disabled={submitting || saved || busy} value={dailyConsumption} aria-describedby="inv-consumption-hint"
+            disabled={locked} value={dailyConsumption} aria-describedby="inv-consumption-hint"
             onChange={(event) => {
               const value = event.target.value
               setDailyConsumption(value)
@@ -195,17 +250,17 @@ export function InventoryModal({ item, categories, stores, onStoresChange, onClo
             }} />
           <p id="inv-consumption-hint" className="hint">空欄の場合は自動消費しません</p>
           <button type="button" role="switch" aria-label="自動消費" aria-checked={autoConsumptionEnabled}
-            className="btn inventory-consumption-switch" disabled={submitting || saved || dailyConsumption.trim() === ''}
+            className="btn inventory-consumption-switch" disabled={locked || dailyConsumption.trim() === ''}
             onClick={() => { consumptionTouched.current = true; setAutoConsumptionEnabled((enabled) => !enabled) }}>
             自動消費：{autoConsumptionEnabled ? 'オン' : 'オフ'}
           </button>
           <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || saved || busy}>
+            <button type="submit" className="btn btn-primary" disabled={locked}>
               保存
             </button>
-            <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={close}>
+            <button type="button" className="btn btn-secondary" disabled={submitting || busy || categorySubmitting} onClick={close}>
               キャンセル
             </button>
           </div>
