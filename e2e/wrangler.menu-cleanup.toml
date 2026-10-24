@@ -1,0 +1,26 @@
+# scheduled経路のE2E専用。静的配信が /__scheduled を捕捉しないようassetsは定義しない。
+# 実装は本体と同じ。DBは --local --persist-to .wrangler/e2e-state だけを使う。
+name = "homelog-menu-cleanup-e2e"
+main = "../backend-workers/src/index.ts"
+compatibility_date = "2026-08-22"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# テスト専用のダミー値。本番用の秘密情報ではない。
+JWT_SECRET = "e2e-menu-cleanup-dummy-secret-not-for-production"
+JWT_ACCESS_EXPIRATION_SECONDS = "900"
+JWT_REFRESH_EXPIRATION_SECONDS = "604800"
+APP_PASSWORD_RESET_LOG_TOKEN_ENABLED = "false"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "homelog-db"
+database_id = "menu-cleanup-e2e-only"
+migrations_dir = "../backend-workers/drizzle"
+
+[[r2_buckets]]
+binding = "RECIPE_IMAGES"
+bucket_name = "homelog-menu-cleanup-e2e-images"
+
+[triggers]
+crons = ["0 15 * * *", "0 16 * * *"]

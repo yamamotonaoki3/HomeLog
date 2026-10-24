@@ -41,4 +41,5 @@ remote = true
 # (@Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo"))相当。
 # JSTは夏時間が無いため、UTC 16:00固定 = JST 01:00で問題ない。
 [triggers]
-crons = ["0 16 * * *"]
+# 献立の期限切れ削除はJST 00:00。JST 01:00の既存処理でも再試行する。
+crons = ["0 15 * * *", "0 16 * * *"]
