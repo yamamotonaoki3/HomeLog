@@ -31,6 +31,15 @@ npm test -- tests/zaiko.spec.ts
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
 - 8787 / 5173 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
 
+## 献立の定期削除（#362）
+
+通常E2E完了後、`e2e/`で `npm test -- --config playwright.menu-cleanup.config.ts` を実行する。
+全世帯の過去週を削除するテストなので、通常E2E・静的配信E2Eとの同時実行は禁止。
+専用の `wrangler.menu-cleanup.toml` で本体と同じWorkerを起動し、専用ローカルD1へマイグレーションを適用する。
+静的配信を定義しないため、`--test-scheduled` の `/__scheduled` がSPAのHTMLへ置き換わらず、実際のscheduledハンドラを呼べる。
+`Ran scheduled event` の応答と、API経由で過去週だけが消えること、今週・未来・元レシピが残ること、再実行できることを確認する。
+公開用エンドポイントは追加しない。実行前後は通常と同じcleanupで専用D1を削除し、残数0を確認する。CIでも専用ステップで実行する。
+
 ## Workers単独の静的配信（#261）
 
 通常E2E完了後、`e2e/`で `npm test -- --config playwright.static-assets.config.ts` を実行する。
@@ -95,6 +104,7 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 | 2 | `zaiko-price-ui.spec.ts` | 1280／390／320pxで値段の登録・編集・クリア・手動追加・購入後保持と横幅を実APIで検証。`ZAIKO_SCREENSHOT_DIR` 指定時は両一覧・登録／編集モーダル・手動追加フォームの画像を保存 |
 | 2 | `zaiko-price-api.spec.ts` | Workersへの直接HTTP要求で値段の省略互換・上書き・0・null・両一覧の共有・購入後保持・自動再追加を検証。1280／390／320pxの既存画面幅も確認 |
 | 3 | `kondate.spec.ts` | レシピ手動登録 → 献立にレシピ・自由メモを追加 |
+| 3 | `menu-entry-cleanup-api.spec.ts`（専用設定） | 実Workersのscheduled経路で過去週の献立のみ削除、今週・未来・元レシピを保持 |
 | 3 | `events.spec.ts` | 登録 → 一覧から直接編集・集計・同じモーダル内の削除確認、共有イベントの閲覧権限 |
 | 3 | `accounts.spec.ts` | 口座登録 → 口座指定の支出が残高・取引履歴に反映 |
 

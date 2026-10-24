@@ -728,3 +728,5 @@ Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレー�
 | week_start_date | DATE | ○ | 対象週の開始日（月曜日）。同じ週に複数行＝その週に作りたい料理のリスト。曜日への割り当ては持たない（[F10_kondate_menu](features/F10_kondate_menu.md)参照） |
 
 ※ `recipe_id` と `free_text_memo` はどちらか一方のみ設定する（確定登録/ラフ登録の排他）。
+
+保存期間（#362）：今週（月曜0時開始、JST）と未来の行を保持する。毎日JST 0時と1時の定期処理で、実行時点の今週の月曜日より `week_start_date` が前の行を全世帯について物理削除する。初回は既存の過去週も対象。元の `recipes` は保持する。実行遅延・失敗時は次回に回収し、復元・アーカイブは提供しない。詳細は [F10](features/F10_kondate_menu.md) の「保存期間・自動削除」を参照。

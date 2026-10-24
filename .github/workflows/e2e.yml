@@ -43,6 +43,10 @@ jobs:
         working-directory: e2e
         run: npm run test
 
+      - name: Run menu cleanup scheduled E2E tests
+        working-directory: e2e
+        run: npm test -- --config playwright.menu-cleanup.config.ts
+
       - name: Run Workers static assets E2E tests
         working-directory: e2e
         run: npm test -- --config playwright.static-assets.config.ts
