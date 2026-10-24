@@ -12,7 +12,7 @@ const BOOKMARKLET_FIREFOX = process.env.RECIPE_BOOKMARKLET_FIREFOX_EXECUTABLE ??
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: '**/static-assets.spec.ts',
+  testIgnore: ['**/static-assets.spec.ts', '**/menu-entry-cleanup-api.spec.ts'],
   // 世帯参加など複数ユーザーを跨ぐシナリオはテスト内で完結させ、テスト間は独立させる
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

@@ -13,6 +13,7 @@ import { purgeExpiredAccounts } from './lib/account-deletion'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { consumeInventoryForDate, consumptionDate } from './lib/inventory-consumption'
 import { getJstToday } from './lib/date'
+import { purgePastMenuEntries } from './lib/menu-entry-cleanup'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
@@ -94,13 +95,18 @@ app.route('/api/user-settings', userSettingsRoute)
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
   async scheduled(controller: ScheduledController, env: Bindings): Promise<void> {
-    // 一方が失敗しても、もう一方の日次処理は実行する。
+    // JST 0時は献立だけ。既存のJST 1時にも再試行し、取りこぼしを回収する。
+    const cleanup = purgePastMenuEntries(env.DB, new Date())
+    // 一方が失敗しても、ほかの日次処理は実行する。
     const results = await Promise.allSettled([
-      consumeInventoryForDate(env.DB, consumptionDate(controller.scheduledTime)),
-      postDueFixedCosts(env.DB, getJstToday()),
-      deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
-      // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
-      purgeExpiredAccounts(env.DB, new Date()),
+      cleanup,
+      ...(controller.cron === '0 15 * * *' ? [] : [
+        consumeInventoryForDate(env.DB, consumptionDate(controller.scheduledTime)),
+        postDueFixedCosts(env.DB, getJstToday()),
+        deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
+        // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
+        purgeExpiredAccounts(env.DB, new Date()),
+      ]),
     ])
     for (const result of results) {
       if (result.status === 'rejected') console.error('日次処理に失敗しました', result.reason)
