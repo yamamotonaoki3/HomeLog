@@ -176,7 +176,8 @@ describe('MenuPage', () => {
     renderMenuPage()
     await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
 
-    await user.selectOptions(screen.getByLabelText('レシピ'), '10')
+    await user.click(screen.getByRole('radio', { name: '肉じゃが' }))
+    expect(calls.some(c => c.method === 'POST')).toBe(false)
     await user.click(screen.getByRole('button', { name: '追加' }))
 
     const list = screen.getByRole('list')
@@ -192,23 +193,39 @@ describe('MenuPage', () => {
     const user = userEvent.setup()
     renderMenuPage()
     await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
-    const select = screen.getByLabelText('レシピ')
-    const options = () => within(select).getAllByRole('option').map((option) => option.textContent)
+    const candidates = screen.getByRole('group', { name: 'レシピ候補' })
+    const options = () => within(candidates).queryAllByRole('radio').map(radio => radio.getAttribute('value'))
+    expect(options()).toEqual(['10', '11', '12'])
 
     await user.type(screen.getByLabelText('レシピを検索'), '唐揚')
-    expect(options()).toEqual(['選択してください', '鶏の唐揚げ'])
+    expect(options()).toEqual(['11'])
+    expect(screen.getByRole('radio', { name: '鶏の唐揚げ' })).toBeVisible()
     await user.clear(screen.getByLabelText('レシピを検索'))
     await user.type(screen.getByLabelText('レシピを検索'), 'ＰＡＳＴＡ')
-    expect(options()).toEqual(['選択してください', 'Pasta Carbonara'])
-    await user.selectOptions(select, '12')
+    expect(options()).toEqual(['12'])
+    await user.click(screen.getByRole('radio', { name: 'Pasta Carbonara' }))
     await user.type(screen.getByLabelText('レシピを検索'), 'x')
-    expect(options()).toEqual(['該当するレシピがありません'])
-    expect(select).toHaveValue('')
+    expect(options()).toEqual([])
+    expect(within(candidates).getByText('該当するレシピがありません')).toBeVisible()
     await user.clear(screen.getByLabelText('レシピを検索'))
-    expect(options()).toHaveLength(4)
-    await user.selectOptions(select, '11')
+    expect(options()).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: 'Pasta Carbonara' })).not.toBeChecked()
+    await user.click(screen.getByRole('radio', { name: '鶏の唐揚げ' }))
     await user.click(screen.getByRole('button', { name: '追加' }))
     await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ weekStartDate: monday, recipeId: 11 }))
+  })
+
+  it.each([['からあげ', 'カラアゲ'], ['カラアゲ', 'からあげ']])('タイトル%sを%sで即座に検索できる', async (title, keyword) => {
+    setupApi({ recipes: [{ id: 10, title, ingredients: null, steps: null, sourceType: 'web', url: 'https://www.youtube.com/watch?v=example', thumbnailUrl: null, memo: null, isFavorite: false }] })
+    const user = userEvent.setup()
+    renderMenuPage()
+    const search = await screen.findByRole('searchbox', { name: 'レシピを検索' })
+    await user.type(search, keyword)
+    expect(screen.getByRole('radio', { name: title })).toBeVisible()
+    await user.type(search, '該当なし')
+    expect(screen.queryByRole('radio', { name: title })).not.toBeInTheDocument()
+    await user.clear(search)
+    expect(screen.getByRole('radio', { name: title })).toBeVisible()
   })
 
   it('自由メモでラフ登録できる', async () => {
@@ -254,7 +271,7 @@ describe('MenuPage', () => {
     expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/menu-entries/1')).toBe(true)
   })
 
-  it('お気に入りのレシピがプルダウンの先頭に表示される', async () => {
+  it('お気に入りのレシピが候補一覧の先頭に表示される', async () => {
     setupApi({
       recipes: [
         { id: 1, title: '通常レシピ', ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false },
@@ -263,9 +280,8 @@ describe('MenuPage', () => {
     })
     renderMenuPage()
 
-    await waitFor(() => expect(screen.getByLabelText('レシピ')).toBeInTheDocument())
-    const options = screen.getAllByRole('option').map((o) => o.textContent)
-    expect(options.indexOf('★ お気に入りレシピ')).toBeLessThan(options.indexOf('通常レシピ'))
+    const group = await screen.findByRole('group', { name: 'レシピ候補' })
+    expect(within(group).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['2', '1'])
   })
 
   it('レシピのタイトルから元ページ・レシピ詳細を開ける。手入力の献立はリンクにしない (#289)', async () => {

@@ -221,7 +221,7 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
     const menu = p.getByTestId('menu-panel')
     await pause(p, 1200)
     await menu.getByLabel('レシピを検索').pressSequentially('カレー', { delay: 150 })
-    await menu.getByLabel('レシピ', { exact: true }).selectOption({ label: '★ カレーライス' })
+    await menu.getByRole('radio', { name: '★ カレーライス', exact: true }).check()
     await pause(p)
     await menu.getByRole('button', { name: '追加', exact: true }).click()
     await expect(menu.getByRole('button', { name: 'カレーライス' })).toBeVisible()

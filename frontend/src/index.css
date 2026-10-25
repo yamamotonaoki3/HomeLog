@@ -358,7 +358,7 @@ input[type="checkbox"], input[type="radio"] {
   margin: 4px 0;
 }
 
-/* 献立表: レシピ検索欄と選択欄を縦に並べ、スマホでも幅いっぱいに使う(#281) */
+/* 献立表: 入力直後に候補を表示する(#376) */
 .menu-recipe-picker {
   display: flex;
   flex-direction: column;
@@ -366,14 +366,37 @@ input[type="checkbox"], input[type="radio"] {
   margin-top: 12px;
 }
 
-.menu-recipe-picker input,
-.menu-recipe-picker select {
+.menu-recipe-picker input[type="search"] {
   width: 100%;
   max-width: 480px;
   box-sizing: border-box;
   padding: 8px;
   font-size: 16px;
 }
+.menu-recipe-candidates {
+  min-width: 0;
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+.menu-recipe-results { max-height: 240px; overflow-y: auto; }
+.menu-recipe-candidate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.menu-recipe-candidate input { flex-shrink: 0; margin: 0; }
+.menu-recipe-candidate span { min-width: 0; overflow-wrap: anywhere; }
+.menu-recipe-candidate:has(input:checked) { background: #eff6ff; }
+.menu-recipe-candidate:focus-within { outline: 2px solid #2563eb; outline-offset: -2px; }
 .modal-overlay[hidden] { display: none; }
 .menu-entry-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; background: none; color: #2563eb; font: inherit; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
 .account-settings-page { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
