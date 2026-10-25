@@ -10,6 +10,8 @@ a:hover { text-decoration: underline; }
 
 /* 共通レイアウト・ナビゲーション */
 .app-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+/* タイトルバーと折り返す関連タブを一体で追従させ、モーダル(z-index:100)より奥に置く。 */
+.app-top-navigation { position: sticky; top: 0; z-index: 40; flex-shrink: 0; }
 .global-nav { background: #1e293b; color: #fff; }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; max-width: 1100px; margin: 0 auto; }
 .nav-logo { font-weight: bold; font-size: 18px; margin-right: 12px; color: #fff; }
