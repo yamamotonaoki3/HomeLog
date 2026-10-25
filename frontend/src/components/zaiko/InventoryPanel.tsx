@@ -3,6 +3,7 @@ import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
+import { InventoryDeleteDialog } from './InventoryDeleteDialog'
 import { filterByKeyword } from '../../lib/keyword'
 
 interface Props {
@@ -22,6 +23,8 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   const [busy, setBusy] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<InventoryItem>()
+  const deleteOrigin = useRef<HTMLButtonElement | null>(null)
   const pending = useRef(false)
   const origin = useRef<HTMLButtonElement | null>(null)
   const register = useRef<HTMLButtonElement>(null)
@@ -31,7 +34,11 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   useEffect(() => {
     if (categoryId !== '' && !categories.some(category => String(category.id) === categoryId)) setCategoryId('')
   }, [categories, categoryId])
-  const restoreFocus = () => (origin.current?.isConnected ? origin.current : register.current)?.focus()
+  const closeDelete = () => {
+    setDeleteTarget(undefined)
+    queueMicrotask(() => (deleteOrigin.current?.isConnected ? deleteOrigin.current : register.current)?.focus())
+  }
+  const restoreFocus =() => (origin.current?.isConnected ? origin.current : register.current)?.focus()
   const closeForm = () => { setSelectedId(undefined); setFormOpen(false); restoreFocus() }
   useEffect(() => {
     if (selectedId !== undefined && !selected) {
@@ -66,12 +73,23 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
       </label>
     </div>
     <div className="inventory-list" aria-label="在庫一覧">
-      <div className="inventory-list-grid list-row-heading"><span>品名</span><span>在庫数</span><span>閾値</span></div>
+      <div className="inventory-row inventory-list-heading list-row-heading"><div className="inventory-list-grid"><span>品名</span><span>在庫数</span><span>閾値</span></div><span className="inventory-delete-spacer" aria-hidden="true" /></div>
       {inventory.length === 0 ? <p>在庫がありません</p> : visible.length === 0 ? <p>該当する品目がありません</p> : visible.map((item) =>
-        <button type="button" key={item.id} className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>
-          <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
-        </button>)}
+        <div key={item.id} className="inventory-row">
+          <button type="button" className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>
+            <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
+          </button>
+          <button type="button" className="inventory-delete-button" aria-label={`${item.name}を削除`} onClick={(event) => { deleteOrigin.current = event.currentTarget; setDeleteTarget(item) }}>✖</button>
+        </div>)}
     </div>
+    {deleteTarget && <InventoryDeleteDialog item={deleteTarget} onClose={closeDelete} onDeleted={async () => {
+      try {
+        await onRefresh()
+        onNotify('在庫を削除しました')
+      } catch {
+        onNotify('削除しました。一覧の再取得に失敗しました')
+      }
+    }} />}
     {formOpen && <InventoryModal item={selected} categories={categories} onCategoriesChange={onCategoriesChange} stores={stores} onStoresChange={onStoresChange} busy={busy} step={selected ? steps[selected.id] ?? 1 : 1} onStep={(step) => { if (selected) setSteps((previous) => ({ ...previous, [selected.id]: step })) }} onAdjust={(sign) => { if (selected) void adjustQuantity(selected, sign) }} onClose={closeForm} onSaved={async () => {
       pending.current = true
       setBusy(true)
