@@ -494,7 +494,7 @@ erDiagram
 | accounts.id | BIGSERIAL | ○ | PK |
 | accounts.household_id | BIGINT | ○ | FK → households.id |
 | accounts.owner_user_id | BIGINT | ○ | FK → users.id（口座の所有者） |
-| accounts.deleted_at | TEXT（Workers/SQLite） | — | 論理削除日時（UTC）。NULLは有効。収入が参照する口座を削除した場合に設定し、名前・ID・残高は保持する。新規マイグレーション0015で追加 |
+| accounts.deleted_at | TEXT（Workers/SQLite） | — | 論理削除日時（UTC）。NULLは有効。過去の支出・収入・チャージ・割り勘支払元（子カード経由も含む）が参照する口座を削除した場合に設定し、口座の名前・ID・残高、子カード、履歴・精算状態を保持する（#368）。列は0015で追加 |
 | accounts.name | VARCHAR(50) | ○ | 口座名（例：〇〇銀行、PayPay 等） |
 | accounts.type | VARCHAR(20) | ○ | 種別（`bank`/`e_money`等） |
 | accounts.balance | NUMERIC | ○ | 残高。初期残高から、支出・チャージで減算、通常収入・精算収入で加算する。論理削除時も値は保持し、一覧・残高合計には含めない。所有者本人のみ閲覧可能（[common-notes.md](common-notes.md) 2章） |
