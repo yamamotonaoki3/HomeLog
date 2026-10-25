@@ -21,7 +21,7 @@ test.describe('F-09/F-10 レシピ・献立', () => {
     const menu = page.getByTestId('menu-panel')
     // キーワードで絞り込んでから選ぶ(#281)。
     await menu.getByLabel('レシピを検索').fill('肉じゃ')
-    await menu.getByLabel('レシピ', { exact: true }).selectOption({ label: title })
+    await menu.getByRole('radio', { name: title, exact: true }).check()
     await menu.getByRole('button', { name: '追加' }).click()
     await expect(menu.getByRole('listitem').filter({ hasText: title })).toBeVisible()
 
@@ -106,9 +106,9 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       await page.goto('/menu')
       const menu = page.getByTestId('menu-panel')
       await menu.getByLabel('レシピを検索').fill('[E2E_TEST] 該当なし')
-      await expect(menu.getByLabel('レシピ', { exact: true })).toContainText('該当するレシピがありません')
+      await expect(menu.getByRole('group', { name: 'レシピ候補' })).toContainText('該当するレシピがありません')
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-      for (const element of [menu.getByLabel('レシピを検索'), menu.getByLabel('レシピ', { exact: true })]) {
+      for (const element of [menu.getByLabel('レシピを検索'), menu.getByRole('group', { name: 'レシピ候補' })]) {
         const box = (await element.boundingBox())!
         expect(box.x).toBeGreaterThanOrEqual(0)
         expect(box.x + box.width).toBeLessThanOrEqual(width)
@@ -132,7 +132,7 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       expect(created.status()).toBe(201)
       await page.goto('/menu')
       const menu = page.getByTestId('menu-panel')
-      await menu.getByLabel('レシピ', { exact: true }).selectOption({ label: title })
+      await menu.getByRole('radio', { name: title, exact: true }).check()
       await menu.getByRole('button', { name: '追加', exact: true }).click()
       await menu.getByRole('button', { name: title }).click()
       const dialog = page.getByRole('dialog', { name: 'レシピ詳細' })

@@ -4,7 +4,7 @@ import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
 import { addWeeks, getMondayOf } from '../lib/week'
 import { Toast } from '../components/Toast'
-import { normalizeKeyword } from '../lib/keyword'
+import { filterByKeyword, normalizeKeyword } from '../lib/keyword'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 
 // リストへの追加方法は「レシピを選ぶ(確定登録)」「自由メモを入力する(ラフ登録)」の
@@ -93,7 +93,7 @@ export function MenuPage() {
           showToast(getApiErrorMessage(entriesResult.reason, '献立の取得に失敗しました。時間をおいて再度お試しください'))
         }
         if (recipesResult.status === 'fulfilled') {
-          // お気に入りのレシピをプルダウンの先頭に表示する
+          // お気に入りのレシピを候補一覧の先頭に表示する
           // (F10_kondate_menu.md 5章「最近使ったレシピ/お気に入り」の簡易版)。
           setRecipes(
             [...recipesResult.value.data].sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite)),
@@ -110,8 +110,7 @@ export function MenuPage() {
     }
   }, [weekStartDate, fetchEntries, showToast])
 
-  const keyword = normalizeKeyword(recipeKeyword)
-  const filteredRecipes = keyword === '' ? recipes : recipes.filter((recipe) => normalizeKeyword(recipe.title).includes(keyword))
+  const filteredRecipes = filterByKeyword(recipes, recipeKeyword, recipe => recipe.title)
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault()
@@ -217,21 +216,27 @@ export function MenuPage() {
                   if (selected && !normalizeKeyword(selected.title).includes(normalizeKeyword(keyword))) setSelectedRecipeId('')
                 }}
               />
-              <select aria-label="レシピ" value={selectedRecipeId} onChange={(e) => setSelectedRecipeId(e.target.value)}>
+              <fieldset className="menu-recipe-candidates">
+                <legend>レシピ候補</legend>
+                <div className="menu-recipe-results">
                 {filteredRecipes.length === 0 ? (
-                  <option value="">該当するレシピがありません</option>
+                  <p role="status">該当するレシピがありません</p>
                 ) : (
-                  <>
-                    <option value="">選択してください</option>
-                    {filteredRecipes.map((recipe) => (
-                      <option key={recipe.id} value={recipe.id}>
-                        {recipe.isFavorite ? '★ ' : ''}
-                        {recipe.title}
-                      </option>
-                    ))}
-                  </>
+                  filteredRecipes.map((recipe) => (
+                    <label className="menu-recipe-candidate" key={recipe.id}>
+                      <input
+                        type="radio"
+                        name="menu-recipe"
+                        value={recipe.id}
+                        checked={selectedRecipeId === String(recipe.id)}
+                        onChange={(e) => setSelectedRecipeId(e.target.value)}
+                      />
+                      <span>{recipe.isFavorite ? '★ ' : ''}{recipe.title}</span>
+                    </label>
+                  ))
                 )}
-              </select>
+                </div>
+              </fieldset>
             </div>
           ) : (
             <input aria-label="自由メモの内容" type="text" maxLength={100} value={memo} onChange={(e) => setMemo(e.target.value)} />

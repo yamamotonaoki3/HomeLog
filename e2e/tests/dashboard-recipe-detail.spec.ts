@@ -26,7 +26,7 @@ for (const width of [1280, 390, 320]) {
     await dialog.getByRole('button', { name: '閉じる' }).click()
 
     await page.goto('/menu')
-    await page.getByLabel('レシピ', { exact: true }).selectOption({ label: title })
+    await page.getByRole('radio', { name: title, exact: true }).check()
     await page.getByRole('button', { name: '追加', exact: true }).click()
     await expect(page.getByRole('listitem').filter({ hasText: title })).toBeVisible()
     await page.getByLabel('自由メモ', { exact: true }).check()
