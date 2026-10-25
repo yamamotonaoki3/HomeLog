@@ -75,6 +75,20 @@ export function AccountsPage() {
     showToast('チャージしました')
   }
 
+  // 削除済みの口座を画面に残さないよう、再取得の前に一覧から外しておく。
+  // 再取得に失敗した場合は reject し、モーダル側が「削除は完了済み」として扱う。
+  const handleAccountDeleted = async (accountId: number) => {
+    setAccounts((prev) => prev.filter((account) => account.id !== accountId))
+    try {
+      await fetchAccounts()
+    } catch (err) {
+      showToast(getApiErrorMessage(err, '口座一覧の取得に失敗しました'))
+      throw err
+    }
+    setHistoryAccount(null)
+    showToast('口座を削除しました')
+  }
+
   if (loading) {
     return <p>読み込み中...</p>
   }
@@ -165,7 +179,11 @@ export function AccountsPage() {
         />
       )}
       {historyAccount && (
-        <AccountTransactionsModal account={historyAccount} onClose={() => setHistoryAccount(null)} />
+        <AccountTransactionsModal
+          account={historyAccount}
+          onClose={() => setHistoryAccount(null)}
+          onDeleted={handleAccountDeleted}
+        />
       )}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
