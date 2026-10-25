@@ -392,6 +392,10 @@ input[type="checkbox"], input[type="radio"] {
 .deletion-pending h2, .deletion-pending p { margin: 0; }
 .deletion-pending p { line-height: 1.6; }
 .zaiko-search { width: 100%; max-width: 360px; margin: 8px 0 12px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+.inventory-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; margin: 8px 0 12px; }
+.inventory-filters .zaiko-search { flex: 1 1 220px; min-width: 0; margin: 0; }
+.inventory-category-filter { display: flex; flex: 0 1 220px; min-width: 0; max-width: 100%; flex-direction: column; gap: 4px; font-size: 14px; }
+.inventory-category-filter select { width: 100%; min-height: 38px; min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 16px; }
 
 .inventory-modal .hint { overflow-wrap: anywhere; }
 .inventory-consumption-switch { max-width: 100%; white-space: normal; }

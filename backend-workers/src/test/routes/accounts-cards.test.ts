@@ -87,7 +87,7 @@ describe('口座管理', () => {
     expect(body.type).toBe('e_money')
   })
 
-  it('使用中(支出で参照)の口座は削除できず400を返す', async () => {
+  it('過去の支出が参照する口座は履歴と口座名を保持して論理削除する', async () => {
     const { headers } = await createUserWithHousehold('taro@example.com')
     const account = await createAccount(headers)
     const categoryRes = await app.request('/api/kakeibo-categories', { headers }, env)
@@ -104,7 +104,10 @@ describe('口座管理', () => {
 
     const res = await app.request(`/api/accounts/${account.id}`, { method: 'DELETE', headers }, env)
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(204)
+    expect(await env.DB.prepare('SELECT name, balance, deleted_at FROM accounts WHERE id = ?').bind(account.id).first()).toMatchObject({ name: 'メイン口座', balance: 9500, deleted_at: expect.any(String) })
+    expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM expenses WHERE account_id = ?').bind(account.id).first('count')).toBe(1)
+    expect(await (await app.request('/api/accounts', { headers }, env)).json()).toEqual([])
   })
 
   it('未使用の口座は削除でき204を返す', async () => {
