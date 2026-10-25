@@ -135,6 +135,8 @@ a:hover { text-decoration: underline; }
 .fixed-cost-modal dl { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr); gap: 12px; }
 .fixed-cost-modal dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .fixed-cost-modal .modal-actions { flex-wrap: wrap; }
+.account-transactions-modal .modal-actions { flex-wrap: wrap; }
+.account-transactions-modal .modal-actions .btn { white-space: nowrap; }
 .fixed-cost-modal input, .fixed-cost-modal select, .fixed-cost-modal fieldset { min-width: 0; max-width: 100%; }
 .fixed-cost-modal .split-rows { padding: 0; list-style: none; }
 .fixed-cost-modal .split-row { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; min-width: 0; }
