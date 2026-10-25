@@ -1,0 +1,136 @@
+/* 家計簿・口座管理・取引モーダル */
+
+/* 口座と配下カードは4列を保ち、長い名前・残高もセル内で折り返す。 */
+.accounts-toolbar {
+  justify-content: space-between;
+}
+.accounts-actions {
+  display: flex;
+  gap: 8px;
+}
+.accounts-actions .btn {
+  white-space: nowrap;
+}
+.accounts-table {
+  table-layout: fixed;
+  overflow: visible;
+}
+.accounts-table col:nth-child(1) {
+  width: 25%;
+}
+.accounts-table col:nth-child(2) {
+  width: 16%;
+}
+.accounts-table col:nth-child(3) {
+  width: 22%;
+}
+.accounts-table col:nth-child(4) {
+  width: 37%;
+}
+.accounts-table th,
+.accounts-table td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.accounts-table .link-button {
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.accounts-card-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.accounts-card-list li + li {
+  margin-top: 8px;
+}
+@media (max-width: 480px) {
+  .accounts-actions .btn {
+    padding: 8px 12px;
+  }
+  .accounts-table th,
+  .accounts-table td {
+    padding: 8px 4px;
+  }
+}
+.account-transactions-modal .modal-actions {
+  flex-wrap: wrap;
+}
+.account-transactions-modal .modal-actions .btn {
+  white-space: nowrap;
+}
+
+/* 家計簿は3列のまま狭幅にも収め、詳細の長文はセル内で折り返す。 */
+.kakeibo-page {
+  overflow-wrap: anywhere;
+}
+.kakeibo-page .toolbar select {
+  min-width: 0;
+  max-width: 100%;
+}
+.transaction-detail-memo {
+  white-space: pre-wrap;
+}
+.transaction-split-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.transaction-split-list li + li {
+  margin-top: 12px;
+}
+@media (max-width: 480px) {
+  .kakeibo-page {
+    padding: 12px;
+  }
+  .kakeibo-page .panel {
+    padding: 10px;
+  }
+}
+.transaction-modal {
+  width: 420px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.transaction-modal select,
+.transaction-modal input,
+.transaction-modal textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.transaction-modal .split-fields {
+  min-width: 0;
+}
+.transaction-modal .split-rows {
+  padding: 0;
+  list-style: none;
+}
+.transaction-modal .split-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+  min-width: 0;
+}
+.transaction-modal .split-row select,
+.transaction-modal .split-row input {
+  flex: 1 1 120px;
+  width: 0;
+}
+.transaction-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 25fr) minmax(0, 45fr) minmax(0, 30fr);
+  gap: 8px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.transaction-grid > span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 家計簿: 今月のサマリーは1項目1行で表示する(#282) */
+.kakeibo-monthly-summary p {
+  margin: 4px 0;
+}

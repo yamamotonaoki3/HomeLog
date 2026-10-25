@@ -1,0 +1,55 @@
+/* アカウント設定・退会 */
+
+.account-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+.account-settings-section h2 {
+  margin-top: 0;
+}
+.account-settings-section form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.account-settings-section label {
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #555;
+}
+.account-settings-section input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 16px;
+}
+.account-settings-section .btn {
+  align-self: flex-start;
+  margin-top: 16px;
+  min-height: 44px;
+}
+.account-settings-current span {
+  overflow-wrap: anywhere;
+}
+.account-settings-success {
+  color: #15803d;
+}
+.account-deletion-blockers {
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+}
+.account-deletion-blockers p,
+.account-deletion-blockers ul {
+  margin: 0;
+}
+.account-deletion-blockers ul {
+  margin-top: 8px;
+  padding-left: 20px;
+}

@@ -1,0 +1,21 @@
+/* 割り勘 */
+
+/* 割り勘一覧は狭い画面でも表の中だけをスクロールし、操作列へ到達できる。 */
+.warikan-page .tabs {
+  flex-wrap: wrap;
+}
+.warikan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.warikan-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.warikan-row-amount {
+  text-align: right;
+  white-space: nowrap;
+}

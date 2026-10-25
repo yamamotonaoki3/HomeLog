@@ -1,0 +1,237 @@
+/* レシピ一覧・詳細・取り込みガイド、献立表のレシピ選択 */
+
+/* レシピ一覧(S-12)・レシピ詳細モーダル */
+.recipe-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.recipe-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+.recipe-title-button {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 16px;
+  color: #1d4ed8;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.recipe-title-button:hover {
+  background: #f1f5f9;
+  text-decoration: underline;
+}
+.recipe-list-thumbnail {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.recipe-detail-modal {
+  width: min(560px, calc(100vw - 32px));
+  line-height: 1.7;
+}
+.recipe-source-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+}
+.modal h2.recipe-detail-title {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  line-height: 1.4;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+.recipe-detail-section {
+  margin-top: 18px;
+}
+.recipe-detail-section h3 {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 4px solid #1d4ed8;
+  font-size: 16px;
+  color: #0f172a;
+}
+.recipe-detail-list {
+  margin: 0;
+  padding-left: 1.6em;
+  font-size: 15px;
+  color: #1f2937;
+}
+.recipe-detail-list li {
+  padding: 4px 0;
+  border-bottom: 1px dashed #e5e7eb;
+  overflow-wrap: anywhere;
+}
+.recipe-detail-list li:last-child {
+  border-bottom: none;
+}
+.recipe-detail-steps li {
+  padding: 6px 0;
+}
+.recipe-detail-steps li::marker {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+.recipe-detail-empty {
+  margin: 0;
+  color: #64748b;
+}
+.recipe-detail-memo {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.recipe-detail-thumbnail {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  margin-top: 12px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.recipe-modal {
+  width: min(420px, calc(100vw - 32px));
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.recipe-modal input,
+.recipe-modal textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.recipe-modal .modal-actions {
+  flex-wrap: wrap;
+}
+.recipe-bookmarklet-guide {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.recipe-bookmarklet-guide ol {
+  padding-left: 1.5rem;
+}
+.recipe-bookmarklet-guide li + li {
+  margin-top: .4rem;
+}
+.recipe-bookmarklet-link {
+  display: inline-block;
+  max-width: 100%;
+  padding: .6rem .9rem;
+  border: 1px solid currentColor;
+  border-radius: .5rem;
+  cursor: grab;
+}
+.recipe-bookmarklet-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.recipe-iphone-guide {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.recipe-iphone-guide ol {
+  padding-left: 1.5rem;
+}
+.recipe-iphone-guide li + li {
+  margin-top: .8rem;
+}
+.recipe-iphone-guide .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+.shortcut-url-label {
+  display: block;
+  margin-bottom: .4rem;
+}
+.shortcut-url {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: .8rem;
+}
+
+/* 献立表: 入力直後に候補を表示する(#376) */
+.menu-recipe-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.menu-recipe-picker input[type="search"] {
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  padding: 8px;
+  font-size: 16px;
+}
+.menu-recipe-candidates {
+  min-width: 0;
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+.menu-recipe-results {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.menu-recipe-candidate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.menu-recipe-candidate input {
+  flex-shrink: 0;
+  margin: 0;
+}
+.menu-recipe-candidate span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.menu-recipe-candidate:has(input:checked) {
+  background: #eff6ff;
+}
+.menu-recipe-candidate:focus-within {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+.menu-entry-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}

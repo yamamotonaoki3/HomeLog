@@ -1,0 +1,306 @@
+/* 全画面の共通レイアウト(ヘッダー・上部タブ・下部ナビ・ページ/パネル・タブ) */
+
+/* 共通レイアウト・ナビゲーション */
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* タイトルバーと折り返す関連タブを一体で追従させ、モーダル(z-index:100)より奥に置く。 */
+.app-top-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+}
+.global-nav {
+  background: #1e293b;
+  color: #fff;
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.nav-logo {
+  font-weight: bold;
+  font-size: 18px;
+  margin-right: 12px;
+  color: #fff;
+}
+.nav-logo:hover {
+  text-decoration: none;
+}
+.account-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-icon-link {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #64748b;
+  border-radius: 8px;
+  color: #cbd5e1;
+}
+.settings-icon-link:hover {
+  background: #334155;
+  color: #fff;
+  text-decoration: none;
+}
+.notification-alarm {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #64748b;
+  border-radius: 8px;
+  background: transparent;
+  color: #cbd5e1;
+}
+.notification-alarm:hover {
+  background: #334155;
+  color: #fff;
+}
+.notification-alarm-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: #e53e3e;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+.notification-alarm-loading .notification-alarm-count {
+  background: #64748b;
+}
+.notification-alarm-error .notification-alarm-count {
+  background: #64748b;
+}
+.nav-link {
+  color: #cbd5e1;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.nav-link:hover,
+.nav-link.is-active {
+  background: #334155;
+  color: #fff;
+  text-decoration: none;
+}
+.nav-logout {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #64748b;
+  color: #cbd5e1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.secondary-nav {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 上部だけをテキストと下線のタブにする。下部ナビのボタン表示は維持する。 */
+.secondary-nav .nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: #334155;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  font-weight: 500;
+}
+.secondary-nav .nav-link:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.secondary-nav .nav-link[aria-current="page"] {
+  background: transparent;
+  border-bottom-color: #1d4ed8;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.app-content {
+  flex: 1;
+  width: 100%;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+.primary-nav {
+  position: fixed;
+  z-index: 50;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: #1e293b;
+  box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.16);
+}
+.primary-nav .nav-link {
+  flex: 1;
+  max-width: 280px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.primary-nav .nav-link:focus-visible,
+.account-nav a:focus-visible,
+.account-nav button:focus-visible,
+.secondary-nav a:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}
+/* ページ・パネル */
+.page {
+  background: transparent;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.panel {
+  background: #fff;
+  padding: 16px;
+  border-radius: 8px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.toolbar h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.inline-form {
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.inline-form select {
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+/* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+@media (max-width: 800px) {
+  .nav-inner {
+    padding: 10px 12px;
+  }
+  .account-nav {
+    gap: 2px;
+  }
+  .nav-logout {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  /* 上部タブは横スクロールさせず、収まらない幅では折り返して全タブを見せる(#203) */
+  .secondary-nav {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px;
+  }
+  .secondary-nav .nav-link {
+    white-space: nowrap;
+  }
+  .primary-nav {
+    gap: 4px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}
+@media (max-width: 480px) {
+  /* スマホ幅では文字と余白を詰めて、4つのタブが1行に収まるようにする。押せる高さは40pxを確保する */
+  .secondary-nav {
+    gap: 0;
+    padding: 0 8px;
+  }
+  .secondary-nav .nav-link {
+    min-height: 40px;
+    padding: 6px;
+    font-size: 13px;
+  }
+}
+@media (max-width: 420px) {
+  .nav-inner {
+    gap: 6px;
+  }
+  .nav-logo {
+    margin-right: 0;
+    font-size: 16px;
+  }
+}
+
+/* 本人名は全文をDOMに保持し、操作部品の幅を確保して1行省略する。 */
+.nav-logo {
+  flex-shrink: 0;
+}
+.account-nav {
+  min-width: 0;
+}
+.settings-icon-link,
+.notification-alarm {
+  flex-shrink: 0;
+}
+.header-account {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  width: 180px;
+}
+.header-account-name {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.header-account .nav-logout {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

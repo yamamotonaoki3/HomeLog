@@ -1,0 +1,93 @@
+/* 認証画面(ログイン・登録・パスワード再設定)とパスワード入力欄。components.css より前に読み込む */
+
+/* 認証画面 */
+.center-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+}
+.auth-card {
+  background: #fff;
+  padding: 32px;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  width: 360px;
+}
+.auth-card-wide {
+  width: 560px;
+}
+.logo-title {
+  text-align: center;
+  color: #2563eb;
+}
+.auth-card label {
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.6;
+}
+.auth-card input,
+.auth-card select,
+.auth-card textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.password-field {
+  position: relative;
+}
+.password-field input {
+  width: 100%;
+  padding-right: 40px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+}
+.password-toggle:hover {
+  background: #e5e7eb;
+  color: #333;
+}
+.auth-notice {
+  padding: 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  line-height: 1.6;
+}
+.deletion-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.deletion-pending h2,
+.deletion-pending p {
+  margin: 0;
+}
+.deletion-pending p {
+  line-height: 1.6;
+}

@@ -1,0 +1,75 @@
+/* イベント画面とイベントのモーダル。.event-modal と .transaction-modal は同じ要素に付くため、kakeibo.css より前に読み込む */
+
+.event-detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+.event-detail-list dt {
+  color: #555;
+}
+.event-detail-list dd {
+  margin: 0;
+}
+
+/* イベント一覧は3列を狭幅でも折り返し、詳細・編集操作も画面内に収める。 */
+.event-modal {
+  width: min(560px, calc(100vw - 32px));
+  overflow-wrap: anywhere;
+}
+.event-modal .event-detail-list {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 10px;
+}
+.event-modal .modal-actions {
+  flex-wrap: wrap;
+}
+.event-modal input,
+.event-modal select {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 480px) {
+  .events-page {
+    padding: 12px;
+  }
+  .events-page .panel {
+    padding: 10px;
+  }
+  .event-modal {
+    padding: 16px;
+  }
+}
+.events-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 40fr) minmax(7em, 38fr) minmax(0, 22fr);
+  gap: 8px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.event-datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.events-page,
+.events-page .panel,
+.events-list,
+.transaction-list {
+  min-width: 0;
+}
+.event-summary {
+  border-top: 1px solid #d1d5db;
+  margin-top: 16px;
+  padding-top: 12px;
+}
+.event-delete-confirm {
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
