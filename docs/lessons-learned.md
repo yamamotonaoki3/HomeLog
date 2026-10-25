@@ -4,6 +4,8 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 
 ## 索引
 
+- 2026-10-25: requestAnimationFrameはReactのDOM更新完了を保証せず、disabled解除前のfocusは失敗する
+
 - 2026-10-25: Workersの静的配信がscheduledテスト用URLへHTMLを返すと、HTTP成功だけでは定期処理を検証できない
 
 - 2026-10-15: 保存成功後の再取得失敗を保存失敗と混同すると、新規登録の再送信で重複する
@@ -26,6 +28,14 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 - 2026-10-11: ファイルアップロードAPIは「パース前のボディ上限」「Mapでの許可リスト」「外部APIの200内エラー」「放置された一時ファイルの掃除」を最初から設計に入れる
 
 ## 記録
+
+### 2026-10-25: requestAnimationFrameはReactのDOM更新完了を保証せず、disabled解除前のfocusは失敗する
+
+- **種別**: 並列E2Eの失敗調査と修正（Issue #365）
+- **対象領域・関連ファイル**: `frontend/src/components/zaiko/InventoryModal.tsx`、`frontend/src/test/components/InventoryCategory.test.tsx`、`e2e/tests/zaiko-categories-ui.spec.ts`
+- **何が起きたか / 対応**: カテゴリー追加後、state更新と同時にrAFでselectへフォーカスしていた。診断付きE2Eは12回中3回失敗し、すべてdisabledのselectへfocusを試みた約2ms後にDOMが有効化され、フォーカスはBODYに残っていた。成功時の復帰要求をrefに保持し、DOM更新後のeffectでロック解除・入力フォーム終了を確認してから一度だけフォーカスを戻す。非表示・切断された要素は対象外とする。
+- **次回の行動規則**: rAFや固定時間の待機をDOM更新完了の代わりにしない。タイミングの順序を固定した回帰テストで修正前の失敗を確認し、実ブラウザでの並列反復も検証する。CIのワーカー数削減・タイムアウト延長で不具合を隠さない。
+- **状態**: 有効
 
 ### 2026-10-25: Workersの静的配信がscheduledテスト用URLへHTMLを返すと、HTTP成功だけでは定期処理を検証できない
 

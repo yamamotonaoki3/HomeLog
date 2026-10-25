@@ -1,7 +1,7 @@
 import { act, render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { ZaikoPage } from '../../pages/ZaikoPage'
@@ -45,6 +45,41 @@ async function open(user: ReturnType<typeof userEvent.setup>, edit = false) {
 }
 
 describe('在庫モーダル内のカテゴリー追加', () => {
+  it.each([false, true])('DOM更新より先に描画フレームが来ても有効になったカテゴリーへフォーカスを戻す（編集=%s）', async edit => {
+    setup(edit)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    server.use(http.post('/api/zaiko-categories', async () => {
+      await gate
+      return HttpResponse.json({ id: 88, name: 'testuser_フォーカス復帰', isDefault: false }, { status: 201 })
+    }))
+    const user = userEvent.setup()
+    await open(user, edit)
+    await user.type(screen.getByLabelText('カテゴリー名'), 'testuser_フォーカス復帰')
+    await user.click(screen.getByRole('button', { name: 'カテゴリーを追加' }))
+    const selection = screen.getByLabelText('カテゴリー')
+    expect(selection).toBeDisabled()
+    // 実ブラウザで確認した「ReactのDOM更新前にrAFが実行される」順序を固定する。
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      callback(performance.now())
+      return 0
+    })
+    try {
+      release()
+      await waitFor(() => expect(selection).toBeEnabled())
+      expect(selection).toHaveValue('88')
+      expect(screen.queryByLabelText('カテゴリー名')).not.toBeInTheDocument()
+      await waitFor(() => expect(selection).toHaveFocus())
+      // 一度復帰した後の通常入力からフォーカスを奪わない。
+      const name = screen.getByLabelText('品名')
+      await user.click(name)
+      await user.type(name, 'testuser_継続入力')
+      expect(name).toHaveFocus()
+    } finally {
+      raf.mockRestore()
+    }
+  })
+
   it.each([
     { isComposing: true, keyCode: 13 },
     { isComposing: false, keyCode: 229 },
