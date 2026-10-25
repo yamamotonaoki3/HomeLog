@@ -222,9 +222,10 @@ describe('ZaikoPage', () => {
 
     await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
     const inventoryPanel = screen.getByTestId('inventory-panel')
-    expect(within(inventoryPanel).queryByText('乳製品')).not.toBeInTheDocument()
+    // カテゴリーは絞り込みの選択肢に表示するが、品目行の3列には追加しない。
+    expect(within(inventoryPanel.querySelector('.inventory-list') as HTMLElement).queryByText('乳製品')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
-    expect(screen.getByText('乳製品')).toBeInTheDocument()
+    expect(within(screen.getByRole('dialog')).getByText('乳製品')).toBeInTheDocument()
     expect(screen.getByText('スーパーA')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
     expect(screen.getByTestId('shopping-panel')).not.toBeVisible()
