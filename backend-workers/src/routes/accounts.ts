@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { accounts, cardCharges, cards, expenses, fixedCosts } from '../db/schema'
+import { accounts, cards, fixedCosts } from '../db/schema'
 import { utcTimestampToJstDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
@@ -279,14 +279,6 @@ accountsRoute.delete('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  const expenseUsage = await db.select().from(expenses).where(eq(expenses.accountId, accountId)).all()
-  if (expenseUsage.length > 0) {
-    return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
-  }
-  const chargeUsage = await db.select().from(cardCharges).where(eq(cardCharges.fromAccountId, accountId)).all()
-  if (chargeUsage.length > 0) {
-    return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
-  }
   const fixedCostUsage = await db.select().from(fixedCosts).where(eq(fixedCosts.accountId, accountId)).all()
   if (fixedCostUsage.length > 0) {
     return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
@@ -300,14 +292,6 @@ accountsRoute.delete('/:id', async (c) => {
     if (card.balance !== 0) {
       return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
     }
-    const cardExpenseUsage = await db.select().from(expenses).where(eq(expenses.cardId, card.id)).all()
-    if (cardExpenseUsage.length > 0) {
-      return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
-    }
-    const cardChargeUsage = await db.select().from(cardCharges).where(eq(cardCharges.cardId, card.id)).all()
-    if (cardChargeUsage.length > 0) {
-      return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)
-    }
     // カードを引き落とし元に指定する固定費が紐づいている場合も削除不可
     // (既存Java実装のfixedCostMapper.countByCardAccountIdと同じ)。
     const cardFixedCostUsage = await db.select().from(fixedCosts).where(eq(fixedCosts.cardId, card.id)).all()
@@ -318,21 +302,26 @@ accountsRoute.delete('/:id', async (c) => {
 
   // 事前チェック後の追加・残高変更も、削除と同じbatch内で再確認する。
   const noDeletionBlockers = `
-    NOT EXISTS (SELECT 1 FROM expenses WHERE account_id = accounts.id
-      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
-    AND NOT EXISTS (SELECT 1 FROM card_charges WHERE from_account_id = accounts.id
-      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
-    AND NOT EXISTS (SELECT 1 FROM fixed_costs WHERE account_id = accounts.id
+    NOT EXISTS (SELECT 1 FROM fixed_costs WHERE account_id = accounts.id
       OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
     AND NOT EXISTS (SELECT 1 FROM cards WHERE account_id = accounts.id AND balance <> 0)
   `
+  // 過去の記録と口座名を保持する。判定も削除と同じbatchで行い、事前照合後の取引を失わない。
+  const hasHistory = `(
+    EXISTS (SELECT 1 FROM incomes WHERE account_id = accounts.id)
+    OR EXISTS (SELECT 1 FROM expenses WHERE account_id = accounts.id
+      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
+    OR EXISTS (SELECT 1 FROM card_charges WHERE from_account_id = accounts.id
+      OR card_id IN (SELECT id FROM cards WHERE account_id = accounts.id))
+    OR EXISTS (SELECT 1 FROM expense_splits WHERE debtor_account_id = accounts.id)
+  )`
   const [softDelete, physicalDelete] = await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE accounts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?
       AND deleted_at IS NULL AND ${noDeletionBlockers}
-      AND EXISTS (SELECT 1 FROM incomes WHERE account_id = accounts.id)`).bind(accountId),
+      AND ${hasHistory}`).bind(accountId),
     c.env.DB.prepare(`DELETE FROM accounts WHERE id = ? AND deleted_at IS NULL
       AND ${noDeletionBlockers}
-      AND NOT EXISTS (SELECT 1 FROM incomes WHERE account_id = accounts.id)`).bind(accountId),
+      AND NOT ${hasHistory}`).bind(accountId),
   ])
   if (softDelete.meta.changes === 0 && physicalDelete.meta.changes === 0) {
     return c.json(errorResponse('VALIDATION_ERROR', IN_USE_MESSAGE), 400)

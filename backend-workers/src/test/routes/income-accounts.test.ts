@@ -202,7 +202,7 @@ describe('income account contract #244', () => {
     expect(await balance()).toBeNull()
   })
 
-  it.each(['expense', 'charge-from', 'fixed-cost', 'card-expense', 'card-charge', 'card-fixed-cost', 'card-balance'])('rejects deletion when %s appears after prechecks', async (blocker) => {
+  it.each(['expense', 'charge-from', 'fixed-cost', 'card-expense', 'card-charge', 'card-fixed-cost', 'card-balance'])('applies history retention and active-use restrictions when %s appears after prechecks', async (blocker) => {
     const child = await (await request('cards', { accountId, name: '[E2E_TEST] child', cardType: 'charge' })).json<{ id: number }>()
     const active = await (await request('accounts', { name: '[E2E_TEST] active', type: 'bank', balance: 100 })).json<{ id: number }>()
     const activeCard = await (await request('cards', { accountId: active.id, name: '[E2E_TEST] active', cardType: 'charge' })).json<{ id: number }>()
@@ -233,9 +233,16 @@ describe('income account contract #244', () => {
     })
     const res = await app.request(`/api/accounts/${accountId}`, { method: 'DELETE', headers }, { ...env, DB: db })
     expect(intercepted).toBe(true)
-    expect(res.status).toBe(400)
-    expect(await env.DB.prepare('SELECT deleted_at FROM accounts WHERE id = ?').bind(accountId).first<string>('deleted_at')).toBeNull()
-    expect(await (await request('accounts', undefined, 'GET')).json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: accountId })]))
+    const historyOnly = ['expense', 'charge-from'].includes(blocker)
+    expect(res.status).toBe(historyOnly ? 204 : 400)
+    const deletedAt = await env.DB.prepare('SELECT deleted_at FROM accounts WHERE id = ?').bind(accountId).first<string>('deleted_at')
+    if (historyOnly) {
+      expect(deletedAt).toEqual(expect.any(String))
+      expect(await (await request('accounts', undefined, 'GET')).json()).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: accountId })]))
+    } else {
+      expect(deletedAt).toBeNull()
+      expect(await (await request('accounts', undefined, 'GET')).json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: accountId })]))
+    }
   })
 
   it.each(['expense', 'card-expense', 'charge-from', 'card-charge', 'settlement'])('rejects %s atomically if the account is deleted after validation', async (kind) => {
