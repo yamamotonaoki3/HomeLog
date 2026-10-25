@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, Store, InventoryItem } from '../../api/zaikoTypes'
@@ -32,6 +32,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const categoryPending = useRef(false)
   const categoryNameInput = useRef<HTMLInputElement>(null)
   const categorySelect = useRef<HTMLSelectElement>(null)
+  const categoryFocusRequested = useRef(false)
   const categoryToggle = useRef<HTMLButtonElement>(null)
   const [categoryFormOpen, setCategoryFormOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -48,6 +49,14 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
 
   const locked = submitting || saved || busy || categorySubmitting
 
+  useEffect(() => {
+    if (!categoryFocusRequested.current || locked || categoryFormOpen) return
+    categoryFocusRequested.current = false
+    const select = categorySelect.current
+    // rAFはReactのDOM更新完了を保証しない。disabled解除後のcommitで一度だけ戻す。
+    if (select?.isConnected && !select.disabled && !select.closest('[hidden]')) select.focus()
+  }, [locked, categoryFormOpen])
+
   const handleAddCategory = async () => {
     if (pending.current || categoryPending.current || busy || saved) return
     const trimmed = newCategoryName.trim()
@@ -63,8 +72,8 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
       onCategoriesChange([...categories, response.data])
       setCategoryId(String(response.data.id))
       setNewCategoryName('')
+      categoryFocusRequested.current = true
       setCategoryFormOpen(false)
-      requestAnimationFrame(() => categorySelect.current?.focus())
     } catch (err) {
       setCategoryError(getApiErrorMessage(err, 'カテゴリーの登録に失敗しました'))
     } finally {
