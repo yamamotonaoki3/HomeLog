@@ -79,7 +79,7 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
           <button type="button" className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>
             <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span>{item.threshold.toFixed(1)}</span>
           </button>
-          <button type="button" className="inventory-delete-button" aria-label={`${item.name}を削除`} onClick={(event) => { deleteOrigin.current = event.currentTarget; setDeleteTarget(item) }}>✖</button>
+          <button type="button" className="inventory-delete-button" aria-label={`${item.name}を削除`} onClick={(event) => { deleteOrigin.current = event.currentTarget; setDeleteTarget(item) }}>×</button>
         </div>)}
     </div>
     {deleteTarget && <InventoryDeleteDialog item={deleteTarget} onClose={closeDelete} onDeleted={async () => {
