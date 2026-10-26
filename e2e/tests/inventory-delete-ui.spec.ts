@@ -2,7 +2,7 @@ import { expect, test } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
-  test(`在庫一覧の✖から確認ダイアログを経て在庫を削除できる ${width}px (#380)`, async ({ page, consoleGuard }) => {
+  test(`在庫一覧の×から確認ダイアログを経て在庫を削除できる ${width}px (#380)`, async ({ page, consoleGuard }) => {
     await page.setViewportSize({ width, height: 844 })
     consoleGuard.watch(page)
     await setupUserWithHousehold(page, `inventory_delete_ui_${width}`)

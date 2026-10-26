@@ -22,8 +22,8 @@ function setup(options: { status?: number; message?: string; delayMs?: number } 
   return { calls, onRefresh, onNotify }
 }
 
-describe('在庫の削除(✖ボタンと確認ダイアログ)', () => {
-  it('各行の右端に✖ボタンがあり、押しても詳細モーダルは開かず確認ダイアログが開く', async () => {
+describe('在庫の削除(×ボタンと確認ダイアログ)', () => {
+  it('各行の右端に×ボタンがあり、押しても詳細モーダルは開かず確認ダイアログが開く', async () => {
     const { onRefresh, onNotify } = setup()
     const user = userEvent.setup()
     render(<InventoryPanel {...baseProps} onRefresh={onRefresh} onNotify={onNotify} />)
@@ -35,7 +35,7 @@ describe('在庫の削除(✖ボタンと確認ダイアログ)', () => {
     expect(screen.queryByRole('dialog', { name: /在庫詳細/ })).not.toBeInTheDocument()
   })
 
-  it('キャンセルでは削除せず、フォーカスを✖ボタンへ戻す', async () => {
+  it('キャンセルでは削除せず、フォーカスを×ボタンへ戻す', async () => {
     const { calls, onRefresh, onNotify } = setup()
     const user = userEvent.setup()
     render(<InventoryPanel {...baseProps} onRefresh={onRefresh} onNotify={onNotify} />)

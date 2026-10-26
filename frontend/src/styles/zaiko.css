@@ -23,7 +23,7 @@
 .inventory-list {
   min-width: 0;
 }
-/* 一覧の行: 詳細を開くボタンと、右端の削除(✖)ボタンを並べる(#380) */
+/* 一覧の行: 詳細を開くボタンと、右端の削除(×)ボタンを並べる(#380) */
 .inventory-row {
   display: flex;
   align-items: stretch;
@@ -51,8 +51,10 @@
   border: 0;
   border-bottom: 1px solid #ddd;
   background: white;
-  color: #64748b;
+  color: #cbd5e1;
   font: inherit;
+  font-size: 18px;
+  font-weight: 300;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
