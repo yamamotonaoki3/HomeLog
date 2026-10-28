@@ -16,6 +16,7 @@ export default defineConfig({
     // manifestオプションで追加する(injectManifest等の高度な構成は不要なため`generateSW`戦略)。
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'pwa-192.png', 'pwa-512.png', 'maskable-512.png'],
       workbox: {
         navigateFallbackDenylist: [/^\/api(\/|\?|$)/, /^\/health(\?|$)/],
       },
@@ -32,7 +33,11 @@ export default defineConfig({
           method: 'GET',
           params: { url: 'url', text: 'text', title: 'title' },
         },
-        icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }],
+        icons: [
+          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
     }),
   ],
