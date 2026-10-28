@@ -33,7 +33,7 @@ npm test -- tests/zaiko.spec.ts
 
 ## アプリ名称変更（#386）
 
-`tests/app-name.spec.ts` は1280／390／320pxで、ログイン画面・共通ヘッダー・タブタイトルの「シェファミ」、既存ストレージキーによるログイン継続、PCの登録リンクと既存iPhoneショートカット名の正しい案内を検証する。`APP_NAME_SCREENSHOT_DIR` をリポジトリ外に指定すると画像を保存する。PWA manifestのname/short_nameはWorkers静的配信の `tests/static-assets.spec.ts` で検証する。
+`tests/app-name.spec.ts` は1280／390／320pxで、ログイン画面・共通ヘッダー・タブタイトルの「シェファミ」、既存ストレージキーによるログイン継続、PCの登録リンクとiPhoneショートカット名の正しい案内を検証する。#388でiPhoneの新しい配布URLと「シェファミに登録」の案内も明示検証する。`APP_NAME_SCREENSHOT_DIR` をリポジトリ外に指定すると画像を保存する。PWA manifestのname/short_nameはWorkers静的配信の `tests/static-assets.spec.ts` で検証する。
 
 同じ静的配信specで、ログイン・登録・保護画面等への直接アクセス時に、JavaScript実行前の元HTMLが`noindex`を含むことも確認する。
 

@@ -52,7 +52,8 @@ for (const width of [1280, 390, 320]) {
     await expect(page).toHaveURL(/\/recipes\/iphone-shortcut$/)
     const prefix = `${new URL(page.url()).origin}/recipes/share?url=`
     const add = page.getByRole('link', { name: 'ショートカットを追加' })
-    await expect(add).toHaveAttribute('href', /^https:\/\/www\.icloud\.com\/shortcuts\//)
+    await expect(add).toHaveAttribute('href', 'https://www.icloud.com/shortcuts/5e2b4881fda540b481cf0b61efd2bb35')
+    await expect(page.getByText(/共有メニューから「シェファミに登録」/)).toBeVisible()
     await expect(add).toHaveAttribute('target', '_blank')
     await expect(page.getByLabel('登録先URLの接頭辞')).toHaveCount(0)
     await layout(page)
