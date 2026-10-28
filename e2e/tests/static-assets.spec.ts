@@ -3,6 +3,44 @@ import { join } from 'node:path'
 import { test, expect } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
+test('選定済みアイコンをファビコン・iOS・PWAへ配信する (#384)', async ({ page, request, consoleGuard }) => {
+  consoleGuard.watch(page)
+  await page.goto('/login')
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/apple-touch-icon.png')
+  await expect(page.locator('link[rel="icon"][type="image/x-icon"]')).toHaveAttribute('href', '/favicon.ico')
+  const response = await request.get('/manifest.webmanifest')
+  expect(response.ok()).toBe(true)
+  const manifest = await response.json()
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ]))
+  for (const [url, size] of [['/apple-touch-icon.png', 180], ['/pwa-192.png', 192], ['/pwa-512.png', 512], ['/maskable-512.png', 512]] as const) {
+    const image = await request.get(url)
+    expect(image.status()).toBe(200)
+    expect(image.headers()['content-type']).toMatch(/image\/png/)
+    const dimensions = await page.evaluate(async (src) => {
+      const img = new Image()
+      img.src = src
+      await img.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      let opaque = true
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] !== 255) opaque = false
+      return { size: [img.naturalWidth, img.naturalHeight], opaque }
+    }, url)
+    expect(dimensions).toEqual({ size: [size, size], opaque: true })
+  }
+  const favicon = await request.get('/favicon.ico')
+  expect(favicon.status()).toBe(200)
+  expect(favicon.headers()['content-type']).toMatch(/image\/(?:x-icon|vnd.microsoft.icon)/)
+})
+
 for (const width of [1280, 390, 320]) {
   test.describe(`Workers静的配信 ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, hasTouch: width < 1280 })
