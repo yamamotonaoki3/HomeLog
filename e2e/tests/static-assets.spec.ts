@@ -3,14 +3,33 @@ import { join } from 'node:path'
 import { test, expect } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
+test('公開HTMLは検索結果への掲載を禁止する (#386)', async ({ page, request, consoleGuard }) => {
+  consoleGuard.watch(page)
+  await page.goto('/login')
+  for (const path of ['/', '/login', '/register', '/recipes/iphone-shortcut', '/menu']) {
+    const response = await request.get(path)
+    expect(response.status()).toBe(200)
+    const html = await response.text()
+    // JavaScript実行後ではなく、クローラーに返す元HTMLに含まれることを確認する。
+    const directive = await page.evaluate((source) => new DOMParser()
+      .parseFromString(source, 'text/html')
+      .querySelector('meta[name="robots"]')?.getAttribute('content'), html)
+    expect(directive?.toLowerCase().split(/[\s,]+/)).toContain('noindex')
+  }
+})
+
 test('選定済みアイコンをファビコン・iOS・PWAへ配信する (#384)', async ({ page, request, consoleGuard }) => {
   consoleGuard.watch(page)
   await page.goto('/login')
+  await expect(page).toHaveTitle('シェファミ')
+  await expect(page.getByRole('heading', { name: 'シェファミ', exact: true })).toBeVisible()
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/apple-touch-icon.png')
   await expect(page.locator('link[rel="icon"][type="image/x-icon"]')).toHaveAttribute('href', '/favicon.ico')
   const response = await request.get('/manifest.webmanifest')
   expect(response.ok()).toBe(true)
   const manifest = await response.json()
+  expect(manifest.name).toBe('シェファミ')
+  expect(manifest.short_name).toBe('シェファミ')
   expect(manifest.icons).toEqual(expect.arrayContaining([
     { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
     { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

@@ -21,8 +21,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api(\/|\?|$)/, /^\/health(\?|$)/],
       },
       manifest: {
-        name: 'HomeLog',
-        short_name: 'HomeLog',
+        name: 'シェファミ',
+        short_name: 'シェファミ',
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',

@@ -31,6 +31,12 @@ npm test -- tests/zaiko.spec.ts
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
 - 8787 / 5173 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
 
+## アプリ名称変更（#386）
+
+`tests/app-name.spec.ts` は1280／390／320pxで、ログイン画面・共通ヘッダー・タブタイトルの「シェファミ」、既存ストレージキーによるログイン継続、PCの登録リンクと既存iPhoneショートカット名の正しい案内を検証する。`APP_NAME_SCREENSHOT_DIR` をリポジトリ外に指定すると画像を保存する。PWA manifestのname/short_nameはWorkers静的配信の `tests/static-assets.spec.ts` で検証する。
+
+同じ静的配信specで、ログイン・登録・保護画面等への直接アクセス時に、JavaScript実行前の元HTMLが`noindex`を含むことも確認する。
+
 ## 検索操作の統一（#376）
 
 `tests/recipe-search.spec.ts` は1280／390／320pxで、献立表の入力直後のレシピ候補表示、かな・全半角検索、空欄・0件、条件変更による選択解除、キーボード選択と「追加」による登録、長いタイトル・多数候補の表示を検証する。在庫一覧・買い物リストでも同じ即時絞り込み操作を確認する。`RECIPE_SEARCH_SCREENSHOT_DIR` をリポジトリ外に指定すると画像を保存する。
