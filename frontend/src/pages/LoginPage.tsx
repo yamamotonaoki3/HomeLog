@@ -77,7 +77,7 @@ export function LoginPage() {
   return (
     <div className="center-screen">
       <div className="auth-card">
-        <h1 className="logo-title">HomeLog</h1>
+        <h1 className="logo-title">シェファミ</h1>
         {state?.deletionScheduledAt && !pendingUntil && (
           <p className="auth-notice" role="status">
             退会を申し込みました。{formatDeletionDate(state.deletionScheduledAt)}までにログインすると取り消せます。

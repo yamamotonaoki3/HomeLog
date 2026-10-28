@@ -32,6 +32,11 @@ function SharePage() {
 }
 
 describe('LoginPage', () => {
+  it('アプリ名をシェファミと表示する', () => {
+    renderLoginPage()
+    expect(screen.getByRole('heading', { name: 'シェファミ' })).toBeVisible()
+  })
+
   afterEach(() => {
     clearTokens()
   })

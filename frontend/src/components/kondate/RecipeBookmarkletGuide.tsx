@@ -15,12 +15,12 @@ export function RecipeBookmarkletGuide() {
       <h3 id="recipe-bookmarklet-heading">PCからレシピを登録</h3>
       <a ref={linkRef} className="recipe-bookmarklet-link" draggable onClick={(event) => {
         event.preventDefault()
-        setNotice('「HomeLogに登録」をブックマークバーへドラッグして設置してください。')
-      }}>HomeLogに登録</a>
+        setNotice('「シェファミに登録」をブックマークバーへドラッグして設置してください。')
+      }}>シェファミに登録</a>
       <ol>
         <li>ブラウザのブックマークバーを表示します。</li>
-        <li>「HomeLogに登録」をブックマークバーへドラッグします。</li>
-        <li>レシピの閲覧ページで、設置した「HomeLogに登録」を押します。</li>
+        <li>「シェファミに登録」をブックマークバーへドラッグします。</li>
+        <li>レシピの閲覧ページで、設置した「シェファミに登録」を押します。</li>
       </ol>
       <p>別タブでURL入力済みのWEB登録画面が開きます。内容を確認して「登録」を押してください。</p>
       <p className="hint">通常のHTTP(S)ページで使えます。使えないページでは「レシピを登録」のWEBタブにURLを貼り付けてください。</p>

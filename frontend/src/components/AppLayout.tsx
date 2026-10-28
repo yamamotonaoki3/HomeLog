@@ -37,7 +37,7 @@ export function AppLayout() {
         <header className="global-nav">
           <div className="nav-inner">
             <NavLink to="/" className="nav-logo">
-              HomeLog
+              シェファミ
             </NavLink>
             <nav aria-label="設定" className="account-nav">
               <NotificationAlarm />

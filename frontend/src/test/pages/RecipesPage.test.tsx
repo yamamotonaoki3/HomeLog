@@ -124,7 +124,7 @@ describe('RecipesPage', () => {
   it('一覧にPCから登録する案内を表示する', async () => {
     setupApi()
     renderRecipesPage()
-    expect(await screen.findByRole('link', { name: 'HomeLogに登録' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'シェファミに登録' })).toBeInTheDocument()
   })
 
   it('複雑な共有URLを明示的な登録操作まで保存せず、そのままPOSTする', async () => {

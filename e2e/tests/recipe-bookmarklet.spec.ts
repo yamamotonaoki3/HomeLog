@@ -68,7 +68,7 @@ for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: width === 1280 ? 800 : 844 })
     await setupUserWithHousehold(page, `bookmark${width}`)
     await page.goto('/recipes')
-    const link = page.getByRole('link', { name: 'HomeLogに登録' })
+    const link = page.getByRole('link', { name: 'シェファミに登録' })
     await expect(link).toBeVisible()
     await assertLayout(page, [page.getByRole('heading', { name: 'PCからレシピを登録' }), link, page.locator('.recipe-bookmarklet-guide ol')])
     await shot(page, `guide-${width}`, info.project.name)
@@ -115,7 +115,7 @@ for (const width of [1280, 390, 320]) {
     consoleGuard.watch(page)
     const user = await setupUserWithHousehold(page, `bookmarkLogin${width}`)
     await page.goto('/recipes')
-    const href = (await page.getByRole('link', { name: 'HomeLogに登録' }).getAttribute('href'))!
+    const href = (await page.getByRole('link', { name: 'シェファミに登録' }).getAttribute('href'))!
     const context = await browser.newContext({ viewport: { width, height: width === 1280 ? 800 : 844 }, timezoneId: 'Asia/Tokyo' })
     try {
       const { shared, original } = await launch(context, href, consoleGuard)

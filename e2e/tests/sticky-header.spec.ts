@@ -56,7 +56,7 @@ for (const width of [1280, 390, 320]) {
 
     await page.getByRole('link', { name: '設定を開く' }).click()
     await expect(page).toHaveURL(/\/settings$/)
-    await page.getByRole('link', { name: 'HomeLog', exact: true }).click()
+    await page.getByRole('link', { name: 'シェファミ', exact: true }).click()
     await expect(page).toHaveURL(/\/$/)
 
     await page.goto('/zaiko')

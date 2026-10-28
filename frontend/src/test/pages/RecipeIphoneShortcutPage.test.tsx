@@ -19,7 +19,8 @@ describe('RecipeIphoneShortcutPage', () => {
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     expect(link).toHaveClass('btn', 'btn-primary')
-    expect(screen.getByText(/追加されるショートカットは本番のHomeLogを開きます/)).toBeVisible()
+    expect(screen.getByText(/追加されるショートカットは本番のシェファミを開きます/)).toBeVisible()
+    expect(screen.getByText(/配布中のショートカット名は「homelogに登録」です/)).toBeVisible()
   })
 
   it('自作手順と接頭辞欄は表示せず、追加後の使い方を案内する', () => {
@@ -29,7 +30,7 @@ describe('RecipeIphoneShortcutPage', () => {
     expect(screen.queryByRole('button', { name: 'URLをコピー' })).toBeNull()
     const steps = within(screen.getByRole('list')).getAllByRole('listitem')
     expect(steps).toHaveLength(4)
-    expect(screen.getByText(/共有メニューから「HomeLogに登録」/)).toBeVisible()
+    expect(screen.getByText(/共有メニューから「homelogに登録」/)).toBeVisible()
     expect(screen.getByText(/「許可」/)).toBeVisible()
     expect(screen.getByText(/WEBタブへURLを貼り付け/)).toBeVisible()
   })

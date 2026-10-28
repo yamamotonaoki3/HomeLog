@@ -6,7 +6,7 @@ import { createRecipeBookmarklet } from '../../lib/recipeBookmarklet'
 describe('RecipeBookmarkletGuide', () => {
   it('生成コードを持つドラッグ可能なリンクと設置・利用・代替手順を表示する', () => {
     const { rerender } = render(<RecipeBookmarkletGuide />)
-    const link = screen.getByRole('link', { name: 'HomeLogに登録' })
+    const link = screen.getByRole('link', { name: 'シェファミに登録' })
     expect(link.tagName).toBe('A')
     expect(link).toHaveAttribute('draggable', 'true')
     expect(link.getAttribute('href')).toBe(createRecipeBookmarklet(window.location.origin))
