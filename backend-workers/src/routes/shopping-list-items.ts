@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
@@ -238,55 +238,47 @@ shoppingListItemsRoute.post('/update', async (c) => {
     lines.push({ entry, item, deltaTenths })
   }
 
-  // Phase 2: 検証済みの全行を1つのD1バッチ(トランザクション)にまとめて実行する。
-  // 個別にawaitして逐次コミットする方式だと、後方の行が(他リクエストとの競合で)
-  // 実行時に失敗した場合、既に個別コミット済みの前方の行を取り消せない
-  // (D1はバッチ以外に複数ラウンドトリップにまたがるトランザクションを提供しないため)。
-  // 1つのバッチにまとめることで、全行が同一トランザクションとして実行される。
-  // バッチはあらかじめ静的なbind値で文を組み立てる必要があり、ある文のRETURNING結果を
-  // 後続の文のパラメータとして渡せないため、各行のDELETE/UPDATE文は「直前のUPDATEで
-  // 実際に適用された値」をSQLのサブクエリ(ライブな現在値)で参照する形にし、
-  // JS側の古いスナップショットに依存しないようにする。
-  const statements: D1PreparedStatement[] = []
-  for (const { entry, item, deltaTenths } of lines) {
-    statements.push(
-      c.env.DB.prepare(
-        `UPDATE inventory_items
-         SET quantity_tenths = quantity_tenths + ?
-         WHERE id = ? AND household_id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?
-           AND EXISTS (SELECT 1 FROM shopping_list_items WHERE id = ? AND inventory_item_id = inventory_items.id AND household_id = ?)`,
-      ).bind(deltaTenths, item.id, householdId, deltaTenths, deltaTenths, maxTenths, entry.id, householdId),
-    )
-    // changes() is captured immediately after the inventory update. Reset first,
-    // then use that UPDATE's changes() to guard deletion; no stale quantity equality.
-    statements.push(c.env.DB.prepare(`UPDATE shopping_list_items
-      SET purchased = 0, purchased_quantity_tenths = 0
-      WHERE id = ? AND household_id = ? AND changes() > 0`).bind(entry.id, householdId))
-    statements.push(c.env.DB.prepare(`DELETE FROM shopping_list_items
-      WHERE id = ? AND household_id = ? AND changes() > 0 AND
-        (is_manual = 1 OR EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND quantity_tenths > threshold_tenths))`)
-      .bind(entry.id, householdId, item.id))
+  // Phase 2: 更新前の適格行を固定し、全行が適格な場合だけ1文で在庫を更新する。
+  // 個別UPDATEの0件はSQL例外にならないため、batchに並べるだけでは部分確定を防げない。
+  // 購入専用revisionを確認し、Cronの数量変更を許容しつつ並行購入の二重加算を防ぐ。
+  const payload = JSON.stringify(lines.map(({ entry, item, deltaTenths }) => ({
+    entryId: entry.id, itemId: item.id, purchaseRevision: entry.purchaseRevision, deltaTenths,
+  })))
+  const count = lines.length
+  const entryIds = 'SELECT json_extract(value, \'$.entryId\') FROM json_each(?)'
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(`WITH requested AS (
+        SELECT json_extract(value, '$.entryId') AS entry_id,
+          json_extract(value, '$.itemId') AS item_id,
+          json_extract(value, '$.purchaseRevision') AS purchase_revision,
+          json_extract(value, '$.deltaTenths') AS delta_tenths FROM json_each(?)
+      ), eligible AS MATERIALIZED (
+        SELECT i.id, r.delta_tenths FROM requested r
+        JOIN shopping_list_items s ON s.id = r.entry_id AND s.inventory_item_id = r.item_id AND s.household_id = ?
+        JOIN inventory_items i ON i.id = s.inventory_item_id AND i.household_id = ?
+        WHERE s.purchase_revision = r.purchase_revision AND i.quantity_tenths + r.delta_tenths BETWEEN 0 AND ?
+      )
+      UPDATE inventory_items SET quantity_tenths = quantity_tenths + (SELECT delta_tenths FROM eligible WHERE eligible.id = inventory_items.id)
+      WHERE id IN (SELECT id FROM eligible) AND (SELECT COUNT(*) FROM eligible) = ?
+      RETURNING id, quantity_tenths`).bind(payload, householdId, householdId, maxTenths, count),
+    // changes()は直前の文の更新件数。全品目が更新された時だけ入力をリセットする。
+    c.env.DB.prepare(`UPDATE shopping_list_items SET purchased = 0, purchased_quantity_tenths = 0, purchase_revision = purchase_revision + 1
+      WHERE household_id = ? AND id IN (${entryIds}) AND changes() = ?`).bind(householdId, payload, count),
+    c.env.DB.prepare(`DELETE FROM shopping_list_items
+      WHERE household_id = ? AND id IN (${entryIds}) AND changes() = ? AND
+        (is_manual = 1 OR EXISTS (SELECT 1 FROM inventory_items WHERE id = shopping_list_items.inventory_item_id AND quantity_tenths > threshold_tenths))
+      RETURNING id`).bind(householdId, payload, count),
+  ])
+  if (results[0].meta.changes !== count) {
+    return c.json(errorResponse('RESOURCE_CONFLICT', '買い物リストまたは在庫が変更されました。再取得してください'), 409)
   }
 
-  const results = await c.env.DB.batch(statements)
-
-  // レスポンスは(JS側で計算した値ではなく)バッチ後に在庫アイテムを再取得した実際の値から組み立てる。
-  const updatedItemIds = lines.map(({ item }) => item.id)
-  const refreshedItems = await db.select().from(inventoryItems).where(inArray(inventoryItems.id, updatedItemIds)).all()
-  const refreshedItemById = new Map(refreshedItems.map((refreshed) => [refreshed.id, refreshed]))
-
-  const updatedInventoryItems: { id: number; quantity: number }[] = []
-  const removedShoppingListItemIds: number[] = []
-  for (const [index, { entry, item }] of lines.entries()) {
-    const refreshed = refreshedItemById.get(item.id)
-    if (refreshed) {
-      updatedInventoryItems.push({ id: item.id, quantity: fromTenths(refreshed.quantityTenths) })
-    }
-    const deleteResult = results[index * 3 + 2]
-    if (deleteResult.meta.changes > 0) {
-      removedShoppingListItemIds.push(entry.id)
-    }
-  }
+  // 別要求の変更を混ぜず、この購入バッチの確定結果を元の要求順で返す。
+  const updatedById = new Map((results[0].results as { id: number; quantity_tenths: number }[])
+    .map((row) => [row.id, row.quantity_tenths]))
+  const removedIds = new Set((results[2].results as { id: number }[]).map((row) => row.id))
+  const updatedInventoryItems = lines.map(({ item }) => ({ id: item.id, quantity: fromTenths(updatedById.get(item.id)!) }))
+  const removedShoppingListItemIds = lines.filter(({ entry }) => removedIds.has(entry.id)).map(({ entry }) => entry.id)
 
   return c.json({ updatedInventoryItems, removedShoppingListItemIds })
 })
