@@ -257,6 +257,7 @@ erDiagram
         boolean is_manual
         boolean purchased
         numeric purchased_quantity
+        integer purchase_revision
         timestamp added_at
     }
     recipes {
@@ -699,6 +700,7 @@ Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレー�
 | is_manual | BOOLEAN | ○ | 手動追加か自動追加か |
 | purchased | BOOLEAN | ○ | 購入済みチェック |
 | purchased_quantity | NUMERIC(6,1) | — | 購入個数 |
+| purchase_revision | INTEGER | ○ | DEFAULT 0。並行購入の検出用の内部更新番号。成功した購入でのみ増加（Workers、#394） |
 
 ### recipes（レシピ）
 

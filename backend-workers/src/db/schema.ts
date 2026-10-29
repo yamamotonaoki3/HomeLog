@@ -116,6 +116,7 @@ export const shoppingListItems = sqliteTable('shopping_list_items', {
   isManual: integer('is_manual', { mode: 'boolean' }).notNull(),
   purchased: integer('purchased', { mode: 'boolean' }).notNull().default(false),
   purchasedQuantityTenths: integer('purchased_quantity_tenths').notNull().default(0),
+  purchaseRevision: integer('purchase_revision').notNull().default(0),
   addedAt: text('added_at')
     .notNull()
     .default(sql`(current_timestamp)`),

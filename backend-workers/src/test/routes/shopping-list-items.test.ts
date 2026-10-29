@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
+import { consumeInventoryForDate } from '../../lib/inventory-consumption'
 
 async function resetDb() {
   await env.DB.batch([
@@ -60,6 +61,150 @@ async function createItem(
 
 beforeEach(async () => {
   await resetDb()
+})
+
+function beforePurchaseBatch(action: () => Promise<void>) {
+  let fired = false
+  const DB = new Proxy(env.DB, {
+    get(target, key) {
+      if (key === 'batch') return async (statements: D1PreparedStatement[]) => {
+        if (!fired) {
+          fired = true
+          await action()
+        }
+        return target.batch(statements)
+      }
+      const value = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+  return { bindings: { ...env, DB }, wasTriggered: () => fired }
+}
+
+describe('一括購入の競合 (#394)', () => {
+  it('複数の手動・自動品目と数量0も全件反映し、要求順の確定結果を返す', async () => {
+    const { headers } = await createUserWithHousehold('testuser_purchase_mixed@example.com')
+    const categoryId = await createCategory(headers)
+    const items: { id: number }[] = []
+    for (let i = 0; i < 3; i++) {
+      items.push(await createItem(headers, { name: `[E2E_TEST] mixed ${i}`, categoryId, storeId: null, quantity: 0, threshold: [0, 2, 5][i] }))
+    }
+    const manual = await createItem(headers, { name: '[E2E_TEST] manual zero', categoryId, storeId: null, quantity: 10, threshold: 0 })
+    expect((await app.request('/api/shopping-list-items', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ inventoryItemId: manual.id }) }, env)).status).toBe(201)
+    const entries = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number; inventoryItemId: number }[]>()
+    const entryId = (itemId: number) => entries.find((entry) => entry.inventoryItemId === itemId)!.id
+    const response = await app.request('/api/shopping-list-items/update', {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: [
+        { id: entryId(manual.id), purchasedQuantity: 0 }, { id: entryId(items[2].id), purchasedQuantity: 1 },
+        { id: entryId(items[0].id), purchasedQuantity: 1 }, { id: entryId(items[1].id), purchasedQuantity: 2 },
+      ] }),
+    }, env)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      updatedInventoryItems: [{ id: manual.id, quantity: 10 }, { id: items[2].id, quantity: 1 }, { id: items[0].id, quantity: 1 }, { id: items[1].id, quantity: 2 }],
+      removedShoppingListItemIds: [entryId(manual.id), entryId(items[0].id)],
+    })
+    expect((await env.DB.prepare('SELECT inventory_item_id, purchased, purchased_quantity_tenths, purchase_revision FROM shopping_list_items ORDER BY inventory_item_id').all()).results).toEqual([
+      { inventory_item_id: items[1].id, purchased: 0, purchased_quantity_tenths: 0, purchase_revision: 1 },
+      { inventory_item_id: items[2].id, purchased: 0, purchased_quantity_tenths: 0, purchase_revision: 1 },
+    ])
+  })
+
+  it('在庫加算後の入力リセットでDBエラーが起きても在庫を含め全件ロールバックする', async () => {
+    const { headers } = await createUserWithHousehold('testuser_purchase_rollback@example.com')
+    const categoryId = await createCategory(headers)
+    for (let i = 0; i < 3; i++) {
+      await createItem(headers, { name: `[E2E_TEST] rollback ${i}`, categoryId, storeId: null, quantity: 0, threshold: 100 })
+    }
+    const snapshot = async () => (await env.DB.prepare('SELECT id, quantity_tenths FROM inventory_items ORDER BY id').all()).results
+    const before = await snapshot()
+    const entries = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number }[]>()
+    await env.DB.exec("CREATE TRIGGER test_purchase_abort BEFORE UPDATE OF purchased ON shopping_list_items BEGIN SELECT RAISE(ABORT, 'test_purchase_abort'); END;")
+    try {
+      const response = await app.request('/api/shopping-list-items/update', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: entries.map((entry) => ({ id: entry.id, purchasedQuantity: 1 })) }),
+      }, env)
+      expect(response.status).toBe(500)
+      expect(await snapshot()).toEqual(before)
+      expect((await env.DB.prepare('SELECT purchase_revision FROM shopping_list_items').all()).results).toEqual(Array.from({ length: 3 }, () => ({ purchase_revision: 0 })))
+    } finally {
+      await env.DB.exec('DROP TRIGGER test_purchase_abort;')
+    }
+  })
+
+  it('先に日次消費が確定しても数量の変化だけでは競合とせず、全件に購入を加算する', async () => {
+    const { headers } = await createUserWithHousehold('testuser_purchase_cron@example.com')
+    const categoryId = await createCategory(headers)
+    for (let i = 0; i < 3; i++) {
+      const item = await createItem(headers, { name: `[E2E_TEST] cron ${i}`, categoryId, storeId: null, quantity: 10, threshold: 0, dailyConsumption: 1, autoConsumptionEnabled: true })
+      expect((await app.request('/api/shopping-list-items', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ inventoryItemId: item.id }) }, env)).status).toBe(201)
+    }
+    await env.DB.prepare("UPDATE inventory_items SET last_consumed_on = '2099-01-01'").run()
+    const entries = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number }[]>()
+    const race = beforePurchaseBatch(() => consumeInventoryForDate(env.DB, '2099-01-02'))
+    const response = await app.request('/api/shopping-list-items/update', {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: entries.map((entry) => ({ id: entry.id, purchasedQuantity: 1 })) }),
+    }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(200)
+    expect((await env.DB.prepare('SELECT quantity_tenths FROM inventory_items').all()).results).toEqual(Array.from({ length: 3 }, () => ({ quantity_tenths: 100 })))
+    expect((await env.DB.prepare('SELECT id FROM shopping_list_items').all()).results).toHaveLength(0)
+  })
+
+  const cases = ['list-delete', 'inventory-delete', 'limit'].flatMap((kind) => [0, 1, 2].map((index) => ({ kind, index })))
+  it.each(cases)('$kind が位置$indexで競合したら購入を全件未反映にする', async ({ kind, index }) => {
+    const { headers } = await createUserWithHousehold('testuser_purchase_race@example.com')
+    const categoryId = await createCategory(headers)
+    const items: { id: number; entryId: number }[] = []
+    for (let i = 0; i < 3; i++) {
+      const item = await createItem(headers, { name: `[E2E_TEST] item ${i}`, categoryId, storeId: null, quantity: 10, threshold: 0 })
+      const entry = await (await app.request('/api/shopping-list-items', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ inventoryItemId: item.id }) }, env)).json<{ id: number }>()
+      items.push({ id: item.id, entryId: entry.id })
+    }
+    await env.DB.prepare('UPDATE shopping_list_items SET purchased = 1, purchased_quantity_tenths = 10').run()
+    const snapshot = async () => ({
+      inventory: (await env.DB.prepare('SELECT * FROM inventory_items ORDER BY id').all()).results,
+      shopping: (await env.DB.prepare('SELECT * FROM shopping_list_items ORDER BY id').all()).results,
+    })
+    let before: Awaited<ReturnType<typeof snapshot>> | undefined
+    const race = beforePurchaseBatch(async () => {
+      const target = items[index]
+      if (kind === 'limit') {
+        const response = await app.request(`/api/inventory-items/${target.id}/quantity`, { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ delta: 99989.9 }) }, env)
+        expect(response.status).toBe(200)
+      } else {
+        const path = kind === 'list-delete' ? `/api/shopping-list-items/${target.entryId}` : `/api/inventory-items/${target.id}`
+        expect((await app.request(path, { method: 'DELETE', headers }, env)).status).toBe(204)
+      }
+      before = await snapshot()
+    })
+    const response = await app.request('/api/shopping-list-items/update', {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items.map((item) => ({ id: item.entryId, purchasedQuantity: 1 })) }),
+    }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ code: 'RESOURCE_CONFLICT' })
+    expect(await snapshot()).toEqual(before)
+  })
+
+  it('自動追加でリストに残る品目でも、同じ状態を読んだ購入同士は二重加算しない', async () => {
+    const { headers } = await createUserWithHousehold('testuser_purchase_duplicate@example.com')
+    const categoryId = await createCategory(headers)
+    for (let i = 0; i < 3; i++) {
+      await createItem(headers, { name: `[E2E_TEST] auto ${i}`, categoryId, storeId: null, quantity: 0, threshold: 100 })
+    }
+    const entries = await (await app.request('/api/shopping-list-items', { headers }, env)).json<{ id: number }[]>()
+    const body = JSON.stringify({ items: entries.map((entry) => ({ id: entry.id, purchasedQuantity: 1 })) })
+    const request = { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body }
+    const race = beforePurchaseBatch(async () => {
+      expect((await app.request('/api/shopping-list-items/update', request, env)).status).toBe(200)
+    })
+    const response = await app.request('/api/shopping-list-items/update', request, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(409)
+    expect((await env.DB.prepare('SELECT quantity_tenths FROM inventory_items ORDER BY id').all()).results).toEqual([{ quantity_tenths: 10 }, { quantity_tenths: 10 }, { quantity_tenths: 10 }])
+    expect((await env.DB.prepare('SELECT purchased, purchased_quantity_tenths FROM shopping_list_items').all()).results).toEqual(Array.from({ length: 3 }, () => ({ purchased: 0, purchased_quantity_tenths: 0 })))
+  })
 })
 
 describe('GET /api/shopping-list-items', () => {
