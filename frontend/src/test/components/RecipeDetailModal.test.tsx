@@ -1,4 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Recipe } from '../../api/kondateTypes'
@@ -35,6 +36,35 @@ function renderModal(recipe: Recipe) {
 }
 
 describe('RecipeDetailModal', () => {
+  it('表示直後と再表示直後のEscapeを受け付ける', () => {
+    const onClose = vi.fn()
+    function EscapeOnCommit() {
+      useLayoutEffect(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      }, [])
+      return <RecipeDetailModal recipe={manualRecipe} onClose={onClose} />
+    }
+    const view = render(<EscapeOnCommit key="first" />)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    view.rerender(<EscapeOnCommit key="reopened" />)
+    expect(onClose).toHaveBeenCalledTimes(2)
+    view.unmount()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('Escapeは最新のハンドラーだけを呼び、ほかのキーでは閉じない', () => {
+    const first = vi.fn()
+    const next = vi.fn()
+    const view = render(<RecipeDetailModal recipe={manualRecipe} onClose={first} />)
+    view.rerender(<RecipeDetailModal recipe={manualRecipe} onClose={next} />)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(next).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(first).not.toHaveBeenCalled()
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+
   it('操作ハンドラーを省略すると閲覧専用になる', () => {
     render(<RecipeDetailModal recipe={manualRecipe} onClose={vi.fn()} />)
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()

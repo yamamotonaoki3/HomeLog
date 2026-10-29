@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useLayoutEffect, type ReactNode } from 'react'
 import type { Recipe } from '../../api/kondateTypes'
 
 const SOURCE_LABELS: Record<string, string> = { manual: '手動', ocr: '画像解析', web: 'WEB' }
@@ -37,7 +37,7 @@ export function RecipeDetailModal({
   onEdit?: () => void
   onDelete?: () => void
 }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onKeyDown = (keyEvent: KeyboardEvent) => {
       if (keyEvent.key === 'Escape') onClose()
     }
