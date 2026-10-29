@@ -111,7 +111,7 @@ describe('DashboardPage', () => {
     } })
   }
 
-  it('献立のIDで同名レシピを選び閲覧専用で開き、閉じるとフォーカスを戻す', async () => {
+  it.each(['button', 'escape', 'overlay'] as const)('献立のIDで同名レシピを選び閲覧専用で開き、%sで閉じるとフォーカスを戻す', async (close) => {
     setupMenu()
     server.use(http.get('/api/recipes', () => HttpResponse.json([1, 2].map((id) => ({
       id, title: '[E2E_TEST] 同名', ingredients: `材料${id}`, steps: `手順${id}`,
@@ -122,7 +122,7 @@ describe('DashboardPage', () => {
     const list = screen.getByRole('list', { name: '今週の献立' })
     expect(within(list).getAllByRole('button')).toHaveLength(1)
     expect(within(list).getByText('削除されたレシピ')).toBeInTheDocument()
-    for (const close of ['button', 'escape', 'overlay']) {
+    for (let opening = 0; opening < 2; opening++) {
       fireEvent.click(button)
       const dialog = await screen.findByRole('dialog', { name: 'レシピ詳細' })
       expect(within(dialog).getByText('材料2')).toBeInTheDocument()
