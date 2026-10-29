@@ -546,6 +546,29 @@ describe('状態遷移(改訂フロー)', () => {
     expect(await listExpenses(owner.headers)).toHaveLength(1)
   })
 
+  it('受取口座の削除後も世帯外の精算明細を取り消し、削除済み残高は固定する (#392)', async () => {
+    const owner = await createUserWithHousehold('testuser_deleted_settlement@example.com')
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] deleted payer', 3000)
+    const activeAccount = await createAccount(owner.headers, '[E2E_TEST] active', 8000)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: '[E2E_TEST] external', amountDue: 400 }], { amount: 1000, splitInputType: 'amount' })
+    const splitId = await firstSplitId(owner.headers)
+    expect((await patch(splitId, 'settle-self', owner.headers, { accountId: payerAccount })).status).toBe(200)
+    expect((await app.request(`/api/accounts/${payerAccount}`, { method: 'DELETE', headers: owner.headers }, env)).status).toBe(204)
+    const frozen = await env.DB.prepare('SELECT balance, deleted_at FROM accounts WHERE id = ?').bind(payerAccount).first()
+    expect(frozen).toMatchObject({ balance: 3400, deleted_at: expect.any(String) })
+
+    const remove = () => app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)
+    const results = await Promise.all([remove(), remove()])
+    expect(results.map((result) => result.status).sort()).toEqual([200, 404])
+    expect(await results.find((result) => result.status === 200)!.json()).toEqual({ settlementLedgerRemoved: true })
+    expect(await env.DB.prepare('SELECT balance, deleted_at FROM accounts WHERE id = ?').bind(payerAccount).first()).toEqual(frozen)
+    expect(await listIncomes(owner.headers)).toHaveLength(0)
+    expect(await listExpenses(owner.headers)).toHaveLength(1)
+    expect(await env.DB.prepare('SELECT id FROM expense_splits WHERE id = ?').bind(splitId).first()).toBeNull()
+    expect(await accountBalance(owner.headers, activeAccount)).toBe(8000)
+    expect((await app.request(`/api/accounts/${payerAccount}/transactions`, { headers: owner.headers }, env)).status).toBe(404)
+  })
+
   it('世帯外の精算済み内訳は、口座を選ばずに精算していても削除できる (#301)', async () => {
     const owner = await createUserWithHousehold('taro@example.com', 'テスト太郎')
     await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: 'E2EUser B', amountDue: 400 }], { amount: 1000, splitInputType: 'amount' })

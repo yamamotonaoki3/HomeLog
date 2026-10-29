@@ -504,16 +504,17 @@ expenseSplitsRoute.patch('/:id/settle-self', async (c) => {
 })
 
 // 世帯外の相手との精算済み内訳の削除(#301)。精算で作った「割り勘精算」の収入(と、あれば支出)を消し、
-// 動かした口座残高を戻す。すべて「まだ精算済みの世帯外内訳として存在する」ことを条件に1バッチで行い、
+// 有効な口座の残高を戻す。削除済み口座の残高は固定する(#392)。
+// すべて「まだ精算済みの世帯外内訳として存在する」ことを条件に1バッチで行い、
 // 並行して削除された場合はどの文も適用しない。
 async function deleteSettledExternalSplit(c: Context<AppEnv>, splitId: number) {
   const db = c.env.DB
   const guard = "EXISTS (SELECT 1 FROM expense_splits WHERE id = ?1 AND status = 'settled' AND debtor_external_id IS NOT NULL)"
   const results = await db.batch([
     db.prepare(`UPDATE accounts SET balance = balance - (SELECT i.amount FROM incomes i WHERE i.settlement_split_id = ?1 AND i.account_id = accounts.id)
-      WHERE id IN (SELECT account_id FROM incomes WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
+      WHERE deleted_at IS NULL AND id IN (SELECT account_id FROM incomes WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
     db.prepare(`UPDATE accounts SET balance = balance + (SELECT e.amount FROM expenses e WHERE e.settlement_split_id = ?1 AND e.account_id = accounts.id)
-      WHERE id IN (SELECT account_id FROM expenses WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
+      WHERE deleted_at IS NULL AND id IN (SELECT account_id FROM expenses WHERE settlement_split_id = ?1) AND ${guard}`).bind(splitId),
     db.prepare(`DELETE FROM incomes WHERE settlement_split_id = ?1 AND ${guard}`).bind(splitId),
     db.prepare(`DELETE FROM expenses WHERE settlement_split_id = ?1 AND ${guard}`).bind(splitId),
     db.prepare("DELETE FROM expense_splits WHERE id = ?1 AND status = 'settled' AND debtor_external_id IS NOT NULL").bind(splitId),
