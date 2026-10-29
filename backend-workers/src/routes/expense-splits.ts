@@ -548,6 +548,14 @@ expenseSplitsRoute.delete('/:id', async (c) => {
     return deleteSettledExternalSplit(c, splitId)
   }
 
-  await c.env.DB.prepare('DELETE FROM expense_splits WHERE id = ?').bind(splitId).run()
+  // 読込後に精算が確定していた場合は、精算明細との紐付けを壊さず競合として返す。
+  const result = await c.env.DB.prepare(`DELETE FROM expense_splits WHERE id = ?
+    AND status IN ('unpaid', 'requested', 'payment_reported', 'pending')
+    AND EXISTS (SELECT 1 FROM expenses e WHERE e.id = expense_splits.expense_id
+      AND e.household_id = ? AND e.payer_user_id = ?)`)
+    .bind(splitId, householdId, userId).run()
+  if (result.meta.changes === 0) {
+    return c.json(errorResponse('RESOURCE_CONFLICT', '割り勘の状態が変更されました。再取得してください'), 409)
+  }
   return c.body(null, 204)
 })

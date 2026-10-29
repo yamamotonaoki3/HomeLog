@@ -3,6 +3,54 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
 
+// SQLは実D1で実行し、読み込みと書き込みの間に別の実API操作を割り込ませる。
+function beforeSplitWrite(kind: 'delete' | 'settlement', action: () => Promise<void>) {
+  let fired = false
+  const before = async () => {
+    if (fired) return
+    fired = true
+    await action()
+  }
+  const DB = new Proxy(env.DB, {
+    get(target, key) {
+      if (key === 'batch' && kind === 'settlement') {
+        return async (statements: D1PreparedStatement[]) => {
+          await before()
+          return target.batch(statements)
+        }
+      }
+      if (key === 'prepare' && kind === 'delete') {
+        return (sql: string) => {
+          const statement = target.prepare(sql)
+          if (!sql.startsWith('DELETE FROM expense_splits WHERE id = ?')) return statement
+          return new Proxy(statement, {
+            get(stmt, property) {
+              if (property === 'bind') return (...values: unknown[]) => {
+                const bound = stmt.bind(...values)
+                return new Proxy(bound, {
+                  get(prepared, method) {
+                    if (method === 'run') return async () => {
+                      await before()
+                      return prepared.run()
+                    }
+                    const value = Reflect.get(prepared, method)
+                    return typeof value === 'function' ? value.bind(prepared) : value
+                  },
+                })
+              }
+              const value = Reflect.get(stmt, property)
+              return typeof value === 'function' ? value.bind(stmt) : value
+            },
+          })
+        }
+      }
+      const value = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+  return { bindings: { ...env, DB }, wasTriggered: () => fired }
+}
+
 async function resetDb() {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM expense_split_comments'),
@@ -409,6 +457,75 @@ describe('状態遷移(改訂フロー)', () => {
     const s2 = await setup2(owner)
     const del2 = await app.request(`/api/expense-splits/${s2.splitId}`, { method: 'DELETE', headers: owner.headers }, env)
     expect(del2.status).toBe(204)
+  })
+
+  it('削除の読込後に世帯内の精算が確定したら409とし明細・残高・編集制限を保つ (#391)', async () => {
+    const { owner, member, splitId } = await setup()
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] payer', 3000)
+    const debtorAccount = await createAccount(member.headers, '[E2E_TEST] debtor', 10000)
+    expect((await patch(splitId, 'mark-paid', member.headers, { accountId: debtorAccount })).status).toBe(200)
+    const race = beforeSplitWrite('delete', async () => {
+      expect((await patch(splitId, 'confirm-receipt', owner.headers, { accountId: payerAccount })).status).toBe(200)
+    })
+    const response = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ code: 'RESOURCE_CONFLICT' })
+    expect(await env.DB.prepare('SELECT status FROM expense_splits WHERE id = ?').bind(splitId).first()).toEqual({ status: 'settled' })
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3500)
+    expect(await accountBalance(member.headers, debtorAccount)).toBe(9500)
+    for (const [table, headers] of [['incomes', owner.headers], ['expenses', member.headers]] as const) {
+      const row = await env.DB.prepare(`SELECT id FROM ${table} WHERE settlement_split_id = ?`).bind(splitId).first<{ id: number }>()
+      expect(row).not.toBeNull()
+      expect((await app.request(`/api/${table}/${row!.id}`, { method: 'DELETE', headers }, env)).status).toBe(409)
+      expect((await app.request(`/api/${table}/${row!.id}`, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}' }, env)).status).toBe(409)
+    }
+  })
+
+  it('削除の読込後に世帯外の精算が確定したら取消せず409とする (#391)', async () => {
+    const owner = await createUserWithHousehold('testuser_race_external@example.com')
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] payer', 3000)
+    await createExpenseWithSplits(owner.headers, owner.userId, [{ debtorExternalName: '[E2E_TEST] external', amountDue: 400 }], { splitInputType: 'amount' })
+    const splitId = await firstSplitId(owner.headers)
+    const race = beforeSplitWrite('delete', async () => {
+      expect((await patch(splitId, 'settle-self', owner.headers, { accountId: payerAccount })).status).toBe(200)
+    })
+    const response = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(409)
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3400)
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM incomes WHERE settlement_split_id = ?').bind(splitId).first()).toEqual({ n: 1 })
+    expect(await env.DB.prepare('SELECT status FROM expense_splits WHERE id = ?').bind(splitId).first()).toEqual({ status: 'settled' })
+  })
+
+  it('精算バッチより先に削除されたら精算明細と残高移動を残さない (#391)', async () => {
+    const { owner, member, splitId } = await setup()
+    const payerAccount = await createAccount(owner.headers, '[E2E_TEST] payer', 3000)
+    const debtorAccount = await createAccount(member.headers, '[E2E_TEST] debtor', 10000)
+    await patch(splitId, 'mark-paid', member.headers, { accountId: debtorAccount })
+    const race = beforeSplitWrite('settlement', async () => {
+      expect((await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)).status).toBe(204)
+    })
+    const response = await app.request(`/api/expense-splits/${splitId}/confirm-receipt`, {
+      method: 'PATCH', headers: { ...owner.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId: payerAccount }),
+    }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(400)
+    expect(await accountBalance(owner.headers, payerAccount)).toBe(3000)
+    expect(await accountBalance(member.headers, debtorAccount)).toBe(10000)
+    expect(await listIncomes(owner.headers)).toHaveLength(0)
+    expect(await listExpenses(member.headers)).toHaveLength(0)
+    expect(await env.DB.prepare('SELECT id FROM expense_splits WHERE id = ?').bind(splitId).first()).toBeNull()
+  })
+
+  it('削除の読込後に別の削除が確定したら409を返す (#391)', async () => {
+    const { owner, splitId } = await setup()
+    const race = beforeSplitWrite('delete', async () => {
+      expect((await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, env)).status).toBe(204)
+    })
+    const response = await app.request(`/api/expense-splits/${splitId}`, { method: 'DELETE', headers: owner.headers }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(409)
   })
 
   it('世帯外の精算済み内訳は削除でき、精算の収入も消えて口座残高が戻る (#301)', async () => {
