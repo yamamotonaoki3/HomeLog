@@ -325,6 +325,79 @@ describe('カード管理', () => {
 })
 
 describe('GET /api/accounts/:id/transactions', () => {
+  // 実際の履歴バッチ直前に別の実API更新を確定させ、古い残高の混在を再現する。
+  function beforeHistoryBatch(action: () => Promise<void>) {
+    let fired = false
+    const DB = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === 'batch') return async (statements: D1PreparedStatement[]) => {
+          if (!fired) {
+            fired = true
+            await action()
+          }
+          return target.batch(statements)
+        }
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    return { bindings: { ...env, DB }, wasTriggered: () => fired }
+  }
+
+  it.each(['income', 'expense', 'charge'] as const)('履歴取得直前の%sも残高と同じ時点から返す (#393)', async (kind) => {
+    const { headers } = await createUserWithHousehold(`testuser_history_${kind}@example.com`)
+    const account = await createAccount(headers, 10000)
+    const post = async (path: string, body: unknown, status = 201) => {
+      const response = await app.request(`/api/${path}`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, env)
+      expect(response.status).toBe(status)
+      return response.json<{ id: number }>()
+    }
+    const categories = await (await app.request('/api/kakeibo-categories', { headers }, env)).json<{ id: number }[]>()
+    const incomeCategories = await (await app.request('/api/income-categories', { headers }, env)).json<{ id: number }[]>()
+    const earlier = await post('expenses', { expenseDate: '2026-01-01', amount: 50, purpose: '[E2E_TEST] earlier', categoryId: categories[0].id, accountId: account.id })
+    // 同一秒の異種取引の既存の順序制約とは分離して、取得時点だけを検証する。
+    await env.DB.prepare("UPDATE expenses SET created_at = '2026-01-01 00:00:00' WHERE id = ?").bind(earlier.id).run()
+    const card = kind === 'charge' ? await post('cards', { accountId: account.id, name: '[E2E_TEST] charge', cardType: 'charge' }) : null
+    const race = beforeHistoryBatch(async () => {
+      if (kind === 'income') {
+        await post('incomes', { incomeDate: '2099-01-01', amount: 100, content: '[E2E_TEST] concurrent', categoryId: incomeCategories[0].id, accountId: account.id })
+      } else if (kind === 'expense') {
+        await post('expenses', { expenseDate: '2099-01-01', amount: 100, purpose: '[E2E_TEST] concurrent', categoryId: categories[0].id, accountId: account.id })
+      } else {
+        await post(`cards/${card!.id}/charges`, { fromAccountId: account.id, amount: 100 }, 200)
+      }
+    })
+    const response = await app.request(`/api/accounts/${account.id}/transactions`, { headers }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(200)
+    const body = await response.json<{ currentBalance: number; transactions: { type: string; balanceAfter: number }[] }>()
+    const expected = 9950 + (kind === 'income' ? 100 : -100)
+    expect(body.currentBalance).toBe(expected)
+    expect(body.transactions).toHaveLength(2)
+    expect(body.transactions[0]).toMatchObject({ type: kind, balanceAfter: expected })
+    expect(body.transactions[1]).toMatchObject({ type: 'expense', balanceAfter: 9950 })
+  })
+
+  it('履歴バッチ直前に削除された口座は古い残高を返さず404にする (#393)', async () => {
+    const { headers } = await createUserWithHousehold('testuser_history_deleted@example.com')
+    const account = await createAccount(headers)
+    const race = beforeHistoryBatch(async () => {
+      expect((await app.request(`/api/accounts/${account.id}`, { method: 'DELETE', headers }, env)).status).toBe(204)
+    })
+    const response = await app.request(`/api/accounts/${account.id}/transactions`, { headers }, race.bindings)
+    expect(race.wasTriggered()).toBe(true)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ code: 'RESOURCE_NOT_FOUND' })
+  })
+
+  it('同じ世帯の他人の口座でも取引履歴は404にする (#393)', async () => {
+    const owner = await createUserWithHousehold('testuser_history_owner@example.com')
+    const other = await createUserWithHousehold('testuser_history_other@example.com')
+    await env.DB.prepare('UPDATE household_members SET household_id = (SELECT household_id FROM household_members WHERE user_id = ?) WHERE user_id = ?').bind(owner.userId, other.userId).run()
+    const account = await createAccount(owner.headers)
+    expect((await app.request(`/api/accounts/${account.id}/transactions`, { headers: other.headers }, env)).status).toBe(404)
+  })
+
   async function firstCategoryId(headers: Record<string, string>, kind: 'kakeibo' | 'income'): Promise<number> {
     const res = await app.request(kind === 'kakeibo' ? '/api/kakeibo-categories' : '/api/income-categories', { headers }, env)
     const [category] = await res.json<{ id: number }[]>()

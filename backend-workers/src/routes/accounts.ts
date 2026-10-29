@@ -101,32 +101,32 @@ accountsRoute.get('/:id/transactions', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
-  const account = await db
-    .select()
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.householdId, householdId), eq(accounts.ownerUserId, userId), isNull(accounts.deletedAt)))
-    .get()
-  if (!account) {
-    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
-  }
-
-  const [expenseRows, incomeRows, chargeRows] = await c.env.DB.batch([
+  // 残高と明細を同じトランザクションで取得し、途中の入出金による取得時点のずれを防ぐ。
+  const ownedAccount = `SELECT id FROM accounts
+    WHERE id = ? AND household_id = ? AND owner_user_id = ? AND deleted_at IS NULL`
+  const bindings = [accountId, householdId, userId]
+  const [accountRows, expenseRows, incomeRows, chargeRows] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT balance FROM accounts WHERE id IN (${ownedAccount})`).bind(...bindings),
     c.env.DB.prepare(
       `SELECT e.id, e.expense_date AS date, e.amount, e.purpose, e.memo, e.created_at, k.name AS category
          FROM expenses e JOIN kakeibo_categories k ON k.id = e.category_id
-        WHERE e.account_id = ?`,
-    ).bind(accountId),
+        WHERE e.account_id IN (${ownedAccount})`,
+    ).bind(...bindings),
     c.env.DB.prepare(
       `SELECT i.id, i.income_date AS date, i.amount, i.content, i.memo, i.created_at, ic.name AS category
          FROM incomes i JOIN income_categories ic ON ic.id = i.category_id
-        WHERE i.account_id = ?`,
-    ).bind(accountId),
+        WHERE i.account_id IN (${ownedAccount})`,
+    ).bind(...bindings),
     c.env.DB.prepare(
       `SELECT ch.id, ch.amount, ch.created_at, cd.name AS card_name
          FROM card_charges ch JOIN cards cd ON cd.id = ch.card_id
-        WHERE ch.from_account_id = ?`,
-    ).bind(accountId),
+        WHERE ch.from_account_id IN (${ownedAccount})`,
+    ).bind(...bindings),
   ])
+  const account = accountRows.results[0] as { balance: number } | undefined
+  if (!account) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
+  }
 
   type Raw = { row: Omit<TransactionRow, 'balanceAfter'>; sortKey: string }
   const merged: Raw[] = []
