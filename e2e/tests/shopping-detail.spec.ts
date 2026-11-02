@@ -4,7 +4,7 @@ import { test, expect } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
-  test(`買い物3列・詳細入力保持・一括購入 ${width}px`, async ({ browser, baseURL, consoleGuard }) => {
+  test(`買い物4列・詳細入力保持・一括購入 ${width}px`, async ({ browser, baseURL, consoleGuard }) => {
     const context = await browser.newContext({ baseURL, viewport: { width, height: 900 }, hasTouch: width < 400 })
     try {
       const page = await context.newPage()
@@ -47,7 +47,7 @@ for (const width of [1280, 390, 320]) {
       }
       await expect(row).toBeVisible()
       expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
-      await expect(row.locator('span')).toHaveCount(3)
+      await expect(row.locator('span')).toHaveCount(4)
       await expect(row.locator('button,input')).toHaveCount(0)
       await screenshot('list')
       for (const index of [0, 1, 2]) {
