@@ -60,6 +60,8 @@ export function ShoppingListPanel({
   const storeName = (id: number | null | undefined) =>
     id === null || id === undefined ? '' : (stores.find((s) => s.id === id)?.name ?? '')
 
+  const stockText = (id: number) => inventoryOf(id)?.quantity.toFixed(1) ?? '－'
+
   const purchaseOf = (id: number): PurchaseState => purchases[id] ?? { quantity: 0 }
 
   const updatePurchase = (id: number, patch: Partial<PurchaseState>) => {
@@ -161,12 +163,12 @@ export function ShoppingListPanel({
       )}
       <input type="search" className="zaiko-search" aria-label="キーワード検索" placeholder="キーワードで絞り込み" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
       <div aria-label="買い物リスト一覧">
-        <div className="shopping-list-grid list-row-heading"><span>品名</span><span>買う店</span><span>購入個数</span></div>
+        <div className="shopping-list-grid list-row-heading"><span>品名</span><span>買う店</span><span>在庫</span><span>購入個数</span></div>
         {shopping.length === 0 ? <p>買い物リストは空です</p> : visibleShopping.length === 0 ? <p>該当する品目がありません</p> : visibleShopping.map((item) => <button type="button" key={item.id} className="list-row-button shopping-list-grid" aria-label={`${item.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(item.id) }}>
-          <span>{item.name}</span><span>{storeName(inventoryOf(item.inventoryItemId)?.storeId) || 'なし'}</span><span>{purchaseOf(item.id).quantity}</span>
+          <span>{item.name}</span><span>{storeName(inventoryOf(item.inventoryItemId)?.storeId) || 'なし'}</span><span className="shopping-list-stock">{stockText(item.inventoryItemId)}</span><span>{purchaseOf(item.id).quantity}</span>
         </button>)}
       </div>
-      {selected && <ShoppingListDetailModal item={selected} category={categoryName(inventoryOf(selected.inventoryItemId)?.categoryId)} store={storeName(inventoryOf(selected.inventoryItemId)?.storeId)} quantity={purchaseOf(selected.id).quantity} busy={submitting} onQuantity={(quantity) => { if (!pending.current) updatePurchase(selected.id, { quantity }) }} onDelete={() => { void handleDelete(selected) }} onClose={closeDetail} />}
+      {selected && <ShoppingListDetailModal item={selected} category={categoryName(inventoryOf(selected.inventoryItemId)?.categoryId)} store={storeName(inventoryOf(selected.inventoryItemId)?.storeId)} stock={stockText(selected.inventoryItemId)} quantity={purchaseOf(selected.id).quantity} busy={submitting} onQuantity={(quantity) => { if (!pending.current) updatePurchase(selected.id, { quantity }) }} onDelete={() => { void handleDelete(selected) }} onClose={closeDetail} />}
       <button type="button" className="btn btn-primary" onClick={handleUpdate} disabled={submitting}>
         更新
       </button>

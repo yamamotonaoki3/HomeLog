@@ -133,7 +133,7 @@
 }
 .shopping-list-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(2.5rem, .8fr) minmax(2.5rem, 1fr);
   gap: 0.5rem;
 }
 .zaiko-search {
