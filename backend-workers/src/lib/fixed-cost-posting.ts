@@ -44,14 +44,15 @@ async function resolveFixedCostCategoryId(db: D1Database, householdId: number): 
 }
 
 /**
- * 1件の固定費を、指定日を計上日として計上する(既存Javaの FixedCostPostingExecutor.postSingleFixedCost
- * と同じロジック)。二重計上防止はUNIQUE制約(fixed_cost_id, fixed_cost_year_month)に委ねる。
+ * 1件の固定費を、支払日(dueDate)を計上日として計上する(既存Javaの FixedCostPostingExecutor.postSingleFixedCost
+ * と同じロジック)。取りこぼしの回収でも計上日は復旧日ではなく支払日にする(#396)。
+ * 二重計上防止はUNIQUE制約(fixed_cost_id, fixed_cost_year_month)と計上済み・抑止記録の確認に委ねる。
  */
-async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.$inferSelect, today: Date): Promise<void> {
-  const year = today.getUTCFullYear()
-  const month = today.getUTCMonth() + 1
+async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.$inferSelect, dueDate: Date): Promise<void> {
+  const year = dueDate.getUTCFullYear()
+  const month = dueDate.getUTCMonth() + 1
   const yearMonth = `${year}-${pad2(month)}`
-  const expenseDate = `${yearMonth}-${pad2(today.getUTCDate())}`
+  const expenseDate = `${yearMonth}-${pad2(dueDate.getUTCDate())}`
 
   const alreadyPosted = await db
     .prepare(`SELECT 1 FROM expenses WHERE fixed_cost_id = ? AND fixed_cost_year_month = ?
@@ -185,22 +186,35 @@ async function postSingleFixedCost(db: D1Database, fixedCost: typeof fixedCosts.
 }
 
 /**
- * 指定日を基準に、当日が支払日にあたる固定費を全世帯分計上する(既存Javaの
- * FixedCostPostingService.postForDate + @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo")相当)。
+ * 指定日を基準に、当日が支払日にあたる固定費と、今月の支払日を過ぎて未計上の固定費を全世帯分計上する
+ * (既存Javaの FixedCostPostingService.postForDate + @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Tokyo")相当)。
  * Cloudflare WorkersのCron Triggerから呼び出すことを想定し、日付はJST基準で呼び出し側が算出して渡す。
+ *
+ * 取りこぼしの回収(#396): 自動処理の一時的な失敗で計上漏れが残らないよう、今月の支払日が今日より前の
+ * 固定費も計上する。次の範囲に限り、計上日は支払日とする。
+ * - 当月の分だけ。過去月は補填しない。支払日が月末を超える場合は月末日を支払日とする。
+ * - 設定の有効開始日(effective_from, JST)より後の支払日だけ。登録・変更した日とそれ以前へは遡及しない。
+ *   effective_from が NULL の行は回収せず、当日分だけ計上する。
+ * - 計上済み・手動削除による計上抑止の記録は postSingleFixedCost が尊重し、再実行・並行実行でも二重計上しない。
  */
 export async function postDueFixedCosts(db: D1Database, today: Date): Promise<void> {
+  const year = today.getUTCFullYear()
+  const month = today.getUTCMonth() + 1
   const day = today.getUTCDate()
-  const lastDay = lastDayOfMonth(today.getUTCFullYear(), today.getUTCMonth() + 1)
+  const lastDay = lastDayOfMonth(year, month)
+  const monthPrefix = `${year}-${pad2(month)}-`
 
+  // 今月の支払日 = MIN(payment_day, 月末日)。pad2相当のゼロ埋めはprintfで行い、文字列のまま日付比較する。
   const dueRows = await db
     .prepare(
       `SELECT * FROM fixed_costs
-       WHERE payment_day = ?
-          OR (payment_day > ? AND ? = ?)
+       WHERE MIN(payment_day, ?1) = ?2
+          OR (effective_from IS NOT NULL
+              AND MIN(payment_day, ?1) < ?2
+              AND ?3 || printf('%02d', MIN(payment_day, ?1)) > effective_from)
        ORDER BY id`,
     )
-    .bind(day, lastDay, day, lastDay)
+    .bind(lastDay, day, monthPrefix)
     .all<{
       id: number
       household_id: number
@@ -212,6 +226,7 @@ export async function postDueFixedCosts(db: D1Database, today: Date): Promise<vo
       amount: number
       payment_day: number
       include_in_household_total: number
+      effective_from: string | null
       created_at: string
     }>()
 
@@ -227,11 +242,13 @@ export async function postDueFixedCosts(db: D1Database, today: Date): Promise<vo
       amount: row.amount,
       paymentDay: row.payment_day,
       includeInHouseholdTotal: Boolean(row.include_in_household_total),
+      effectiveFrom: row.effective_from,
       createdAt: row.created_at,
     }
     try {
       // 1件の失敗が他の世帯の計上を妨げないよう、意図的に直列実行する。
-      await postSingleFixedCost(db, fixedCost, today)
+      const dueDate = new Date(Date.UTC(year, month - 1, Math.min(row.payment_day, lastDay)))
+      await postSingleFixedCost(db, fixedCost, dueDate)
     } catch (error) {
       // 既存Java実装と同じく、1件の計上失敗をログに記録して処理を継続する(他世帯の計上には影響させない)。
       console.error(`固定費の自動計上に失敗しました。fixedCostId=${fixedCost.id}`, error)

@@ -61,11 +61,13 @@ dry-runはローカルのbundle・assets構成を検証するもので、D1/R2�
 
 注意: `wrangler secret put`は既存Workerでも新バージョンを即時デプロイする。初回Worker未作成時はWranglerがWorker作成を提案するため、作成確認も外部操作として扱う。公開準備の単なるローカル検証として実行しない。初回はsecret操作より前にもfrontend buildを済ませる。作成・配信対象のWorker名は`homelog-backend-workers`。
 
-Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01:00：固定費計上・在庫消費・OCR一時画像削除・退会処理）に加え、献立の期限切れ削除（#362）が動く。献立削除はUTC毎日15:00（JST翌00:00）に単独実行し、既存の01:00の処理でも再試行する。
+Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01:00：固定費計上（今月の支払日を過ぎた未計上分の回収を含む、#396）・在庫消費・OCR一時画像削除・退会処理・パスワード再設定の回数制限の清掃）に加え、献立の期限切れ削除（#362）が動く。献立削除はUTC毎日15:00（JST翌00:00）に単独実行し、既存の01:00の処理でも再試行する。
 
 **本番反映後の初回実行では、全世帯の先週以前の献立登録が物理削除される。** 今週と未来の献立・元のレシピは残るが、削除した献立の復元機能はない。Cronの実行時刻は遅れる場合があり、実行時点のJSTの週を基準に削除する。公開先D1/R2と自動処理開始・既存データへの影響を確認し、ユーザーから本番反映の指示を受けてから実行する。
 
 **パスワード再設定メール（#401）**はGASのMailApp経由。`PASSWORD_RESET_MAIL_ENABLED`は初期値`"false"`（停止）で、停止中・secret未設定のあいだ申請APIは利用不可（503）を返す。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。GAS公開・送信用Googleアカウントの認可・`PASSWORD_RESET_GAS_URL`/`PASSWORD_RESET_GAS_SECRET`のsecret登録・有効化の手順は[password-reset-gas-setup.md](details/password-reset-gas-setup.md)を参照する（実値はコミット・チャット・Issueに書かない）。D1マイグレーション0023（`password_reset_attempts`）は`npm run deploy`の際に自動適用される。
+
+**固定費の取りこぼし回収（#396）**: マイグレーション0024が`fixed_costs.effective_from`を追加し、既存の固定費は**適用日（JST）**を有効開始日にする。適用日以前の支払日は回収せず、以降の支払日から今月分の取りこぼしを回収する。反映後の最初のCron（JST翌01:00）から有効になる。反映後に`wrangler d1 execute homelog-db --remote`の読み取り専用クエリで`effective_from`が全行に入っていることを確認する。
 
 OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方式）とGoogle Vision側の利用準備、およびWorkers AIの利用準備が別途必要。ローカルE2Eではリモートバインディングを無効にする。
 

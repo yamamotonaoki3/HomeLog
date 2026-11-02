@@ -427,6 +427,8 @@ export const fixedCosts = sqliteTable('fixed_costs', {
   amount: integer('amount').notNull(),
   paymentDay: integer('payment_day').notNull(),
   includeInHouseholdTotal: integer('include_in_household_total', { mode: 'boolean' }).notNull().default(false),
+  // 設定の有効開始日(JST, YYYY-MM-DD)。これより後の支払日だけ、取りこぼし時の回収対象にする(#396)。NULL=回収しない。
+  effectiveFrom: text('effective_from'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),
