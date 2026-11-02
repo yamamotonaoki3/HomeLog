@@ -9,3 +9,10 @@ JWT_SECRET=changeme-generate-a-random-32-char-or-longer-value
 # 手書きレシピOCR(F-09)でGoogle Cloud Visionを実際に呼ぶときだけ設定する(任意)。
 # 本番は wrangler secret put GOOGLE_VISION_API_KEY で設定する。未設定なら解析APIは502を返す。
 # GOOGLE_VISION_API_KEY=changeme
+
+# パスワード再設定メール(GAS MailApp中継, #401)。ローカル開発では実GASへ接続しない。
+# メールを送らずに画面確認したいときは、次の1行を有効にする(生トークンがログに出る。共有・本番では絶対に使わない)。
+# APP_PASSWORD_RESET_LOG_TOKEN_ENABLED=true
+# 本番は wrangler secret put で設定する。手順: docs/details/password-reset-gas-setup.md
+# PASSWORD_RESET_GAS_URL=changeme
+# PASSWORD_RESET_GAS_SECRET=changeme

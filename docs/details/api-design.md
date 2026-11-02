@@ -147,16 +147,24 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```
 レスポンス：204 No Content（該当`refresh_tokens`レコードの`revoked_at`を設定）
 
+### GET /api/auth/password-reset/availability
+
+認証不要。再設定メールを利用できるかを返す（フロントエンドが案内を切り替えるために使う）。`Cache-Control: no-store`。設定値（URL・鍵）は返さない。
+```json
+{ "available": true }
+```
+
 ### POST /api/auth/password-reset/request
 
 リクエスト:
 ```json
 { "email": "taro@example.com" }
 ```
-レスポンス（200 OK、メール存在有無に関わらず同一メッセージ）:
+レスポンス（200 OK、メール存在有無・個別の配信失敗に関わらず同一。送信完了とは断定しない）:
 ```json
-{ "message": "パスワードリセット用のメールを送信しました（該当アカウントが存在する場合）" }
+{ "message": "入力されたメールアドレスが登録済みの場合、再設定の案内メールを送信します。届かない場合は、しばらく待ってからもう一度お試しください" }
 ```
+主なエラー：400（メール形式不正）、429 `PASSWORD_RESET_RATE_LIMITED`（メール3回/時間・接続元10回/時間・全体50件/日を超過）、503 `PASSWORD_RESET_UNAVAILABLE`（未設定・停止中。メールアドレスの登録有無・入力内容に関わらず同一）。メールは応答の後にGASへ署名付きで送信依頼し、失敗しても応答は変えない。メール内のリンクは `/password-reset#token=<トークン>`。
 
 ### POST /api/auth/password-reset/confirm
 

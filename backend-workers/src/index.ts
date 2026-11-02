@@ -10,6 +10,7 @@ import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
 import { purgeExpiredAccounts } from './lib/account-deletion'
+import { purgePasswordResetAttempts } from './lib/password-reset-mail'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { consumeInventoryForDate, consumptionDate } from './lib/inventory-consumption'
 import { getJstToday } from './lib/date'
@@ -31,7 +32,8 @@ import { userSettingsRoute } from './routes/user-settings'
 // グローバルEnv型(worker-configuration.d.ts、gitignore対象)をそのまま使う。
 // GOOGLE_VISION_API_KEYはwrangler secret put / .dev.varsで設定するシークレットで、
 // 未設定の環境(CI等)では型が生成されないため、任意項目として明示的に足す。
-export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string }
+// PASSWORD_RESET_GAS_URL / PASSWORD_RESET_GAS_SECRET も同様の任意のsecret(#401)。
+export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string; PASSWORD_RESET_GAS_URL?: string; PASSWORD_RESET_GAS_SECRET?: string }
 
 // requireAuthミドルウェアがJWT検証後にセットするコンテキスト変数。
 export type Variables = {
@@ -106,6 +108,8 @@ const appWithScheduled = Object.assign(app, {
         deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
         // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
         purgeExpiredAccounts(env.DB, new Date()),
+        // 保持期間を過ぎたパスワード再設定の回数制限の行を削除する(#401)。
+        purgePasswordResetAttempts(env.DB),
       ]),
     ])
     for (const result of results) {

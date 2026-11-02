@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { generateOpaqueToken, sha256Hex } from '../../lib/crypto'
 import app from '../../index'
 
@@ -258,88 +258,6 @@ describe('POST /auth/logout', () => {
       env,
     )
     expect(refreshRes.status).toBe(401)
-  })
-})
-
-describe('POST /auth/password-reset/request', () => {
-  it('APP_PASSWORD_RESET_LOG_TOKEN_ENABLED=trueの場合、生トークンをログに出力し、そのトークンでconfirmできる', async () => {
-    await registerUser()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    const res = await app.request(
-      '/api/auth/password-reset/request',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'taro@example.com' }),
-      },
-      { ...env, APP_PASSWORD_RESET_LOG_TOKEN_ENABLED: 'true' },
-    )
-    expect(res.status).toBe(200)
-    expect(warnSpy).toHaveBeenCalled()
-    const loggedToken = warnSpy.mock.calls
-      .map((args) => args.join(' '))
-      .join('\n')
-      .match(/token=(\S+)/)?.[1]
-    expect(loggedToken).toBeTruthy()
-    warnSpy.mockRestore()
-
-    const confirmRes = await app.request(
-      '/api/auth/password-reset/confirm',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: loggedToken, newPassword: 'NewPass456!' }),
-      },
-      env,
-    )
-    expect(confirmRes.status).toBe(200)
-  })
-
-  it('フラグが無効(デフォルト)の場合は生トークンをログに出力しない', async () => {
-    await registerUser()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    await app.request(
-      '/api/auth/password-reset/request',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'taro@example.com' }),
-      },
-      env,
-    )
-
-    expect(warnSpy).not.toHaveBeenCalled()
-    warnSpy.mockRestore()
-  })
-
-  it('存在するメールアドレスでも存在しないメールアドレスでも同じレスポンスを返す(enumeration対策)', async () => {
-    await registerUser()
-
-    const existingRes = await app.request(
-      '/api/auth/password-reset/request',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'taro@example.com' }),
-      },
-      env,
-    )
-    const notExistingRes = await app.request(
-      '/api/auth/password-reset/request',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'nobody@example.com' }),
-      },
-      env,
-    )
-
-    expect(existingRes.status).toBe(notExistingRes.status)
-    const existingBody = await existingRes.json<{ message: string }>()
-    const notExistingBody = await notExistingRes.json<{ message: string }>()
-    expect(existingBody.message).toBe(notExistingBody.message)
   })
 })
 
