@@ -622,6 +622,7 @@ Workersの`0015_accounts_deleted_at.sql`では、削除済み口座（子カー�
 | amount | NUMERIC | ○ | 金額 |
 | payment_day | INT | ○ | 毎月の支払日 |
 | include_in_household_total | BOOLEAN | ○ | 世帯合計支出への算入対象か（[common-notes.md](common-notes.md) 8章参照） |
+| effective_from | TEXT | — | 設定の有効開始日（JST、`YYYY-MM-DD`）。登録・編集した日が入り、この日より後の支払日だけ取りこぼしの回収対象になる。NULL＝履歴なし（回収しない）。既存行はマイグレーション0024の適用日（#396） |
 
 ### fixed_cost_splits（固定費の割り勘設定）
 

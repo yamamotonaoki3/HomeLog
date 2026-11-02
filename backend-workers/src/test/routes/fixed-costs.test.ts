@@ -396,3 +396,49 @@ describe('External fixed cost validation and privacy', () => {
     expect((await env.DB.prepare('SELECT * FROM external_persons').all()).results).toEqual(people)
   })
 })
+
+describe('設定の有効開始日(取りこぼし回収の起点, #396)', () => {
+  const jstToday = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const effectiveFromOf = async (id: number) =>
+    (await env.DB.prepare('SELECT effective_from FROM fixed_costs WHERE id = ?').bind(id).first<{ effective_from: string | null }>())?.effective_from
+
+  it('登録すると、有効開始日にJSTの今日が入る', async () => {
+    const { headers } = await createUserWithHousehold('effective-create@example.com')
+    const res = await app.request(
+      '/api/fixed-costs',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '家賃', amount: 80000, paymentDay: 27, personal: false }) },
+      env,
+    )
+    const { id } = await res.json<{ id: number }>()
+    expect(await effectiveFromOf(id)).toBe(jstToday())
+  })
+
+  it('変更すると、有効開始日がJSTの今日に更新される(変更前の支払日へは遡及しない)', async () => {
+    const { headers } = await createUserWithHousehold('effective-update@example.com')
+    const created = await app.request(
+      '/api/fixed-costs',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '家賃', amount: 80000, paymentDay: 27, personal: false }) },
+      env,
+    )
+    const { id } = await created.json<{ id: number }>()
+    await env.DB.prepare("UPDATE fixed_costs SET effective_from = '2020-01-01' WHERE id = ?").bind(id).run()
+
+    const res = await app.request(
+      `/api/fixed-costs/${id}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '家賃', amount: 85000, paymentDay: 5, personal: false }) },
+      env,
+    )
+    expect(res.status).toBe(200)
+    expect(await effectiveFromOf(id)).toBe(jstToday())
+  })
+
+  it('APIの応答に有効開始日は含めない', async () => {
+    const { headers } = await createUserWithHousehold('effective-response@example.com')
+    const res = await app.request(
+      '/api/fixed-costs',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ name: '家賃', amount: 80000, paymentDay: 27, personal: false }) },
+      env,
+    )
+    expect(Object.keys(await res.json<Record<string, unknown>>())).not.toContain('effectiveFrom')
+  })
+})

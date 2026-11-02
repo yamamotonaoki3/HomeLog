@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { accounts, cards, fixedCostSplits, fixedCosts, householdMembers, externalPersons } from '../db/schema'
+import { formatJstToday } from '../lib/date'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
 import { resolveSplits, type SplitInputRow } from '../lib/split-calc'
@@ -336,9 +337,9 @@ fixedCostsRoute.post('/', async (c) => {
   const results = await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO fixed_costs
-         (household_id, owner_user_id, created_by_user_id, account_id, card_id, name, amount, payment_day, include_in_household_total)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    ).bind(householdId, personal ? userId : null, userId, accountId ?? null, cardId ?? null, name, amount, paymentDay, includeInHouseholdTotal ? 1 : 0),
+         (household_id, owner_user_id, created_by_user_id, account_id, card_id, name, amount, payment_day, include_in_household_total, effective_from)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    ).bind(householdId, personal ? userId : null, userId, accountId ?? null, cardId ?? null, name, amount, paymentDay, includeInHouseholdTotal ? 1 : 0, formatJstToday()),
     ...preparedSplits.rows.map((row) =>
       c.env.DB
         .prepare(
@@ -403,9 +404,10 @@ fixedCostsRoute.patch('/:id', async (c) => {
     c.env.DB
       .prepare(
         `UPDATE fixed_costs SET name = ?, amount = ?, payment_day = ?, owner_user_id = ?,
-           include_in_household_total = ?, account_id = ?, card_id = ? WHERE id = ?`,
+           include_in_household_total = ?, account_id = ?, card_id = ?, effective_from = ? WHERE id = ?`,
       )
-      .bind(name, amount, paymentDay, ownerUserId, includeInHouseholdTotal ? 1 : 0, accountId ?? null, cardId ?? null, fixedCostId),
+      // 変更した日を設定の有効開始日にする。取りこぼしの回収は、これより後の支払日だけが対象(#396)。
+      .bind(name, amount, paymentDay, ownerUserId, includeInHouseholdTotal ? 1 : 0, accountId ?? null, cardId ?? null, formatJstToday(), fixedCostId),
     c.env.DB.prepare('DELETE FROM fixed_cost_splits WHERE fixed_cost_id = ?').bind(fixedCostId),
     ...preparedSplits.rows.map((row) =>
       c.env.DB
