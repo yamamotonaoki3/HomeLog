@@ -37,6 +37,17 @@ export const passwordResetTokens = sqliteTable('password_reset_tokens', {
   usedAt: text('used_at'),
 })
 
+export const passwordResetAttempts = sqliteTable(
+  'password_reset_attempts',
+  {
+    scope: text('scope').notNull(),
+    keyHash: text('key_hash').notNull(),
+    windowStart: integer('window_start').notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scope, table.keyHash, table.windowStart] })],
+)
+
 export const households = sqliteTable('households', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),

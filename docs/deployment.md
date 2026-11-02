@@ -65,7 +65,7 @@ Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01
 
 **本番反映後の初回実行では、全世帯の先週以前の献立登録が物理削除される。** 今週と未来の献立・元のレシピは残るが、削除した献立の復元機能はない。Cronの実行時刻は遅れる場合があり、実行時点のJSTの週を基準に削除する。公開先D1/R2と自動処理開始・既存データへの影響を確認し、ユーザーから本番反映の指示を受けてから実行する。
 
-**パスワード再設定メールは未実装**。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。配信構成が整ってもメール送信を前提とする本番運用開始の条件は満たさない。メール基盤の選定・実装は別途対応する。
+**パスワード再設定メール（#401）**はGASのMailApp経由。`PASSWORD_RESET_MAIL_ENABLED`は初期値`"false"`（停止）で、停止中・secret未設定のあいだ申請APIは利用不可（503）を返す。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。GAS公開・送信用Googleアカウントの認可・`PASSWORD_RESET_GAS_URL`/`PASSWORD_RESET_GAS_SECRET`のsecret登録・有効化の手順は[password-reset-gas-setup.md](details/password-reset-gas-setup.md)を参照する（実値はコミット・チャット・Issueに書かない）。D1マイグレーション0023（`password_reset_attempts`）は`npm run deploy`の際に自動適用される。
 
 OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方式）とGoogle Vision側の利用準備、およびWorkers AIの利用準備が別途必要。ローカルE2Eではリモートバインディングを無効にする。
 

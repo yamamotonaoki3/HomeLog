@@ -47,3 +47,19 @@ jobs:
 
       - name: Deploy dry-run (wrangler config validation)
         run: npm run deploy:dry-run
+
+  gas:
+    name: gas-tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gas
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+
+      - name: Test (Apps Scriptのグローバルを模擬。実GAS・実メールには接続しない)
+        run: npm test

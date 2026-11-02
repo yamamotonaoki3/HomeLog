@@ -423,6 +423,17 @@ erDiagram
 | expires_at | TIMESTAMP | ○ | 有効期限（発行から30分） |
 | used_at | TIMESTAMP | — | 使用日時（設定済みなら再利用不可） |
 
+### password_reset_attempts（パスワード再設定の申請回数）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| scope | TEXT | ○ | PK。`email` / `ip` / `global` |
+| key_hash | TEXT | ○ | PK。メールアドレス（小文字・trim）・接続元IPのSHA-256。実値は保存しない。`global`は固定値のハッシュ |
+| window_start | INTEGER | ○ | PK。固定窓の開始（UNIX秒）。メール・接続元は1時間、全体は1日 |
+| count | INTEGER | ○ | 窓内の申請回数。上限（3/10/50）に達した行は増えない |
+
+保持期間は2日。申請のたびと日次Cronで`window_start`が古い行を削除する（#401）。
+
 ### user_settings（ユーザー設定）
 
 | カラム名 | 型 | 必須 | 備考 |

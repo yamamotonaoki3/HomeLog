@@ -7,11 +7,16 @@ import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '..
 import { errorResponse } from '../lib/errors'
 import { signAccessToken } from '../lib/jwt'
 import { countDeletionBlockers, deletionScheduledAt, hasBlockers, isReservedEmail, isWithinGracePeriod } from '../lib/account-deletion'
+import { consumePasswordResetQuota, purgePasswordResetAttempts, resolveMailMode, sendPasswordResetMail } from '../lib/password-reset-mail'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
 const PASSWORD_RESET_EXPIRATION_SECONDS = 30 * 60 // 30分(docs/details/features/F01_auth.md参照)
-const PASSWORD_RESET_REQUESTED_MESSAGE = 'パスワード再設定用のメールを送信しました(該当するアカウントが存在する場合)'
+// 送信完了とは断定せず、登録有無・個別の配信失敗も漏らさない文言にする(docs/details/password-reset-mail-design.md)。
+const PASSWORD_RESET_REQUESTED_MESSAGE =
+  '入力されたメールアドレスが登録済みの場合、再設定の案内メールを送信します。届かない場合は、しばらく待ってからもう一度お試しください'
+const PASSWORD_RESET_UNAVAILABLE_MESSAGE = '現在、パスワード再設定メールを利用できません'
+const PASSWORD_RESET_RATE_LIMITED_MESSAGE = '申請が多すぎます。しばらく待ってからもう一度お試しください'
 const DUPLICATE_EMAIL_MESSAGE = 'このメールアドレスは既に登録されています'
 
 // 既存Java実装(RegisterRequest)のバリデーション規則をそのまま踏襲する。
@@ -237,13 +242,54 @@ authRoute.post('/logout', async (c) => {
   return c.body(null, 204)
 })
 
+// 応答を返した後に行う処理(GAS送信・回数制限の清掃)。waitUntilが使えない環境(テスト)ではその場で待つ。
+async function runBackground(c: Context<AppEnv>, job: Promise<void>): Promise<void> {
+  try {
+    c.executionCtx.waitUntil(job)
+  } catch {
+    await job
+  }
+}
+
+async function deliverResetMail(env: AppEnv['Bindings'], to: string, token: string): Promise<void> {
+  const requestId = crypto.randomUUID()
+  try {
+    const result = await sendPasswordResetMail(env, { to, token, requestId })
+    if (!result.ok) {
+      // 宛先・トークン・本文は出さない。失敗の分類と相関IDだけを残す。
+      console.warn(`パスワード再設定メールの送信に失敗しました。reason=${result.reason} requestId=${requestId}`)
+    }
+  } catch {
+    console.warn(`パスワード再設定メールの送信で想定外のエラーが発生しました。requestId=${requestId}`)
+  }
+}
+
+// フロントエンドが再設定メールの利用可否を判定する。認証不要で、設定値は返さない。
+authRoute.get('/password-reset/availability', (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ available: resolveMailMode(c.env) !== 'unavailable' })
+})
+
 authRoute.post('/password-reset/request', async (c) => {
+  // 未設定・停止中は、メールアドレスの登録有無や入力内容と無関係に同じ応答を返す。
+  const mode = resolveMailMode(c.env)
+  if (mode === 'unavailable') {
+    return c.json(errorResponse('PASSWORD_RESET_UNAVAILABLE', PASSWORD_RESET_UNAVAILABLE_MESSAGE), 503)
+  }
+
   const body = await parseJsonBody(c)
   const parsed = passwordResetRequestSchema.safeParse(body)
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email } = parsed.data
+
+  // 回数制限は登録有無と無関係に数える。上限なら新しいトークンも作らず、既存の有効リンクも変えない。
+  const allowed = await consumePasswordResetQuota(c.env.DB, { email, ip: c.req.header('CF-Connecting-IP') ?? 'unknown' })
+  void runBackground(c, purgePasswordResetAttempts(c.env.DB).then(() => undefined, () => undefined))
+  if (!allowed) {
+    return c.json(errorResponse('PASSWORD_RESET_RATE_LIMITED', PASSWORD_RESET_RATE_LIMITED_MESSAGE), 429)
+  }
 
   const token = generateOpaqueToken()
   const tokenHash = await sha256Hex(token)
@@ -265,14 +311,12 @@ authRoute.post('/password-reset/request', async (c) => {
   ])
 
   if (insertResult.meta.changes > 0) {
-    // メール送信基盤(今後の検討事項)が実装されるまでの暫定措置。
-    // 生トークンのログ出力はAPP_PASSWORD_RESET_LOG_TOKEN_ENABLED=trueの環境
-    // (ローカル開発専用)でのみ行い、共有環境・本番環境では出力しない。
-    const logTokenEnabled: string = c.env.APP_PASSWORD_RESET_LOG_TOKEN_ENABLED
-    if (logTokenEnabled === 'true') {
-      console.warn(`[開発用] パスワードリセットトークンを発行しました。email=${email}, token=${token}`)
+    if (mode === 'mail') {
+      // 送信は応答の後に行い、応答時間から登録有無が分からないようにする。失敗しても応答は変えず、自動再送もしない。
+      await runBackground(c, deliverResetMail(c.env, email, token))
     } else {
-      console.info(`パスワードリセットトークンを発行しました。email=${email}`)
+      // ローカル開発専用(APP_PASSWORD_RESET_LOG_TOKEN_ENABLED=true)。メールは送らず、宛先は出さない。
+      console.warn(`[開発用] パスワードリセットトークンを発行しました。token=${token}`)
     }
   }
 
