@@ -104,11 +104,11 @@ it('最新props・対象消失・背景クリック・hidden中のキー操作�
   expect(screen.getByRole('button', { name: '品目を手動追加' })).toHaveFocus()
 })
 
-it('3列から詳細で購入個数を入力し、閉じても保持して一括確定する', async () => {
+it('4列から詳細で購入個数を入力し、閉じても保持して一括確定する', async () => {
   const user = userEvent.setup()
   render(<ShoppingListPanel shopping={[{ id: 10, inventoryItemId: 1, name: 'testuser_牛乳', isManual: true, purchased: false, purchasedQuantity: 0, price: 0 }]} inventory={[{ id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, quantity: 0, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }]} categories={[{ id: 1, name: '食品', isDefault: true }]} stores={[]} sort="store" onSortChange={vi.fn()} onRefresh={vi.fn()} onNotify={vi.fn()} />)
   const row = screen.getByRole('button', { name: 'testuser_牛乳の詳細' })
-  expect(row.children).toHaveLength(3)
+  expect(row.children).toHaveLength(4)
   expect(row.querySelector('button,input')).toBeNull()
   await user.click(within(row).getByText('0'))
   const dialog = screen.getByRole('dialog', { name: '買い物詳細' })

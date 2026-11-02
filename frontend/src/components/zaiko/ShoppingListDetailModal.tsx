@@ -6,6 +6,7 @@ interface Props {
   item: ShoppingListItem
   category: string
   store: string
+  stock: string
   quantity: number
   busy: boolean
   onQuantity: (quantity: number) => void
@@ -13,7 +14,7 @@ interface Props {
   onClose: () => void
 }
 
-export function ShoppingListDetailModal({ item, category, store, quantity, busy, onQuantity, onDelete, onClose }: Props) {
+export function ShoppingListDetailModal({ item, category, store, stock, quantity, busy, onQuantity, onDelete, onClose }: Props) {
   const ref = useInventoryDialog(onClose, '[data-close]')
   return <div className="modal-overlay inventory-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <div ref={ref} className="modal inventory-modal inventory-detail-modal" role="dialog" aria-modal="true" aria-labelledby="shopping-detail-title">
@@ -23,6 +24,7 @@ export function ShoppingListDetailModal({ item, category, store, quantity, busy,
         <dt>カテゴリー</dt><dd>{category}</dd>
         <dt>買う店</dt><dd>{store || 'なし'}</dd>
         <dt>参考値段</dt><dd>{formatPrice(item.price)}</dd>
+        <dt>現在の在庫</dt><dd>{stock}</dd>
         <dt>購入個数</dt><dd><div className="inventory-quantity-controls">
           <button type="button" className="btn btn-tiny" disabled={busy} aria-label={`${item.name}の購入個数を増やす`} onClick={() => onQuantity(quantity + 1)}>＋</button>
           <span className="qty-value">{quantity}</span>
