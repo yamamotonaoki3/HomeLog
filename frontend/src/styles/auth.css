@@ -38,6 +38,24 @@
   border-radius: 6px;
   font-size: 14px;
 }
+/* パスワード再設定の利用不可案内と、申請後の案内(#402) */
+.notice-box {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.reset-help {
+  margin: 12px 0;
+  padding-left: 20px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 .auth-links {
   display: flex;
   justify-content: space-between;
