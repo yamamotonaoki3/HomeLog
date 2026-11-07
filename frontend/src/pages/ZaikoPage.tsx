@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { AuthContext } from '../context/authContextValue'
+import { captureCredentials } from '../api/shoppingPurchases'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { Category, InventoryItem, ShoppingListItem, ShoppingSort, Store } from '../api/zaikoTypes'
@@ -9,6 +11,12 @@ import { ShoppingListPanel } from '../components/zaiko/ShoppingListPanel'
 
 export function ZaikoPage() {
   // 上部タブ(AppLayout)の選択はURLで表す。/zaiko=在庫一覧、/zaiko/shopping=買い物リスト
+  const auth = useContext(AuthContext)
+  const shoppingGeneration = useRef(0), inventoryGeneration = useRef(0)
+  const currentCredentials = (snapshot: ReturnType<typeof captureCredentials>) => {
+    const current = captureCredentials()
+    return snapshot ? current?.refreshToken === snapshot.refreshToken : current === null
+  }
   const isShoppingTab = useLocation().pathname.startsWith('/zaiko/shopping')
   const [categories, setCategories] = useState<Category[]>([])
   const [stores, setStores] = useState<Store[]>([])
@@ -16,6 +24,8 @@ export function ZaikoPage() {
   const [shopping, setShopping] = useState<ShoppingListItem[]>([])
   const [sort, setSort] = useState<ShoppingSort>('store')
   const [loading, setLoading] = useState(true)
+  const [initialError, setInitialError] = useState('')
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -23,19 +33,23 @@ export function ZaikoPage() {
   }, [])
 
   const fetchInventory = useCallback(async () => {
+    const generation = ++inventoryGeneration.current, snapshot = captureCredentials()
     const response = await apiClient.get<InventoryItem[]>('/inventory-items')
-    setInventory(response.data)
+    if (generation === inventoryGeneration.current && currentCredentials(snapshot)) setInventory(response.data)
   }, [])
 
   const fetchShopping = useCallback(async (sortValue: ShoppingSort) => {
+    const generation = ++shoppingGeneration.current, snapshot = captureCredentials()
     const response = await apiClient.get<ShoppingListItem[]>('/shopping-list-items', {
       params: { sort: sortValue },
     })
-    setShopping(response.data)
+    if (generation === shoppingGeneration.current && currentCredentials(snapshot)) setShopping(response.data)
   }, [])
 
   useEffect(() => {
+    setLoading(true); setInitialError('')
     let cancelled = false
+    const snapshot = captureCredentials(), shoppingRequest = ++shoppingGeneration.current, inventoryRequest = ++inventoryGeneration.current
     Promise.all([
       apiClient.get<Category[]>('/zaiko-categories'),
       apiClient.get<Store[]>('/stores'),
@@ -43,15 +57,15 @@ export function ZaikoPage() {
       apiClient.get<ShoppingListItem[]>('/shopping-list-items', { params: { sort: 'store' } }),
     ])
       .then(([categoriesRes, storesRes, inventoryRes, shoppingRes]) => {
-        if (cancelled) return
+        if (cancelled || !currentCredentials(snapshot)) return
         setCategories(categoriesRes.data)
         setStores(storesRes.data)
-        setInventory(inventoryRes.data)
-        setShopping(shoppingRes.data)
+        if (inventoryRequest === inventoryGeneration.current) setInventory(inventoryRes.data)
+        if (shoppingRequest === shoppingGeneration.current) setShopping(shoppingRes.data)
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          showToast(getApiErrorMessage(err, 'データの取得に失敗しました。時間をおいて再度お試しください'))
+          setInitialError(getApiErrorMessage(err, 'データの取得に失敗しました。時間をおいて再度お試しください'))
         }
       })
       .finally(() => {
@@ -60,7 +74,7 @@ export function ZaikoPage() {
     return () => {
       cancelled = true
     }
-  }, [showToast])
+  }, [showToast, loadAttempt])
 
   const handleSortChange = async (nextSort: ShoppingSort) => {
     setSort(nextSort)
@@ -80,6 +94,8 @@ export function ZaikoPage() {
     return <p>読み込み中...</p>
   }
 
+  if (initialError) return <div className="page zaiko-page"><p role="alert">{initialError}</p><button type="button" className="btn btn-secondary" onClick={() => setLoadAttempt(value => value + 1)}>再取得</button></div>
+
   return (
     <div className="page zaiko-page">
       {/* 入力途中の購入個数などパネル内の状態を失わないよう、両パネルとも描画したまま非選択側を隠す */}
@@ -96,6 +112,8 @@ export function ZaikoPage() {
       </div>
       <div hidden={!isShoppingTab}>
         <ShoppingListPanel
+          actorUserId={auth?.user?.id}
+          active={isShoppingTab}
           shopping={shopping}
           inventory={inventory}
           categories={categories}

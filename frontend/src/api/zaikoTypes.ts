@@ -27,6 +27,8 @@ export interface ShoppingListItem {
   name: string
   isManual: boolean
   purchased: boolean
+  plannedQuantity: number
+  purchaseRevision: number
   purchasedQuantity: number
   price?: number | null
 }

@@ -1,6 +1,8 @@
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { Link, MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { server } from '../mocks/server'
@@ -13,7 +15,7 @@ function setup(path = '/zaiko') {
     http.get('/api/zaiko-categories', () => HttpResponse.json([{ id: 1, name: '食品', isDefault: true }])),
     http.get('/api/stores', () => HttpResponse.json([])),
     http.get('/api/inventory-items', () => HttpResponse.json(inventory)),
-    http.get('/api/shopping-list-items', () => HttpResponse.json([{ id: 10, inventoryItemId: 1, name: inventory[0].name, price: inventory[0].price, isManual: false, purchased: false, purchasedQuantity: 0 }])),
+    http.get('/api/shopping-list-items', () => HttpResponse.json([{ id: 10, inventoryItemId: 1, name: inventory[0].name, price: inventory[0].price, isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }])),
     http.patch('/api/inventory-items/:id', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>; bodies.push(body)
       inventory[0].price = body.price as number | null
@@ -22,7 +24,7 @@ function setup(path = '/zaiko') {
     http.post('/api/inventory-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json(inventory[0], { status: 201 }) }),
     http.post('/api/shopping-list-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json({}, { status: 201 }) }),
   )
-  render(<MemoryRouter initialEntries={[path]}><ZaikoPage /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={[path]}><Link to="/zaiko/shopping">買い物リストへ</Link><ZaikoPage /></MemoryRouter>)
   return { bodies, inventory }
 }
 
@@ -67,7 +69,7 @@ describe('値段入力', () => {
   })
   it('手動追加は選択品目の値段を切り替え、空欄なら省略する', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '1')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.selectOptions(screen.getByLabelText('追加する品目'), '2')
@@ -97,13 +99,14 @@ describe('値段入力', () => {
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    fireEvent.click(within(screen.getByTestId('shopping-panel')).getByRole('button', { name: 'testuser_牛乳の詳細', hidden: true }))
+    await user.click(screen.getByRole('link', { name: '買い物リストへ' }))
+    await user.click(within(screen.getByTestId('shopping-panel')).getByRole('button', { name: 'testuser_牛乳の詳細' }))
     expect(within(screen.getByTestId('shopping-panel')).getByText('980円')).toBeInTheDocument()
     expect(screen.queryByText('1,280円')).not.toBeInTheDocument()
   })
   it('手動追加の値段0を送信し、不正な値段ではAPIを呼ばない', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '2')
     await user.type(screen.getByLabelText('値段（円・任意）'), '-1')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))
@@ -116,12 +119,12 @@ describe('値段入力', () => {
   })
   it('追加成功後の入力をリセットして古い価格の再送信を防ぐ', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '1')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))
     await waitFor(() => expect(bodies).toHaveLength(1))
     await waitFor(() => expect(screen.queryByLabelText('追加する品目')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: '品目を手動追加' }))
+    await user.click(screen.getByRole('button', { name: '品目を追加' }))
     expect(screen.getByLabelText('追加する品目')).toHaveValue('')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))

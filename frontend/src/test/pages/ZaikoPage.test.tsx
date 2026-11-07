@@ -1,3 +1,5 @@
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -58,7 +60,7 @@ function setupApi(initial: Partial<MockState> = {}) {
           name: item.name,
           isManual: false,
           purchased: false,
-          purchasedQuantity: 0,
+          purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0,
         })
       }
       return HttpResponse.json(item, { status: 201 })
@@ -75,7 +77,7 @@ function setupApi(initial: Partial<MockState> = {}) {
           name: item.name,
           isManual: false,
           purchased: false,
-          purchasedQuantity: 0,
+          purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0,
         })
       }
       return HttpResponse.json({ id: item.id, quantity: item.quantity })
@@ -94,7 +96,7 @@ function setupApi(initial: Partial<MockState> = {}) {
         name: inv.name,
         isManual: true,
         purchased: false,
-        purchasedQuantity: 0,
+        purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0,
       }
       state.shopping.push(item)
       return HttpResponse.json(item, { status: 201 })
@@ -104,9 +106,9 @@ function setupApi(initial: Partial<MockState> = {}) {
       state.shopping = state.shopping.filter((s) => s.id !== Number(params.id))
       return new HttpResponse(null, { status: 204 })
     }),
-    http.post('/api/shopping-list-items/update', async ({ request }) => {
-      const body = (await request.json()) as { items: { id: number; purchasedQuantity: number }[] }
-      calls.push({ method: 'POST', url: '/api/shopping-list-items/update', body })
+    http.post('/api/shopping-list-items/purchases', async ({ request }) => {
+      const body = (await request.json()) as { requestId: string; items: { id: number; purchasedQuantity: number; expectedPurchaseRevision: number }[] }
+      calls.push({ method: 'POST', url: '/api/shopping-list-items/purchases', body })
       const removed: number[] = []
       const updated: { id: number; quantity: number }[] = []
       for (const line of body.items) {
@@ -120,7 +122,7 @@ function setupApi(initial: Partial<MockState> = {}) {
           removed.push(line.id)
         }
       }
-      return HttpResponse.json({ updatedInventoryItems: updated, removedShoppingListItemIds: removed })
+      return HttpResponse.json({ requestId: body.requestId, updatedInventoryItems: updated, removedShoppingListItemIds: removed, remainingShoppingListItems: [] })
     }),
   )
 
@@ -221,7 +223,7 @@ describe('ZaikoPage', () => {
   it('/zaikoでは在庫一覧だけを表示し、買い物リストタブに切り替えると買い物リストだけを表示する', async () => {
     setupApi({
       inventory: [milk, egg],
-      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }],
     })
     const user = userEvent.setup()
     renderZaikoPage()
@@ -246,7 +248,7 @@ describe('ZaikoPage', () => {
   it('/zaiko/shoppingを直接開くと買い物リストだけを表示する', async () => {
     setupApi({
       inventory: [egg],
-      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }],
     })
     renderZaikoPage('/zaiko/shopping')
 
@@ -258,21 +260,24 @@ describe('ZaikoPage', () => {
   it('入力途中の購入個数はタブを行き来しても保持される', async () => {
     setupApi({
       inventory: [egg],
-      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 }],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }],
     })
     const user = userEvent.setup()
     renderZaikoPage('/zaiko/shopping')
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
+    const checkbox = screen.getByRole('checkbox', { name: '卵を購入済みにする' })
+    await waitFor(() => expect(checkbox).toBeEnabled())
+    await user.click(checkbox)
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
-    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
-    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
+    await user.clear(screen.getByRole('textbox', { name: '卵の実購入数' }))
+    await user.type(screen.getByRole('textbox', { name: '卵の実購入数' }), '2')
     await openTab(user, '在庫一覧')
     await openTab(user, '買い物リスト')
 
     const eggRow = screen.getByRole('dialog', { name: '買い物詳細' })
-    expect(within(eggRow).getByText('2')).toBeInTheDocument()
+    expect(within(eggRow).getByRole('textbox', { name: '卵の実購入数' })).toHaveValue('2')
   })
 
   it('在庫一覧と買い物リストをキーワードで絞り込める (#315)', async () => {
@@ -280,8 +285,8 @@ describe('ZaikoPage', () => {
     setupApi({
       inventory: [milk, egg, butter],
       shopping: [
-        { id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 },
-        { id: 11, inventoryItemId: 3, name: 'Ｂｕｔｔｅｒ', isManual: false, purchased: false, purchasedQuantity: 0 },
+        { id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
+        { id: 11, inventoryItemId: 3, name: 'Ｂｕｔｔｅｒ', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
       ],
     })
     const user = userEvent.setup()
@@ -426,13 +431,13 @@ describe('ZaikoPage', () => {
     expect(calls.find((c) => c.url === '/api/stores')?.body).toEqual({ name: 'スーパーC' })
   })
 
-  it('品目を手動追加できる', async () => {
+  it('品目を追加できる', async () => {
     const { calls } = setupApi({ inventory: [milk] })
     const user = userEvent.setup()
     renderZaikoPage('/zaiko/shopping')
     await screen.findByTestId('shopping-panel')
 
-    await user.click(screen.getByRole('button', { name: '品目を手動追加' }))
+    await user.click(screen.getByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '牛乳')
     await user.click(screen.getByRole('button', { name: '追加' }))
 
@@ -446,7 +451,7 @@ describe('ZaikoPage', () => {
   it('削除ボタンでDELETEが飛びリストから消える', async () => {
     const { calls } = setupApi({
       inventory: [egg],
-      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: true, purchased: false, purchasedQuantity: 0 }],
+      shopping: [{ id: 10, inventoryItemId: 2, name: '卵', isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }],
     })
     const user = userEvent.setup()
     renderZaikoPage('/zaiko/shopping')
@@ -511,8 +516,8 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({
       inventory: [{ ...egg }, { ...milk }],
       shopping: [
-        { id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0 },
-        { id: 11, inventoryItemId: 1, name: '牛乳', isManual: false, purchased: false, purchasedQuantity: 0 },
+        { id: 10, inventoryItemId: 2, name: '卵', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
+        { id: 11, inventoryItemId: 1, name: '牛乳', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
       ],
     })
     const user = userEvent.setup()
@@ -520,21 +525,25 @@ describe('ZaikoPage', () => {
     const shoppingPanel = await screen.findByTestId('shopping-panel')
     await waitFor(() => expect(within(shoppingPanel).getByText('卵')).toBeInTheDocument())
 
-    expect(screen.queryByRole('checkbox', { name: '卵を購入済にする' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '卵を購入済みにする' })).toBeInTheDocument()
 
+    const checkbox = screen.getByRole('checkbox', { name: '卵を購入済みにする' })
+    await waitFor(() => expect(checkbox).toBeEnabled())
+    await user.click(checkbox)
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
-    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
-    await user.click(screen.getByRole('button', { name: '卵の購入個数を増やす' }))
+    await user.clear(screen.getByRole('textbox', { name: '卵の実購入数' }))
+    await user.type(screen.getByRole('textbox', { name: '卵の実購入数' }), '2')
     await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
-    await user.click(screen.getByRole('button', { name: '更新' }))
+    await user.click(screen.getByRole('button', { name: '購入を反映' }))
+    await user.click(screen.getByRole('button', { name: 'この内容で購入を反映' }))
 
     // 卵のみ送信され（牛乳は個数未入力）、在庫2.0に更新・閾値1.0を上回るためリストから除外される
     await waitFor(() => {
-      const updateCall = calls.find((c) => c.url === '/api/shopping-list-items/update')
-      expect(updateCall?.body).toEqual({ items: [{ id: 10, purchasedQuantity: 2 }] })
+      const updateCall = calls.find((c) => c.url === '/api/shopping-list-items/purchases')
+      expect(updateCall?.body).toMatchObject({ requestId: expect.any(String), items: [{ id: 10, purchasedQuantity: 2, expectedPurchaseRevision: 0 }] })
     })
     await waitFor(() => expect(within(screen.getByTestId('shopping-panel')).queryByText('卵')).not.toBeInTheDocument())
-    expect(screen.getByText('在庫に反映しました')).toBeInTheDocument()
+    expect(screen.getByText('購入を反映しました')).toBeInTheDocument()
 
     // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
     await openTab(user, '在庫一覧')

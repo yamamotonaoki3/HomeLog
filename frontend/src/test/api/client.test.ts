@@ -112,3 +112,37 @@ describe('apiClient', () => {
     expect(onAuthExpired).not.toHaveBeenCalled()
   })
 })
+
+
+describe('購入の固定認証', () => {
+  afterEach(() => { clearTokens(); setOnAuthExpired(null) })
+  it('明示Bearerを現在tokenへ付替えず401でもrefresh・再送・失効処理をしない', async () => {
+    setTokens('testuser_b_access', 'testuser_b_refresh')
+    const expired = vi.fn()
+    setOnAuthExpired(expired)
+    let posts = 0
+    let refreshes = 0
+    let actor = ''
+    server.use(
+      http.post('/api/shopping-list-items/purchases', ({ request }) => {
+        posts++
+        actor = request.headers.get('authorization') === 'Bearer testuser_a_access' ? 'A' : 'other'
+        return HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 })
+      }),
+      http.post('/api/auth/refresh', () => { refreshes++; return HttpResponse.json({}, { status: 400 }) }),
+    )
+    const config = { authMode: 'bound-no-refresh' as const, headers: { Authorization: 'Bearer testuser_a_access' } }
+    await expect(apiClient.post('/shopping-list-items/purchases', {}, config)).rejects.toBeTruthy()
+    expect({ actor, posts, refreshes }).toEqual({ actor: 'A', posts: 1, refreshes: 0 })
+    expect(expired).not.toHaveBeenCalled()
+    expect(getAccessToken() === 'testuser_b_access').toBe(true)
+  })
+  it('固定認証で明示Bearerが無ければ送信しない', async () => {
+    setTokens('testuser_b_access', 'testuser_b_refresh')
+    let gets = 0
+    server.use(http.get('/api/auth/me', () => { gets++; return HttpResponse.json({ id: 2 }) }))
+    const config = { authMode: 'bound-no-refresh' as const }
+    await expect(apiClient.get('/auth/me', config)).rejects.toBeTruthy()
+    expect(gets).toBe(0)
+  })
+})

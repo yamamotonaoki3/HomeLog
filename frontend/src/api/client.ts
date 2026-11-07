@@ -1,6 +1,10 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { clearTokens, getAccessToken, getRefreshToken, setAccessToken } from './tokenStorage'
 
+declare module 'axios' {
+  interface AxiosRequestConfig { authMode?: 'bound-no-refresh' }
+}
+
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
 }
@@ -41,6 +45,11 @@ async function refreshAccessToken(): Promise<string> {
 class StaleSessionError extends Error {}
 
 apiClient.interceptors.request.use((config) => {
+  if (config.authMode === 'bound-no-refresh') {
+    const authorization = config.headers.get('Authorization')
+    if (typeof authorization !== 'string' || !/^Bearer \S+$/.test(authorization)) throw new Error('購入の認証確認が必要です')
+    return config
+  }
   const accessToken = getAccessToken()
   if (accessToken) {
     config.headers.set('Authorization', `Bearer ${accessToken}`)
@@ -52,6 +61,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryableRequestConfig | undefined
+    if (originalRequest?.authMode === 'bound-no-refresh') return Promise.reject(error)
     const isAuthEndpoint =
       originalRequest?.url?.includes(REFRESH_PATH) || originalRequest?.url?.includes(LOGIN_PATH)
 
