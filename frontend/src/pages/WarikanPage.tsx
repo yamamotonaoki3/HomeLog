@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -60,17 +60,23 @@ function WarikanDetailModal({ split, hidden, working, onClose, onPatch, onSettle
   working: boolean
   onClose: () => void
   onPatch: (path: string, message: string) => void
-  onSettle: (kind: SettlementKind) => void
-  onDelete: () => void
-  onComments: () => void
+  onSettle: (kind: SettlementKind, trigger: HTMLButtonElement) => void
+  onDelete: (trigger: HTMLButtonElement) => void
+  onComments: (trigger: HTMLButtonElement) => void
 }) {
   const ref = useDialog(onClose, '[data-close]')
   const payer = split.role === 'payer'
   const open = split.status !== 'settled'
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="割り勘詳細" hidden={hidden} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div ref={ref} className="modal event-modal">
-        <h2>割り勘詳細</h2>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="割り勘詳細" data-testid="warikan-detail-modal" hidden={hidden} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div ref={ref} className="modal event-modal warikan-detail-content">
+        <div className="warikan-detail-header">
+          <h2>割り勘詳細</h2>
+          <div className="warikan-header-actions">
+            {payer && (open || split.isExternal) && <button type="button" className="btn btn-danger" disabled={working} aria-label={purposeText(split) + 'の割り勘を削除'} onClick={event => onDelete(event.currentTarget)}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg></button>}
+            <button type="button" className="btn btn-secondary" data-close aria-label="割り勘詳細を閉じる" onClick={onClose}>×</button>
+          </div>
+        </div>
         <dl className="event-detail-list">
           <dt>日付</dt><dd>{split.expenseDate}</dd>
           <dt>用途</dt><dd>{purposeText(split)}</dd>
@@ -84,31 +90,43 @@ function WarikanDetailModal({ split, hidden, working, onClose, onPatch, onSettle
           )}
           {payer && split.status === 'payment_reported' && (
             <>
-              <button type="button" className="btn btn-primary" disabled={working} onClick={() => onSettle('receive')}>受け取りました</button>
+              <button type="button" className="btn btn-primary" disabled={working} onClick={event => onSettle('receive', event.currentTarget)}>受け取りました</button>
               <button type="button" className="btn btn-secondary" disabled={working} onClick={() => onPatch('request', 'まだ受け取っていないと通知しました')}>まだ受け取っていない</button>
             </>
           )}
           {payer && split.isExternal && open && (
-            <button type="button" className="btn btn-secondary" disabled={working} onClick={() => onSettle('self')}>精算済みにする</button>
+            <button type="button" className="btn btn-secondary" disabled={working} onClick={event => onSettle('self', event.currentTarget)}>精算済みにする</button>
           )}
           {!payer && (split.status === 'unpaid' || split.status === 'requested' || split.status === 'pending') && (
-            <button type="button" className="btn btn-primary" disabled={working} onClick={() => onSettle('pay')}>支払う</button>
+            <button type="button" className="btn btn-primary" disabled={working} onClick={event => onSettle('pay', event.currentTarget)}>支払う</button>
           )}
           {!payer && (split.status === 'requested' || split.status === 'payment_reported') && (
             <button type="button" className="btn btn-secondary" disabled={working} onClick={() => onPatch('hold', '保留にしました')}>保留</button>
           )}
-          <button type="button" className="btn btn-secondary" onClick={onComments}>
+          <button type="button" className="btn btn-secondary" onClick={event => onComments(event.currentTarget)}>
             コメント{split.commentCount > 0 ? `(${split.commentCount})` : ''}
           </button>
-          {/* 精算済みは世帯外の相手のときだけ削除できる(#302)。世帯内は相手の家計簿にも記録があるため。 */}
-          {payer && (open || split.isExternal) && (
-            <button type="button" className="btn btn-secondary" disabled={working} onClick={onDelete}>削除</button>
-          )}
           <button data-close type="button" className="btn btn-secondary" onClick={onClose}>閉じる</button>
         </div>
       </div>
     </div>
   )
+}
+
+function SplitDeleteModal({ split, working, onClose, onDelete }: { split: ExpenseSplit; working: boolean; onClose: () => void; onDelete: () => void }) {
+  const close = () => { if (!working) onClose() }
+  const ref = useDialog(close, '[data-cancel]')
+  return <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) close() }}>
+    <div ref={ref} className="modal warikan-child-modal" role="dialog" aria-modal="true" aria-label="割り勘の内訳を削除しますか？">
+      <h2>割り勘の内訳を削除しますか？</h2>
+      <p className="hint">「{purposeText(split)}」（{split.amountDue}円）を削除します。この操作は取り消せません。</p>
+      {split.status === 'settled' && <p className="hint">精算で記録した「割り勘精算」の収入も削除し、口座の残高を元に戻します。</p>}
+      <div className="modal-actions">
+        <button type="button" className="btn btn-primary" onClick={onDelete} disabled={working}>削除する</button>
+        <button type="button" className="btn btn-secondary" data-cancel onClick={close} disabled={working}>キャンセル</button>
+      </div>
+    </div>
+  </div>
 }
 
 // 相手が世帯内メンバーか世帯外の非アプリ利用者かで一覧を絞り込むタブ(S-07)。
@@ -124,6 +142,33 @@ export function WarikanPage() {
   const [commentsTarget, setCommentsTarget] = useState<ExpenseSplit | null>(null)
   const [detailId, setDetailId] = useState<number | null>(null)
   const [working, setWorking] = useState(false)
+  const rowTrigger = useRef<HTMLButtonElement | null>(null)
+  const childTrigger = useRef<HTMLButtonElement | null>(null)
+  const restoreRow = useRef(false)
+  const deletedRow = useRef<HTMLButtonElement | null>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  const childOpen = Boolean(settlement || deleteTarget || commentsTarget)
+  const closeDetail = () => { restoreRow.current = true; setDetailId(null) }
+  useLayoutEffect(() => {
+    if (childOpen) return
+    if (detailId !== null && childTrigger.current?.isConnected) {
+      childTrigger.current.focus()
+      childTrigger.current = null
+    } else if (detailId === null && restoreRow.current) {
+      restoreRow.current = false
+      const target = rowTrigger.current?.isConnected ? rowTrigger.current : pageRef.current?.querySelector<HTMLElement>('[role=tab][aria-selected=true]')
+      target?.focus({ preventScroll: true })
+    }
+  }, [childOpen, detailId])
+  useLayoutEffect(() => {
+    const origin = deletedRow.current
+    if (!origin) return
+    deletedRow.current = null
+    // 削除後の一覧更新で起点が消えた場合だけ復帰を補完し、ユーザーの移動先は奪わない。
+    if (!origin.isConnected && document.activeElement === document.body) {
+      pageRef.current?.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus({ preventScroll: true })
+    }
+  }, [splits])
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -159,11 +204,13 @@ export function WarikanPage() {
     try {
       await fetchSplits()
     } catch (err) {
+      deletedRow.current = null
       showToast(getApiErrorMessage(err, '割り勘一覧の取得に失敗しました'))
     }
   }
 
   const patchSplit = async (split: ExpenseSplit, path: string, successMessage: string, body?: unknown) => {
+    if (working) return
     setWorking(true)
     try {
       await apiClient.patch(`/expense-splits/${split.id}/${path}`, body)
@@ -185,7 +232,7 @@ export function WarikanPage() {
   }
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget || working) return
     setWorking(true)
     let message = '割り勘の内訳を削除しました'
     try {
@@ -202,7 +249,8 @@ export function WarikanPage() {
     }
     setWorking(false)
     setDeleteTarget(null)
-    setDetailId(null)
+    deletedRow.current = rowTrigger.current
+    closeDetail()
     showToast(message)
     await refresh()
   }
@@ -218,7 +266,7 @@ export function WarikanPage() {
     : `${worldFilter === 'internal' ? '世帯内' : '世帯外'}の割り勘の内訳はありません`
 
   return (
-    <div className="page warikan-page">
+    <div ref={pageRef} className="page warikan-page">
       <div className="panel" data-testid="warikan-panel">
         <div className="toolbar">
           <h2>割り勘・精算</h2>
@@ -264,11 +312,14 @@ export function WarikanPage() {
                 <button
                   type="button"
                   className="list-row-button warikan-row"
+                  aria-describedby={'warikan-status-' + split.id}
                   aria-label={`${split.expenseDate} ${partnerText(split)} ${split.amountDue.toLocaleString('ja-JP')}円（${purposeText(split)}）の詳細`}
-                  onClick={() => setDetailId(split.id)}
+                  onClick={event => { rowTrigger.current = event.currentTarget; setDetailId(split.id) }}
                 >
                   <span>{split.expenseDate}</span>
                   <span>{partnerText(split)}</span>
+                  <span className="warikan-row-purpose">{purposeText(split)}</span>
+                  <span className="warikan-row-status" id={'warikan-status-' + split.id}>{split.role === 'payer' ? '受け取り' : '支払い'}{split.status !== 'settled' ? '予定' : ''}・{STATUS_LABEL[split.status]}</span>
                   <span className="warikan-row-amount">{split.amountDue.toLocaleString('ja-JP')}円</span>
                 </button>
               </li>
@@ -282,11 +333,11 @@ export function WarikanPage() {
           split={detail}
           hidden={!!settlement || !!deleteTarget || !!commentsTarget}
           working={working}
-          onClose={() => setDetailId(null)}
+          onClose={closeDetail}
           onPatch={(path, message) => void patchSplit(detail, path, message)}
-          onSettle={(kind) => setSettlement({ kind, split: detail })}
-          onDelete={() => setDeleteTarget(detail)}
-          onComments={() => setCommentsTarget(detail)}
+          onSettle={(kind, trigger) => { childTrigger.current = trigger; setSettlement({ kind, split: detail }) }}
+          onDelete={trigger => { childTrigger.current = trigger; setDeleteTarget(detail) }}
+          onComments={trigger => { childTrigger.current = trigger; setCommentsTarget(detail) }}
         />
       )}
 
@@ -302,27 +353,7 @@ export function WarikanPage() {
         />
       )}
 
-      {deleteTarget && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <h2>割り勘の内訳を削除しますか？</h2>
-            <p className="hint">
-              「{purposeText(deleteTarget)}」（{deleteTarget.amountDue}円）を削除します。この操作は取り消せません。
-            </p>
-            {deleteTarget.status === 'settled' && (
-              <p className="hint">精算で記録した「割り勘精算」の収入も削除し、口座の残高を元に戻します。</p>
-            )}
-            <div className="modal-actions">
-              <button type="button" className="btn btn-primary" onClick={handleDelete} disabled={working}>
-                削除する
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setDeleteTarget(null)} disabled={working}>
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {deleteTarget && <SplitDeleteModal split={deleteTarget} working={working} onClose={() => setDeleteTarget(null)} onDelete={() => void handleDelete()} />}
 
       {commentsTarget && (
         <ExpenseSplitCommentsModal

@@ -124,33 +124,39 @@ export function SplitFields({
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
   }
 
-  const { result, myShareLabel } = useMemo(() => {
+  const { result, myShareLabel, rowErrors, rowShares } = useMemo(() => {
     if (!enabled) {
       return {
         result: { enabled: false, valid: true, splitInputType: inputType, splits: [], errorMessage: '' } as SplitFieldsResult,
         myShareLabel: '',
+        rowErrors: {} as Record<number, { identity?: string; value?: string }>,
+        rowShares: {} as Record<number, string>,
       }
     }
 
     const splits: SplitInput[] = []
     let othersTotal = 0
     let invalid = ''
+    const rowErrors: Record<number, { identity?: string; value?: string }> = {}
+    const rowShares: Record<number, string> = {}
 
     for (const row of rows) {
+      const rejectValue = (message: string) => { invalid = message; (rowErrors[row.key] ??= {}).value = message }
+      const rejectIdentity = (message: string) => { invalid = message; (rowErrors[row.key] ??= {}).identity = message }
       const numeric = Number(row.value)
       if (row.value.trim() === '' || !Number.isFinite(numeric) || numeric < 0) {
-        invalid = '割り勘の負担分を正しく入力してください'
+        rejectValue('割り勘の負担分を正しく入力してください')
       } else if (inputType === 'amount' && (!Number.isInteger(numeric) || numeric > 9_999_999_999)) {
-        invalid = '負担額は0〜9,999,999,999の整数(円)で入力してください'
+        rejectValue('負担額は0〜9,999,999,999の整数(円)で入力してください')
       } else if (inputType === 'ratio' && numeric > 100) {
-        invalid = '負担割合は0〜100%で入力してください'
+        rejectValue('負担割合は0〜100%で入力してください')
       }
       if (row.kind === 'member') {
         if (row.memberId === '') {
-          invalid = '割り勘の相手(世帯メンバー)を選択してください'
+          rejectIdentity('割り勘の相手(世帯メンバー)を選択してください')
         } else if (membersLoaded && !members.some((m) => String(m.userId) === row.memberId)) {
           // 編集時の初期値に、その後世帯を退出したメンバーが含まれていた場合。選び直しを促す。
-          invalid = '世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください'
+          rejectIdentity('世帯を退出したメンバーが割り勘に含まれています。相手を選び直してください')
         } else {
           splits.push(
             inputType === 'ratio'
@@ -161,9 +167,9 @@ export function SplitFields({
       } else {
         const name = row.externalName.trim()
         if (name === '') {
-          invalid = '割り勘の相手(世帯外の人)の名前を入力してください'
+          rejectIdentity('割り勘の相手(世帯外の人)の名前を入力してください')
         } else if (name.length > 50) {
-          invalid = '世帯外の人の名前は1〜50文字で入力してください'
+          rejectIdentity('世帯外の人の名前は1〜50文字で入力してください')
         } else {
           const identity = row.externalId != null && name === row.originalExternalName?.trim()
             ? { debtorExternalId: row.externalId }
@@ -184,13 +190,17 @@ export function SplitFields({
     if (maxRows !== undefined && rows.length > maxRows) invalid = `割り勘の相手は${maxRows}人以内で指定してください`
 
     // 重複チェック(世帯メンバーの二重指定・同名の世帯外の人)。
-    const seen = new Set<string>()
+    const seen = new Map<string, number>()
     for (const row of rows) {
       const retainedId = row.externalId != null && row.externalName.trim() === row.originalExternalName?.trim()
       const id = row.kind === 'member' ? `m:${row.memberId}` : retainedId ? `e:${row.externalId}` : `name:${row.externalName.trim().toLowerCase()}`
       if (row.kind === 'member' ? row.memberId !== '' : row.externalName.trim() !== '') {
-        if (seen.has(id)) invalid = '同じ相手を複数回指定することはできません'
-        seen.add(id)
+        if (seen.has(id)) {
+          invalid = '同じ相手を複数回指定することはできません'
+          ;(rowErrors[row.key] ??= {}).identity = invalid
+          ;(rowErrors[seen.get(id)!] ??= {}).identity = invalid
+        }
+        seen.set(id, row.key)
       }
     }
 
@@ -203,6 +213,21 @@ export function SplitFields({
       myShare = amount > 0 ? `あなたの負担: ${Math.max(0, amount - othersTotal)}円` : ''
     }
 
+    const baseValid = Number.isInteger(amount) && amount > 0
+    const numbers = rows.map(row => Number(row.value))
+    const validNumber = (value: number, index: number) => rows[index].value.trim() !== '' && Number.isFinite(value) && value >= 0
+      && (inputType === 'ratio' ? value <= 100 : Number.isInteger(value) && value <= 9_999_999_999)
+    const amounts = numbers.map(value => inputType === 'ratio' ? Math.floor(amount * value / 100) : value)
+    rows.forEach((row, index) => {
+      rowShares[row.key] = !baseValid ? '金額入力後に表示' : !validNumber(numbers[index], index) ? '入力内容を確認してください'
+        : amounts[index].toLocaleString('ja-JP') + '円（' + (inputType === 'ratio' ? round2(numbers[index]) : round2(numbers[index] / amount * 100)) + '%）'
+    })
+    if (baseValid && numbers.every(validNumber) && amounts.reduce((sum, value) => sum + value, 0) <= amount && (inputType !== 'ratio' || othersTotal <= 100.01)) {
+      const ownAmount = amount - amounts.reduce((sum, value) => sum + value, 0)
+      const ownRatio = inputType === 'ratio' ? round2(Math.max(0, 100 - othersTotal)) : round2(ownAmount / amount * 100)
+      myShare = 'あなたの負担: ' + ownAmount.toLocaleString('ja-JP') + '円（' + ownRatio + '%）'
+    }
+
     return {
       result: {
         enabled: true,
@@ -212,6 +237,8 @@ export function SplitFields({
         errorMessage: invalid,
       } as SplitFieldsResult,
       myShareLabel: myShare,
+      rowErrors,
+      rowShares,
     }
   }, [enabled, inputType, rows, amount, members, membersLoaded, maxRows, allowEmpty])
 
@@ -280,8 +307,8 @@ export function SplitFields({
           </div>
 
           <ul className="split-rows">
-            {rows.map((row) => (
-              <li key={row.key} className="split-row">
+            {rows.map((row, index) => (
+              <li key={row.key} className="split-row" aria-label={'相手' + (index + 1)}>
                 {allowExternal && (
                   <select
                     aria-label="割り勘の相手の種別"
@@ -295,6 +322,8 @@ export function SplitFields({
                 {row.kind === 'member' ? (
                   <select
                     aria-label="世帯メンバー"
+                    aria-invalid={rowErrors[row.key]?.identity ? true : undefined}
+                    aria-describedby={rowErrors[row.key]?.identity ? 'split-' + row.key + '-identity-error' : undefined}
                     value={row.memberId}
                     onChange={(e) => updateRow(row.key, { memberId: e.target.value })}
                   >
@@ -309,6 +338,8 @@ export function SplitFields({
                   <input
                     type="text"
                     aria-label="世帯外の人の名前"
+                    aria-invalid={rowErrors[row.key]?.identity ? true : undefined}
+                    aria-describedby={rowErrors[row.key]?.identity ? 'split-' + row.key + '-identity-error' : undefined}
                     maxLength={50}
                     value={row.externalName}
                     onChange={(e) => updateRow(row.key, { externalName: e.target.value })}
@@ -317,12 +348,17 @@ export function SplitFields({
                 <input
                   type="number"
                   aria-label={inputType === 'ratio' ? '負担割合（％）' : '負担額（円）'}
+                  aria-invalid={rowErrors[row.key]?.value ? true : undefined}
+                  aria-describedby={rowErrors[row.key]?.value ? 'split-' + row.key + '-value-error' : undefined}
                   min="0"
                   step={inputType === 'ratio' ? '0.01' : '1'}
                   value={row.value}
                   onChange={(e) => updateRow(row.key, { value: e.target.value })}
                 />
-                <span>{inputType === 'ratio' ? '%' : '円'}</span>
+                {rowErrors[row.key]?.identity && <p className="error split-row-error split-identity-error" role="alert" id={'split-' + row.key + '-identity-error'}>{rowErrors[row.key].identity}</p>}
+                {rowErrors[row.key]?.value && <p className="error split-row-error split-value-error" role="alert" id={'split-' + row.key + '-value-error'}>{rowErrors[row.key].value}</p>}
+                <p className="split-share" aria-label={'相手' + (index + 1) + 'の負担'}>{rowShares[row.key]}</p>
+                <span className="split-unit">{inputType === 'ratio' ? '%' : '円'}</span>
                 <button type="button" className="btn btn-tiny" onClick={() => removeRow(row.key)}>
                   削除
                 </button>
@@ -335,7 +371,7 @@ export function SplitFields({
           </button>
 
           {myShareLabel && <p className="hint">{myShareLabel}</p>}
-          {result.errorMessage && <p className="error">{result.errorMessage}</p>}
+          {result.errorMessage && !Object.values(rowErrors).some(error => error.identity === result.errorMessage || error.value === result.errorMessage) && <p className="error" role="alert">{result.errorMessage}</p>}
         </>
       )}
     </fieldset>

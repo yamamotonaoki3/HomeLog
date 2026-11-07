@@ -81,6 +81,8 @@ export async function addTransaction(
     await modal.getByLabel('日時').fill(options.date)
   }
   if (options.splitWith) {
+    const extras = modal.getByRole('button', { name: 'その他の設定', exact: true })
+    if (await extras.getAttribute('aria-expanded') !== 'true') await extras.click()
     await modal.getByLabel('割り勘する').check()
     if ((await modal.getByLabel('世帯メンバー').count()) === 0) {
       await modal.getByRole('button', { name: '相手を追加' }).click()

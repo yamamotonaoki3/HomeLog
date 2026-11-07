@@ -163,3 +163,21 @@
 .account-transactions-modal .table { table-layout:fixed; }
 .account-transactions-modal .table th,.account-transactions-modal .table td { overflow-wrap:anywhere; vertical-align:top; }
 @media(max-width:480px) { .accounts-page { padding:12px; } .accounts-page .panel { padding:10px; } .accounts-row { gap:6px; } .account-transactions-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } .account-transactions-modal .table th,.account-transactions-modal .table td { padding:6px 3px; } .account-history-header h2 { font-size:16px; } }
+
+/* #425 割り勘の入力・負担表示。固定費との共用計算やpayloadは変えない。 */
+.transaction-split-toggle { margin-top:12px; min-height:44px; width:100%; }
+.transaction-modal .split-fields,.fixed-cost-modal .split-fields { min-width:0; margin-top:12px; }
+.transaction-modal .split-fields > label,.fixed-cost-modal .split-fields > label { display:flex; align-items:center; min-height:44px; gap:8px; }
+.transaction-modal .split-fields button,.fixed-cost-modal .split-fields button { min-height:44px; min-width:44px; }
+.transaction-modal .split-rows,.fixed-cost-modal .split-rows { list-style:none; padding:0; }
+.transaction-modal .split-row,.fixed-cost-modal .split-row { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"kind kind" "identity identity" "identityerror identityerror" "value unit" "valueerror valueerror" "share share" "remove remove"; gap:8px; min-width:0; padding:12px 0; border-bottom:1px solid #e2e8f0; }
+.transaction-modal .split-row select,.transaction-modal .split-row input,.fixed-cost-modal .split-row select,.fixed-cost-modal .split-row input { width:100%; min-width:0; max-width:100%; box-sizing:border-box; flex:initial; }
+.split-row [aria-label="割り勘の相手の種別"] { grid-area:kind; }
+.split-row [aria-label="世帯メンバー"],.split-row [aria-label="世帯外の人の名前"] { grid-area:identity; }
+.split-row input[type=number] { grid-area:value; }
+.split-row .split-unit { grid-area:unit; align-self:center; }
+.split-row .split-share { grid-area:share; margin:0; overflow-wrap:anywhere; }
+.split-row .split-identity-error { grid-area:identityerror; }
+.split-row .split-value-error { grid-area:valueerror; }
+.split-row .split-row-error { margin:0; overflow-wrap:anywhere; }
+.split-row > button { grid-area:remove; justify-self:end; }

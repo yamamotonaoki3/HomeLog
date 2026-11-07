@@ -78,6 +78,7 @@ export function TransactionModal({
   const [memo, setMemo] = useState(editing?.data.memo ?? '')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [splitSettingsOpen, setSplitSettingsOpen] = useState((initialSplits?.length ?? 0) > 0)
   // 開いたら日付欄へフォーカスし、Tab移動をモーダル内に閉じ込める。Escapeで閉じるが、保存中は閉じない
   // (キャンセルボタンと同じ。保存完了前に古いデータで再操作・二重登録させないため)。
   const dialogRef = useDialog(() => { if (!submitting) onClose() }, '#tx-date')
@@ -130,6 +131,7 @@ export function TransactionModal({
     }
     // 割り勘の入力エラーは API 呼び出し前にブロックする。
     if (kind === 'expense' && splitResult.enabled && !splitResult.valid) {
+      setSplitSettingsOpen(true)
       setError(splitResult.errorMessage || '割り勘の入力内容を確認してください')
       return
     }
@@ -296,7 +298,10 @@ export function TransactionModal({
                   </option>
                 ))}
               </select>
+              <button type="button" className="btn btn-secondary transaction-split-toggle" aria-expanded={splitSettingsOpen} aria-controls="transaction-split-settings" onClick={() => setSplitSettingsOpen(open => !open)}>その他の設定</button>
+              <div id="transaction-split-settings" role="region" aria-label="その他の設定" hidden={!splitSettingsOpen}>
               <SplitFields amount={Number(amount) || 0} members={members} membersLoaded={membersLoaded} initialSplits={initialSplits} initialSplitInputType={initialSplitInputType} onChange={handleSplitChange} />
+              </div>
             </>
           )}
           <label htmlFor="tx-memo">メモ</label>

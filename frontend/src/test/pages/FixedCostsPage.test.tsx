@@ -663,7 +663,9 @@ describe('固定費フォームの基本情報と詳細設定 (#423)', () => {
     await user.click(toggle)
     await user.click(screen.getByRole('button',{name:'登録'}))
     expect(toggle).toHaveAttribute('aria-expanded','true')
-    expect(screen.getByRole('alert')).not.toBeEmptyDOMElement()
+    const alerts = screen.getAllByRole('alert')
+    for (const alert of alerts) expect(alert).not.toBeEmptyDOMElement()
+    expect(alerts.some(alert => alert.textContent?.includes('負担割合の合計が100%を超えています'))).toBe(true)
     expect(calls.some(c=>c.method==='POST')).toBe(false)
   })
   it('一覧取得失敗を未登録の空状態にしない', async () => {
