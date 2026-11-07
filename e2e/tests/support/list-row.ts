@@ -3,11 +3,10 @@ import { expect } from '../console-guard'
 
 
 export async function expectActionTargets44(root: Locator) {
-  const targets = [...await root.getByRole('button').all(), ...await root.locator('a.btn:visible').all()]
-  const measured = await Promise.all(targets.map(target => target.evaluate(el => {
+  const measured = await root.locator('button:visible, a.btn:visible').evaluateAll(elements => elements.map(el => {
     const rect = el.getBoundingClientRect()
     return { name: el.getAttribute('aria-label') ?? el.textContent?.trim(), width: rect.width, height: rect.height }
-  })))
+  }))
   expect.soft(measured.filter(target => target.width < 44 || target.height < 44), '主要操作の44px実測').toEqual([])
 }
 
