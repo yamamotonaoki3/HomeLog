@@ -9,6 +9,7 @@ import { EventDetailModal } from '../components/events/EventDetailModal'
 export function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
+  const [eventsLoaded, setEventsLoaded] = useState(false)
   const [modalTarget, setModalTarget] = useState<Event | null | undefined>(undefined)
   const [detailId, setDetailId] = useState<number | null>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
@@ -26,6 +27,7 @@ export function EventsPage() {
   const fetchEvents = useCallback(async () => {
     const response = await apiClient.get<Event[]>('/events')
     setEvents(response.data)
+    setEventsLoaded(true)
     return response.data
   }, [])
 
@@ -77,22 +79,34 @@ export function EventsPage() {
           </button>
         </div>
         <div className="events-list">
-          <div className="list-row-heading events-grid"><span>イベント名</span><span>日時</span><span>繰り返し</span></div>
-            {events.length === 0 ? (
+          {!eventsLoaded && <p role="status">イベント一覧を確認できません</p>}
+          {events.length === 0 ? (eventsLoaded && (
+            <div className="events-empty">
               <p>イベントはありません</p>
-            ) : (
-              events.map((event) => (
-                <button key={event.id} type="button" className="list-row-button events-grid" aria-label={`${event.name}の詳細`}
+              <p>イベントを登録すると、予定を一覧で確認できます。</p>
+            </div>
+          )) : (
+            <ul className="event-list" aria-label="イベント">
+              {events.map((event) => (
+                <li key={event.id}>
+                <button type="button" className="list-row-button event-list-row" aria-label={`${event.name}の詳細`} aria-describedby={`event-description-${event.id}`}
                   onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; if (event.editable) { setDetailId(null); setModalTarget(event) } else setDetailId(event.id) }}>
-                  <span>{event.name}</span>
-                  <span className="event-datetime">
-                    <time dateTime={event.eventDate}>{event.eventDate}</time>
-                    <span>{timeRangeLabel(event)}</span>
+                  <span className="event-date-block">
+                    <time dateTime={event.eventDate}>
+                      <span className="event-date-year">{event.eventDate.slice(0, 4)}年</span>
+                      <span className="event-date-month-day">{Number(event.eventDate.slice(5, 7))}/{Number(event.eventDate.slice(8, 10))}</span>
+                    </time>
+                    <span id={`event-description-${event.id}`} className="event-row-description">{event.eventDate} {timeRangeLabel(event)} {RECURRENCE_LABELS[event.recurrenceType]}</span>
                   </span>
-                  <span>{RECURRENCE_LABELS[event.recurrenceType]}</span>
+                  <span className="event-row-content">
+                    <span className="event-row-title">{event.name}</span>
+                    <span className="event-row-meta"><span>{timeRangeLabel(event)}</span><span>{RECURRENCE_LABELS[event.recurrenceType]}</span></span>
+                  </span>
                 </button>
-              ))
-            )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
       {detailEvent && modalTarget === undefined && (
