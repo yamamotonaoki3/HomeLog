@@ -5,10 +5,19 @@ test.describe('F-05 固定費', () => {
   test('固定費を登録すると一覧に表示され、削除できる', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
     await setupUserWithHousehold(page, 'fixedcost')
-    await page.goto('/fixed-costs')
+    await page.goto('/kakeibo')
+    await page.getByRole('link', { name: '固定費', exact: true }).click()
+    await expect(page).toHaveURL(/\/fixed-costs$/)
+    await expect(page.getByRole('button', { name: '登録を始める', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '固定費を登録', exact: true })).toHaveCount(1)
 
     const name = '[E2E_TEST] 家賃'
     await page.getByRole('button', { name: '固定費を登録' }).click()
+    const form = page.getByRole('dialog', { name: '固定費を登録', exact: true })
+    for (const word of ['毎月', '支払日', '自動', '家計簿']) await expect(form).toContainText(word)
+    await expect(form).toContainText(/月額.*予定|予定.*月額/)
+    await expect(form.getByRole('button', { name: /^詳細設定/ })).toHaveAttribute('aria-expanded', 'false')
+    await expect(form.getByRole('button', { name: /を削除$/ })).toHaveCount(0)
     await page.getByLabel('固定費名').fill(name)
     await page.getByLabel('金額').fill('80000')
     await page.getByLabel('支払日').fill('27')
@@ -19,7 +28,7 @@ test.describe('F-05 固定費', () => {
     await expect(row).toContainText('27日')
 
     await row.click()
-    await page.getByRole('dialog', { name: '固定費詳細' }).getByRole('button', { name: '削除' }).click()
+    await page.getByRole('dialog', { name: '固定費詳細' }).getByRole('button', { name: name + 'を削除', exact: true }).click()
     await page.getByRole('button', { name: '削除する' }).click()
     await expect(row).toHaveCount(0)
   })
