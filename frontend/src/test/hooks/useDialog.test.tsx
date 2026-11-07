@@ -265,3 +265,49 @@ describe('共通ダイアログ', () => {
     expect(document.body.style.width).toBe('')
   })
 })
+
+
+it.each(['close', 'escape'])('StrictModeでも外部起点を再setupで取り直さず復帰する (%s)', async (operation) => {
+  const user = userEvent.setup()
+  render(<StrictMode><Example /></StrictMode>)
+  const opener = screen.getByRole('button', { name: '開く' })
+  await user.click(opener)
+  expect(screen.getByRole('button', { name: '閉じる' })).toHaveFocus()
+  if (operation === 'escape') await user.keyboard('{Escape}')
+  else await user.click(screen.getByRole('button', { name: '閉じる' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(opener).toHaveFocus())
+})
+
+
+it.each(['hidden', 'removed', 'disabled'])('子の起点が%sなら残った親の有効な操作へ戻す', async (condition) => {
+  function InvalidOrigin() {
+    const [child, setChild] = useState(false)
+    const [invalid, setInvalid] = useState(false)
+    return <><Dialog name="親" onClose={() => undefined}>
+      {!(invalid && condition === 'removed') && <button hidden={invalid && condition === 'hidden'} disabled={invalid && condition === 'disabled'} onClick={() => setChild(true)}>子を開く</button>}
+    </Dialog>
+      {child && <Dialog name="子" onClose={() => setChild(false)}><button onClick={() => setInvalid(true)}>起点を無効化</button></Dialog>}
+    </>
+  }
+  const user = userEvent.setup()
+  render(<InvalidOrigin />)
+  await user.click(screen.getByRole('button', { name: '子を開く' }))
+  await user.click(screen.getByRole('button', { name: '起点を無効化' }))
+  await user.click(within(screen.getByRole('dialog', { name: '子' })).getByRole('button', { name: '閉じる' }))
+  await waitFor(() => expect(within(screen.getByRole('dialog', { name: '親' })).getByRole('button', { name: '閉じる' })).toHaveFocus())
+})
+
+it('閉じる側の明示的な有効focus復帰を共通cleanupで上書きしない', async () => {
+  function ExplicitReturn() {
+    const [open, setOpen] = useState(false)
+    return <><button onClick={() => setOpen(true)}>開く</button><button id="explicit-fallback">登録へ戻る</button>
+      {open && <Dialog name="詳細" onClose={() => { setOpen(false); document.getElementById('explicit-fallback')?.focus() }} />}</>
+  }
+  const user = userEvent.setup()
+  render(<StrictMode><ExplicitReturn /></StrictMode>)
+  await user.click(screen.getByRole('button', { name: '開く' }))
+  await user.keyboard('{Escape}')
+  await new Promise<void>(resolve => queueMicrotask(resolve))
+  expect(screen.getByRole('button', { name: '登録へ戻る' })).toHaveFocus()
+})

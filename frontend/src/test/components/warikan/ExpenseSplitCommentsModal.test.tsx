@@ -136,4 +136,25 @@ describe('ExpenseSplitCommentsModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onPosted).not.toHaveBeenCalled()
   })
+  it('投稿中の既存閉じるは有効で、連打投稿は一回だけ', async () => {
+    const { onClose, onPosted } = renderModal([])
+    let release!: () => void
+    let posts = 0
+    server.use(http.post('/api/expense-splits/1/comments', async () => {
+      posts++; await new Promise<void>(resolve => { release = resolve })
+      return HttpResponse.json({ id: 99, authorUserId: 1, authorLabel: 'testuser_author', authorRole: 'payer', body: '[E2E_TEST] 投稿中', createdAt: '2026-01-02 00:00:00' }, { status: 201 })
+    }))
+    await screen.findByText('コメントはまだありません')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('コメントを投稿'), '[[E2E_TEST] 投稿中')
+    await user.dblClick(screen.getByRole('button', { name: '投稿' }))
+    await waitFor(() => expect(release).toBeDefined())
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(posts).toBe(1)
+    release()
+    await waitFor(() => expect(onPosted).toHaveBeenCalledTimes(1))
+  })
+
 })

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -93,10 +94,10 @@ function setupApi(initial: ExpenseSplit[], accounts: Account[] = [account]) {
   return { calls }
 }
 
-function renderPage() {
+function renderPage(strict = false) {
   return render(
     <MemoryRouter initialEntries={['/warikan']}>
-      <WarikanPage />
+      {strict ? <StrictMode><WarikanPage /></StrictMode> : <WarikanPage />}
     </MemoryRouter>,
   )
 }
@@ -172,7 +173,7 @@ describe('WarikanPage(改訂フロー)', () => {
     setupApi([split({ status: 'settled' })])
     renderPage()
     const row = await openDetail()
-    expect(within(row).queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /の割り勘を削除$/ })).not.toBeInTheDocument()
   })
 
   it.each([
@@ -186,7 +187,7 @@ describe('WarikanPage(改訂フロー)', () => {
     }))
     renderPage()
     const user = userEvent.setup()
-    await user.click(within(await openDetail()).getByRole('button', { name: '削除' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: /の割り勘を削除$/ }))
     expect(screen.getByRole('heading', { name: '割り勘の内訳を削除しますか？' }).parentElement).toHaveTextContent('精算で記録した「割り勘精算」の収入も削除し、口座の残高を元に戻します')
     await user.click(screen.getByRole('button', { name: '削除する' }))
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('DELETE 1'))
@@ -198,7 +199,7 @@ describe('WarikanPage(改訂フロー)', () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.click(within(await openDetail()).getByRole('button', { name: '削除' }))
+    await user.click(within(await openDetail()).getByRole('button', { name: /の割り勘を削除$/ }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
 
     await waitFor(() => expect(calls.map((c) => c.path)).toContain('DELETE 1'))
@@ -289,9 +290,9 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     const row = await rowOf(/単一種別/)
     expect(row).toHaveTextContent('testuser_external')
     expect(row).toHaveTextContent('500円')
-    // 一覧は日付・相手・金額だけ。用途と状態は詳細モーダルに出す。
-    expect(row).not.toHaveTextContent('未請求')
-    expect(row).not.toHaveTextContent('単一種別')
+    expect(row).toHaveTextContent('未請求')
+    expect(row).toHaveTextContent('受け取り予定')
+    expect(row).toHaveTextContent('単一種別')
     expect(await openDetail(/単一種別/)).toHaveTextContent('未請求')
     expect(screen.getByRole('tab', { name: 'すべて', selected: true })).toBeInTheDocument()
   })
@@ -341,7 +342,7 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
       await user.click(within(await screen.findByTestId('settlement-account-modal')).getByRole('button', { name: '精算済みにする' }))
       await waitFor(() => expect(row).toHaveTextContent('精算済み'))
     } else {
-      await user.click(within(row).getByRole('button', { name: '削除' }))
+      await user.click(within(row).getByRole('button', { name: /の割り勘を削除$/ }))
       await user.click(screen.getByRole('button', { name: '削除する' }))
       await screen.findByText('世帯外の割り勘の内訳はありません')
     }
@@ -355,5 +356,117 @@ describe('WarikanPage 世帯内/世帯外タブ', () => {
     renderPage()
     expect(await screen.findByText('割り勘の取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /共同購入/ })).not.toBeInTheDocument()
+  })
+})
+
+
+describe('#425 権限とnested共通UX', () => {
+  it.each((['payer', 'debtor'] as const).flatMap(role => (['unpaid', 'requested', 'payment_reported', 'pending', 'settled'] as const).flatMap(status => [false, true].map(isExternal => ({ role, status, isExternal })))))('$role/$status/external=$isExternalの既存削除権限を保持', async ({ role, status, isExternal }) => {
+    setupApi([split({ role, status, isExternal })]); renderPage()
+    const parent = await openDetail()
+    const allowed = role === 'payer' && (status !== 'settled' || isExternal)
+    expect(within(parent).queryByRole('button', { name: '共同購入の割り勘を削除' }) !== null).toBe(allowed)
+    expect(within(parent).getByRole('button', { name: '割り勘詳細を閉じる' })).toHaveFocus()
+  })
+  it.each(['settlement', 'comments', 'delete'] as const)('StrictModeの%s子は親hidden/最上位Esc/元操作→行への復帰を保つ', async kind => {
+    setupApi([split({ isExternal: true })]); renderPage(true)
+    const user = userEvent.setup()
+    const row = await rowOf()
+    const parent = await openDetail()
+    const trigger = within(parent).getByRole('button', { name: kind === 'settlement' ? '精算済みにする' : kind === 'comments' ? 'コメント' : '共同購入の割り勘を削除' })
+    await user.click(trigger)
+    const child = await screen.findByRole('dialog', { name: kind === 'settlement' ? '受取口座を選択' : kind === 'comments' ? 'コメント' : '割り勘の内訳を削除しますか？' })
+    expect(parent).toHaveAttribute('hidden')
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(document.body.style.position).toBe('fixed')
+    const initial = within(child).getByRole(kind === 'settlement' ? 'combobox' : 'button', { name: kind === 'settlement' ? '口座（任意）' : kind === 'comments' ? 'コメントを閉じる' : 'キャンセル' })
+    expect(initial).toHaveFocus()
+    await user.keyboard('{Shift>}{Tab}{/Shift}{Tab}')
+    expect(initial).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(child).not.toBeInTheDocument()
+    expect(parent).not.toHaveAttribute('hidden')
+    expect(trigger).toHaveFocus()
+    expect(document.body.style.position).toBe('fixed')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(row).toHaveFocus()
+    expect(document.body.style.position).not.toBe('fixed')
+  })
+  it('精算中はsubmit連打とEsc/背景/キャンセルを抑止し一度だけ送る', async () => {
+    setupApi([split({ isExternal: true })])
+    let release!: () => void
+    let count = 0
+    server.use(http.patch('/api/expense-splits/1/settle-self', async () => {
+      count++; await new Promise<void>(resolve => { release = resolve })
+      return HttpResponse.json(split({ status: 'settled', isExternal: true }))
+    }))
+    renderPage(); const user = userEvent.setup()
+    await user.click(within(await openDetail()).getByRole('button', { name: '精算済みにする' }))
+    const child = screen.getByRole('dialog', { name: '受取口座を選択' })
+    await user.dblClick(within(child).getByRole('button', { name: '精算済みにする' }))
+    await waitFor(() => expect(release).toBeDefined())
+    await user.keyboard('{Escape}')
+    await user.click(child.parentElement!)
+    expect(child).toBeInTheDocument()
+    expect(within(child).getByRole('button', { name: 'キャンセル' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(child).not.toBeInTheDocument())
+    expect(count).toBe(1)
+  })
+})
+
+  it('一覧の可視状態と受取支払方向をrowの読み上げへ関連付ける', async () => {
+    setupApi([split({}), split({ id: 2, role: 'debtor', status: 'requested', expensePurpose: '[E2E_TEST] 支払' })]); renderPage()
+    expect(await rowOf(/共同購入/)).toHaveAccessibleDescription('受け取り予定・未請求')
+    expect(await rowOf(/支払）/)).toHaveAccessibleDescription('支払い予定・請求中')
+  })
+
+describe('#425 削除後の再取得とフォーカス', () => {
+  it.each(['removed', 'refresh-error', 'user-focus'] as const)('遅延一覧更新後も有効な復帰先を保つ: %s', async outcome => {
+    const target = split({ isExternal: true })
+    setupApi([target])
+    let deleted = false, refreshStarted = false
+    let release = () => {}
+    const pending = new Promise<void>(resolve => { release = resolve })
+    server.use(
+      http.get('/api/expense-splits', async () => {
+        if (!deleted) return HttpResponse.json([target])
+        refreshStarted = true
+        await pending
+        return outcome === 'refresh-error' ? new HttpResponse(null, { status: 500 }) : HttpResponse.json([])
+      }),
+      http.delete('/api/expense-splits/:id', () => {
+        deleted = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderPage()
+    const user = userEvent.setup()
+    const tab = await screen.findByRole('tab', { name: '世帯外' })
+    await user.click(tab)
+    const origin = await rowOf()
+    await user.click(origin)
+    await user.click(within(detail()).getByRole('button', { name: /の割り勘を削除$/ }))
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+    try {
+      await waitFor(() => expect(refreshStarted).toBe(true))
+      await waitFor(() => expect(origin).toHaveFocus())
+      const other = screen.getByRole('link', { name: '家計簿に戻る' })
+      if (outcome === 'user-focus') {
+        other.focus()
+        expect(other).toHaveFocus()
+      }
+      release()
+      if (outcome === 'refresh-error') {
+        expect(await screen.findByText(/割り勘一覧の取得に失敗しました/)).toBeInTheDocument()
+        expect(origin).toHaveFocus()
+      } else {
+        await waitFor(() => expect(origin).not.toBeInTheDocument())
+        await waitFor(() => expect(outcome === 'user-focus' ? other : tab).toHaveFocus())
+      }
+    } finally {
+      release()
+    }
   })
 })

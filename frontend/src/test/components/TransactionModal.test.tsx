@@ -39,6 +39,7 @@ function setup(candidateMembers = members) {
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('金額'), '1000')
   await user.type(screen.getByLabelText('使用用途（任意）'), '[E2E_TEST] ランチ')
+  await user.click(screen.getByRole('button', { name: 'その他の設定' }))
 }
 
 describe('TransactionModal 使用用途', () => {

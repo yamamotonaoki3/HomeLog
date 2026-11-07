@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useDialog } from '../../hooks/useDialog'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { ExpenseSplit, ExpenseSplitComment } from '../../api/warikanTypes'
@@ -16,7 +17,12 @@ const BODY_MAX_LENGTH = 500
  * 割り勘内訳ごとのコメントスレッド(F04_kakeibo_warikan.md「コメント（立替者・負担者）」)。
  * status を問わず、その内訳の立替者・負担者どちらも閲覧・投稿できる。
  */
-export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
+export function ExpenseSplitCommentsModal(props: Props) {
+  return <CommentsContent key={props.split.id} {...props} />
+}
+
+function CommentsContent({ split, onClose, onPosted }: Props) {
+  const ref = useDialog(onClose, '[data-comments-close]')
   const [comments, setComments] = useState<ExpenseSplitComment[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -44,7 +50,7 @@ export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
 
   const handleSubmit = async () => {
     const body = draft.trim()
-    if (body === '') return
+    if (posting || body === '') return
     setPosting(true)
     setPostError('')
     try {
@@ -62,9 +68,9 @@ export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal" data-testid="expense-split-comments-modal">
-        <h2>コメント</h2>
+    <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
+      <div ref={ref} className="modal warikan-child-modal warikan-comments-modal" role="dialog" aria-modal="true" aria-label="コメント" data-testid="expense-split-comments-modal">
+        <div className="warikan-detail-header"><h2>コメント</h2><button type="button" className="btn btn-secondary" data-comments-close aria-label="コメントを閉じる" onClick={onClose}>×</button></div>
 
         {loading && <p>読み込み中...</p>}
         {!loading && error && <p className="error">{error}</p>}
@@ -89,7 +95,7 @@ export function ExpenseSplitCommentsModal({ split, onClose, onPosted }: Props) {
           onChange={(e) => setDraft(e.target.value)}
           disabled={posting}
         />
-        {postError && <p className="error">{postError}</p>}
+        {postError && <p className="error" role="alert">{postError}</p>}
 
         <div className="modal-actions">
           <button
