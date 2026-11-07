@@ -71,11 +71,17 @@ function syncScrollLock() {
 export function useDialog(onClose: () => void, initialSelector: string) {
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
+  const originRef = useRef<HTMLElement | null>(null)
   close.current = onClose
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    const origin = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    // StrictModeのeffect再セットアップで、元の外部起点を内部の初期操作へ取り直さない。
+    const activeAtSetup = document.activeElement
+    if (originRef.current === null && activeAtSetup instanceof HTMLElement && !dialog.contains(activeAtSetup)) {
+      originRef.current = activeAtSetup
+    }
+    const origin = originRef.current
     const originalTabIndex = dialog.getAttribute('tabindex')
     if (originalTabIndex === null) dialog.tabIndex = -1
     dialogs.push(dialog)
@@ -117,7 +123,7 @@ export function useDialog(onClose: () => void, initialSelector: string) {
         const active = document.activeElement
         if (!wasTop || (active !== document.body && active !== null && !dialog.contains(active))) return
         const remaining = topDialog()
-        if (origin && isVisible(origin) && (!remaining || remaining.contains(origin))) {
+        if (origin && !origin.matches(':disabled') && isVisible(origin) && (!remaining || remaining.contains(origin))) {
           origin.focus({ preventScroll: true })
         } else if (remaining) {
           ;(controlsOf(remaining)[0] ?? remaining).focus({ preventScroll: true })

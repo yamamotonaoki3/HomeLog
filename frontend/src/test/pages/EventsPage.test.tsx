@@ -1,7 +1,8 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { EventsPage } from '../../pages/EventsPage'
@@ -222,4 +223,31 @@ describe('EventsPage', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(row).toHaveFocus())
   })
+})
+
+
+it.each([false, true])('削除後のframe復帰がcommit前でも、消える行ではなく登録へ戻す (StrictMode=%s)', async (strict) => {
+  const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+  const user = userEvent.setup()
+  const page = <MemoryRouter><EventsPage /></MemoryRouter>
+  render(strict ? <StrictMode>{page}</StrictMode> : page)
+  const row = await screen.findByRole('button', { name: '旅行の詳細' })
+  await user.click(row)
+  await user.click(screen.getByRole('button', { name: '削除' }))
+  let connectedWhenFrameRan: boolean | undefined
+  // rAFはReactのcommit完了を保証しない。callback先行の順序だけを固定し、React/共通hookは実物を使う。
+  const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+    connectedWhenFrameRan = row.isConnected
+    callback(performance.now())
+    return 1
+  })
+  try {
+    await user.click(screen.getByRole('button', { name: '削除する' }))
+    await screen.findByText('イベントはありません')
+    if (frame.mock.calls.length) expect(connectedWhenFrameRan).toBe(true)
+    expect(row.isConnected).toBe(false)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(calls.filter(call => call.method === 'DELETE')).toHaveLength(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus())
+  } finally { frame.mockRestore() }
 })
