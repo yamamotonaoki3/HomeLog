@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
-import { setupUserWithHousehold } from './support/flows'
+import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`値段登録・編集・手動追加と画面幅 ${width}px`, async ({ page, consoleGuard }) => {
@@ -27,7 +27,7 @@ for (const width of [1280, 390, 320]) {
     await page.getByRole('button', { name: '保存', exact: true }).click()
     const inventory = page.getByTestId('inventory-panel')
     const row = inventory.getByRole('button', { name: `${name}の詳細`, exact: true })
-    await row.click()
+    await openInventoryDetails(page, row)
     const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
     const price = detail.getByLabel('値段（円・任意）')
     await expect(price).toHaveValue('9999999999')
@@ -39,10 +39,10 @@ for (const width of [1280, 390, 320]) {
     await screenshot('edit')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(detail).toBeHidden()
-    await row.click()
+    await openInventoryDetails(page, row)
     await expect(price).toHaveValue('1280')
     await page.reload()
-    await row.click()
+    await openInventoryDetails(page, row)
     await expect(price).toHaveValue('1280')
     await price.scrollIntoViewIfNeeded()
     await screenshot('inventory')
@@ -60,7 +60,7 @@ for (const width of [1280, 390, 320]) {
     await shopping.getByRole('button', { name: '更新', exact: true }).click()
     await expect(shoppingRow).toHaveCount(0)
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
-    await row.click()
+    await openInventoryDetails(page, row)
     await detail.getByRole('button', { name: `${name}を減らす`, exact: true }).click()
     await expect(detail.locator('.qty-value')).toHaveText('0.0')
     await detail.getByRole('button', { name: 'キャンセル' }).click()
@@ -96,18 +96,18 @@ for (const width of [1280, 390, 320]) {
     await expect(shoppingPrice).toHaveText('980円')
     await shoppingDetail.getByRole('button', { name: '閉じる' }).click()
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
-    await row.click()
+    await openInventoryDetails(page, row)
     await expect(price).toHaveValue('980')
     await page.getByLabel('値段（円・任意）').fill('')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(detail).toBeHidden()
-    await row.click()
+    await openInventoryDetails(page, row)
     await expect(price).toHaveValue('')
     await detail.getByRole('button', { name: 'キャンセル' }).click()
     await page.getByRole('button', { name: '在庫を登録' }).click()
     await page.getByLabel('品名', { exact: true }).fill('[E2E_TEST] 値段なし')
     await page.getByRole('button', { name: '保存', exact: true }).click()
-    await inventory.getByRole('button', { name: '[E2E_TEST] 値段なしの詳細' }).click()
+    await openInventoryDetails(page, inventory.getByRole('button', { name: '[E2E_TEST] 値段なしの詳細', exact: true }))
     await expect(price).toHaveValue('')
   })
 }

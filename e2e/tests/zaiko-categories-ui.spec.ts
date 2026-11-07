@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './console-guard'
-import { setupUserWithHousehold } from './support/flows'
+import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`在庫の登録・編集内でカテゴリー追加・重複・入力保持 ${width}px`, async ({ browser, baseURL, consoleGuard }) => {
@@ -27,6 +27,7 @@ for (const width of [1280, 390, 320]) {
       await dialog.getByLabel('品名', { exact: true }).fill(name)
       await dialog.getByLabel('値段（円・任意）').fill('1280')
       await dialog.getByLabel('在庫個数', { exact: true }).fill('2')
+      if (await dialog.getByRole('switch', { name: '自動消費' }).getAttribute('aria-checked') !== 'true') await dialog.getByRole('switch', { name: '自動消費' }).click()
       await dialog.getByLabel('1日の消費量（任意）').fill('0.2')
       await dialog.getByRole('button', { name: '＋カテゴリーを登録' }).click()
       const categoryInput = dialog.getByLabel('カテゴリー名', { exact: true })
@@ -71,7 +72,7 @@ for (const width of [1280, 390, 320]) {
       const row = page.getByRole('button', { name: `${name}の詳細`, exact: true })
       await expect(row).toBeVisible()
       await page.reload()
-      await row.click()
+      await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText(categoryName)
       await expect(dialog.getByLabel('値段（円・任意）')).toHaveValue('1280')
       await expect(dialog.locator('.qty-value')).toHaveText('2.0')
@@ -83,9 +84,9 @@ for (const width of [1280, 390, 320]) {
       await expect(selection.locator('option:checked')).toHaveText('[E2E_TEST] 編集で追加')
       await expect(dialog.getByLabel('品名', { exact: true })).toHaveValue('[E2E_TEST] 保存しない名前')
       await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click()
-      await expect(row).toBeFocused()
+      await expect(page.getByRole('button', { name: `${name}の詳細設定`, exact: true })).toBeFocused()
       await page.reload()
-      await row.click()
+      await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText(categoryName)
       await selection.selectOption({ label: '[E2E_TEST] 編集で追加' })
       await dialog.getByRole('button', { name: '＋カテゴリーを登録' }).click()
@@ -97,10 +98,10 @@ for (const width of [1280, 390, 320]) {
       await dialog.getByRole('button', { name: '保存', exact: true }).click()
       await expect(dialog).toBeHidden()
       await page.reload()
-      await row.click()
+      await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText('[E2E_TEST] 編集で追加')
       await page.keyboard.press('Escape')
-      await expect(row).toBeFocused()
+      await expect(page.getByRole('button', { name: `${name}の詳細設定`, exact: true })).toBeFocused()
     } finally { await context.close() }
   })
 }

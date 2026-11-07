@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './console-guard'
-import { setupUserWithHousehold } from './support/flows'
+import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`在庫をカテゴリーと検索で絞り込み、編集後も条件を維持する ${width}px (#369)`, async ({ page, consoleGuard }) => {
@@ -32,7 +32,7 @@ for (const width of [1280, 390, 320]) {
     await expect(panel.getByText('該当する品目がありません')).toBeVisible()
     await panel.getByRole('searchbox', { name: 'キーワード検索' }).clear()
     await expect(rows).toHaveCount(1)
-    await rows.first().click()
+    await openInventoryDetails(page, rows.first())
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('カテゴリー', { exact: true }).selectOption(String(vegetable.id))
     await dialog.getByRole('button', { name: '保存', exact: true }).click()

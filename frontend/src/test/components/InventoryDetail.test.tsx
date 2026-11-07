@@ -16,6 +16,7 @@ describe('在庫の一覧と詳細', () => {
     const user = userEvent.setup()
     render(<InventoryPanel {...props} onRefresh={() => refresh} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     await user.click(screen.getByRole('button', { name: '保存' }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
@@ -31,6 +32,7 @@ describe('在庫の一覧と詳細', () => {
     const user = userEvent.setup()
     render(<InventoryPanel {...props} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     const group = screen.getByRole('group', { name: '増減幅' })
     await user.click(within(group).getByRole('button', { name: '0.1' }))
     expect(within(group).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
@@ -42,6 +44,7 @@ describe('在庫の一覧と詳細', () => {
     const { rerender } = render(<InventoryPanel {...props} />)
     const row = screen.getByRole('button', { name: 'testuser_牛乳の詳細' })
     await user.click(row)
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     expect(screen.getByRole('dialog', { name: '在庫詳細・編集' })).toBeInTheDocument()
     await user.clear(screen.getByLabelText('品名'))
     await user.type(screen.getByLabelText('品名'), 'testuser_変更')
@@ -50,7 +53,7 @@ describe('在庫の一覧と詳細', () => {
     expect(screen.getByRole('dialog').querySelector('.qty-value')).toHaveTextContent('3.0')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(row).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' })).toHaveFocus()
   })
   it('数量通信中は競合操作を止め、失敗後に値を保って再試行できる', async () => {
     let release!: () => void
@@ -59,12 +62,13 @@ describe('在庫の一覧と詳細', () => {
     server.use(http.patch('/api/inventory-items/1/quantity', async ({ request }) => {
       deltas.push((await request.json() as { delta: number }).delta)
       await blocked
-      return HttpResponse.json({ message: 'testuser_更新失敗' }, { status: 500 })
+      return HttpResponse.json({ message: 'testuser_更新失敗' }, { status: 400 })
     }))
     const notify = vi.fn()
     const user = userEvent.setup()
     render(<InventoryPanel {...props} onNotify={notify} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     const plus = screen.getByRole('button', { name: 'testuser_牛乳を増やす' })
     await user.click(plus)
     expect(plus).toBeDisabled()
@@ -84,6 +88,7 @@ describe('在庫の一覧と詳細', () => {
     const user = userEvent.setup()
     const { rerender } = render(<InventoryPanel {...props} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     rerender(<InventoryPanel {...props} inventory={[{ ...item, quantity: 3, price: 0 }]} />)
     expect(screen.getByRole('dialog').querySelector('.qty-value')).toHaveTextContent(/^3\.0$/)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
@@ -95,11 +100,12 @@ describe('在庫の一覧と詳細', () => {
     const user = userEvent.setup()
     render(<InventoryPanel {...props} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     await user.click(within(screen.getByRole('dialog')).getByText('食品'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('dialog').parentElement!)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'testuser_牛乳の詳細' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' })).toHaveFocus()
   })
   it('登録成功後の再取得失敗を保存失敗として扱わず、再送信による重複登録を防ぐ', async () => {
     let posts = 0
@@ -122,6 +128,7 @@ describe('在庫の一覧と詳細', () => {
     const view = (hidden: boolean) => <div><div hidden={hidden}><InventoryPanel {...props} /></div><button type="button">買い物の操作</button></div>
     const { rerender } = render(view(false))
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
     rerender(view(true))
     const visible = screen.getByRole('button', { name: '買い物の操作' })
     visible.focus()

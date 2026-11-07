@@ -149,6 +149,12 @@ async function openTab(user: ReturnType<typeof userEvent.setup>, name: '在庫�
 const milk: InventoryItem = { id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 2.0, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false }
 const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, quantity: 0.0, threshold: 1.0, dailyConsumption: null, autoConsumptionEnabled: false }
 
+async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>, name: string) {
+  const row = await screen.findByRole('button', { name: name + 'の詳細' })
+  if (row.getAttribute('aria-expanded') !== 'true') await user.click(row)
+  await user.click(screen.getByRole('button', { name: name + 'の詳細設定' }))
+}
+
 describe('ZaikoPage', () => {
   it.each(['登録', '編集'] as const)('在庫の%sで409ならモーダル内にサーバーのエラーを表示し入力を保持する', async (mode) => {
     setupApi({ inventory: [{ ...milk }, { ...egg }] })
@@ -164,7 +170,7 @@ describe('ZaikoPage', () => {
     renderZaikoPage()
     await screen.findByRole('button', { name: '牛乳の詳細' })
     if (mode === '編集') {
-      await user.click(screen.getByRole('button', { name: '卵の詳細' }))
+      await openInventoryDetails(user, '卵')
     } else {
       await user.click(screen.getByRole('button', { name: '在庫を登録' }))
     }
@@ -186,7 +192,7 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }, { ...egg, quantity: 2 }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
     const plus = screen.getByRole('button', { name: '牛乳を増やす' })
     const row = screen.getByRole('dialog', { name: '在庫詳細・編集' })
     const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value')]
@@ -198,13 +204,13 @@ describe('ZaikoPage', () => {
     await user.click(plus)
     await waitFor(() => expect(row.querySelector('.qty-value')).toHaveTextContent(/^2\.1$/))
     await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
-    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
+    await openInventoryDetails(user, '卵')
     await user.click(screen.getByRole('button', { name: '卵を減らす' }))
     const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
     await waitFor(() => expect(eggRow.querySelector('.qty-value')).toHaveTextContent(/^1\.0$/))
     expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '1' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
-    await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
     expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
     expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
       { method: 'PATCH', url: '/api/inventory-items/1/quantity', body: { delta: 0.1 } },
@@ -224,7 +230,7 @@ describe('ZaikoPage', () => {
     const inventoryPanel = screen.getByTestId('inventory-panel')
     // カテゴリーは絞り込みの選択肢に表示するが、品目行の3列には追加しない。
     expect(within(inventoryPanel.querySelector('.inventory-list') as HTMLElement).queryByText('乳製品')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
     expect(within(screen.getByRole('dialog')).getByText('乳製品')).toBeInTheDocument()
     expect(screen.getByText('スーパーA')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
@@ -314,7 +320,7 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
 
     await user.click(screen.getByRole('button', { name: '牛乳を増やす' }))
 
@@ -327,7 +333,7 @@ describe('ZaikoPage', () => {
     const { calls } = setupApi({ inventory: [{ ...milk }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
 
     await user.click(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' }))
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
@@ -341,7 +347,7 @@ describe('ZaikoPage', () => {
     setupApi({ inventory: [{ id: 1, name: '牛乳', categoryId: 2, storeId: 1, quantity: 1.0, threshold: 0.5, dailyConsumption: null, autoConsumptionEnabled: false }] })
     const user = userEvent.setup()
     renderZaikoPage()
-    await user.click(await screen.findByRole('button', { name: '牛乳の詳細' }))
+    await openInventoryDetails(user, '牛乳')
 
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('0.0')).toBeInTheDocument())
@@ -532,7 +538,7 @@ describe('ZaikoPage', () => {
 
     // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
     await openTab(user, '在庫一覧')
-    await user.click(screen.getByRole('button', { name: '卵の詳細' }))
+    await openInventoryDetails(user, '卵')
     const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
     expect(within(eggRow).getByText('2.0')).toBeInTheDocument()
   })

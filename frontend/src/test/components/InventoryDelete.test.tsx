@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -119,4 +120,26 @@ describe('在庫の削除(×ボタンと確認ダイアログ)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(calls).toEqual(['1'])
   })
+})
+
+it.each([{ strict: false, refreshFails: false }, { strict: true, refreshFails: false }, { strict: true, refreshFails: true }])('確定削除後は旧行がcommit前に残っていても登録へ戻す（%j）', async ({ strict, refreshFails }) => {
+  const { calls, onNotify } = setup()
+  const refresh = refreshFails ? vi.fn().mockRejectedValue(new Error('[E2E_TEST] GET failed')) : vi.fn().mockResolvedValue(undefined)
+  const user = userEvent.setup()
+  const view = (removed: boolean) => {
+    const panel = <InventoryPanel {...baseProps} inventory={removed ? [other] : [item, other]} onRefresh={refresh} onNotify={onNotify} />
+    return strict ? <StrictMode>{panel}</StrictMode> : panel
+  }
+  const { rerender } = render(view(false))
+  const origin = screen.getByRole('button', { name: 'testuser_牛乳を削除' })
+  await user.click(origin)
+  await user.click(screen.getByRole('button', { name: '削除する' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  // refresh promise完了はReact commit完了を意味しない。旧行がまだ接続中の順序を固定する。
+  expect(origin.isConnected).toBe(true)
+  expect(screen.getByRole('button', { name: '在庫を登録' })).toHaveFocus()
+  rerender(view(true))
+  expect(origin.isConnected).toBe(false)
+  expect(screen.getByRole('button', { name: '在庫を登録' })).toHaveFocus()
+  expect(calls).toEqual(['1'])
 })

@@ -1,7 +1,8 @@
+import { expectActionTargets44 } from './support/list-row'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
-import { setupUserWithHousehold } from './support/flows'
+import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`在庫の詳細編集・数量・保存・キャンセル ${width}px`, async ({ browser, baseURL, consoleGuard }) => {
@@ -20,10 +21,17 @@ for (const width of [1280, 390, 320]) {
       await expect(row).toBeVisible()
       expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
       const edit = page.getByRole('dialog', { name: '在庫詳細・編集' })
-      for (const cell of await row.locator('span').all()) {
-        const beforeOpen = await page.evaluate(() => ({ y: window.scrollY, position: document.body.style.position }))
+      const operations = page.getByRole('region', { name: name + 'の数量変更', exact: true })
+      const detailTrigger = page.getByRole('button', { name: name + 'の詳細設定', exact: true })
+      for (const cell of await row.locator(':scope > span:visible').all()) {
         if (width < 400) await cell.tap()
         else await cell.click()
+        await expect(row).toHaveAttribute('aria-expanded', 'true')
+        await expect(operations).toBeVisible()
+        await expect(edit).toHaveCount(0)
+        await detailTrigger.scrollIntoViewIfNeeded()
+        const beforeOpen = await page.evaluate(() => ({ y: window.scrollY, position: document.body.style.position }))
+        await detailTrigger.click()
         await expect(edit.getByLabel('品名', { exact: true })).toBeFocused()
         await expect(edit.getByLabel('品名', { exact: true })).toHaveValue(name)
         expect(await page.evaluate(() => document.body.style.position)).toBe('fixed')
@@ -31,20 +39,31 @@ for (const width of [1280, 390, 320]) {
           expect(await input.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
         }
         await page.keyboard.press('Escape')
-        await expect(row).toBeFocused()
+        await expect(detailTrigger).toBeFocused()
         await expect.poll(() => page.evaluate(() => document.body.style.position)).toBe(beforeOpen.position)
         await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(beforeOpen.y)
+        await row.click()
+        await expect(row).toHaveAttribute('aria-expanded', 'false')
+        await expect(row).toBeFocused()
       }
       for (const key of ['Enter', 'Space']) {
         await row.press(key)
+        await expect(operations).toBeVisible()
+        await detailTrigger.press('Enter')
         await expect(edit).toBeVisible()
         await page.keyboard.press('Escape')
+        await expect(detailTrigger).toBeFocused()
+        await row.press(key)
+        await expect(row).toHaveAttribute('aria-expanded', 'false')
         await expect(row).toBeFocused()
       }
       if (width === 390) {
         await page.setViewportSize({ width, height: 420 })
-        await row.click()
+        await openInventoryDetails(page, row)
         await expect(edit.getByLabel('品名', { exact: true })).toBeFocused()
+        const autoToggle = edit.getByRole('switch', { name: '自動消費' })
+        if (await autoToggle.getAttribute('aria-checked') !== 'true') await autoToggle.click()
+        await edit.getByLabel('品名', { exact: true }).focus()
         expect(await edit.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
         const consumption = edit.getByLabel('1日の消費量（任意）')
         const cancel = edit.getByRole('button', { name: 'キャンセル' })
@@ -70,10 +89,14 @@ for (const width of [1280, 390, 320]) {
           }).toEqual({ top: true, bottom: true })
         }
         await page.keyboard.press('Escape')
-        await expect(row).toBeFocused()
+        await expect(detailTrigger).toBeFocused()
         await page.setViewportSize({ width, height: 900 })
       }
+      if (await row.getAttribute('aria-expanded') === 'true') await row.click()
       await row.click({ position: { x: 3, y: 3 } })
+      await expect(row).toHaveAttribute('aria-expanded', 'true')
+      await openInventoryDetails(page, row)
+      await expectActionTargets44(edit)
       await edit.getByLabel('値段（円・任意）').fill('0')
       await edit.getByRole('button', { name: `${name}を増やす` }).click()
       await expect(edit.locator('.qty-value')).toHaveText('2.0')
@@ -87,7 +110,10 @@ for (const width of [1280, 390, 320]) {
       const priceFont = await edit.getByLabel('値段（円・任意）').evaluate(el => getComputedStyle(el).fontSize)
       expect(await edit.locator('.qty-value').evaluate(el => getComputedStyle(el).fontSize)).toBe(priceFont)
       expect(valueBox.height).toBeLessThanOrEqual(40)
-      expect(plusBox.width).toBeLessThanOrEqual(36)
+      expect(plusBox.width).toBeGreaterThanOrEqual(44)
+      expect(plusBox.height).toBeGreaterThanOrEqual(44)
+      expect(minusBox.width).toBeGreaterThanOrEqual(44)
+      expect(minusBox.height).toBeGreaterThanOrEqual(44)
       const valueBorder = await edit.locator('.qty-value').evaluate(el => getComputedStyle(el).borderStyle)
       expect(valueBorder).toBe('solid')
       expect(await edit.locator('.inventory-quantity-inline').evaluate(el => getComputedStyle(el).borderStyle)).toBe('none')
@@ -108,8 +134,8 @@ for (const width of [1280, 390, 320]) {
         await page.screenshot({ path: join(shots, `inventory-edit-${width}.png`), fullPage: true })
       }
       await edit.getByRole('button', { name: 'キャンセル' }).click()
-      await expect(row).toBeFocused()
-      await row.click()
+      await expect(detailTrigger).toBeFocused()
+      await openInventoryDetails(page, row)
       await expect(edit.getByLabel('値段（円・任意）')).toHaveValue('9999999999')
       await expect(edit.locator('.qty-value')).toHaveText('1.9')
       await edit.getByLabel('値段（円・任意）').fill('0')
@@ -121,14 +147,14 @@ for (const width of [1280, 390, 320]) {
       await expect(cancel).toBeFocused()
       await edit.getByRole('button', { name: '保存', exact: true }).click()
       await expect(edit).toBeHidden()
-      await expect(row).toBeFocused()
+      await expect(detailTrigger).toBeFocused()
       await page.reload()
-      await row.click()
+      await openInventoryDetails(page, row)
       await expect(edit.getByLabel('値段（円・任意）')).toHaveValue('0')
       await expect(edit.locator('.qty-value')).toHaveText('1.9')
       await page.locator('.modal-overlay').click({ position: { x: 1, y: 1 } })
       await expect(edit).toBeHidden()
-      await expect(row).toBeFocused()
+      await expect(detailTrigger).toBeFocused()
     } finally { await context.close() }
   })
 }
