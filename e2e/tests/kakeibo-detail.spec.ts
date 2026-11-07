@@ -1,4 +1,4 @@
-import { checkRow } from './support/list-row'
+import { checkRow, expectActionTargets44 } from './support/list-row'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -18,7 +18,7 @@ async function fits(page: Page) {
 for (const width of [1280, 390, 320]) {
   test.describe(`${width}px 家計簿の閲覧`, () => {
     test.use({ viewport: { width, height: 844 }, hasTouch: width < 500 })
-    test('3列一覧・行操作・長文詳細・精算入金先・横幅・ダーク設定', async ({ page, consoleGuard }) => {
+    test('日付・内容・金額の一覧・行操作・長文詳細・精算入金先・横幅・ダーク設定', async ({ page, consoleGuard }) => {
       consoleGuard.watch(page)
       await setupUserWithHousehold(page, 'kakeibo_detail_' + width)
       const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
@@ -61,16 +61,18 @@ for (const width of [1280, 390, 320]) {
       const shots = process.env.ISSUE_246_SHOTS_DIR
       if (shots) { await mkdir(shots, { recursive: true }); await page.screenshot({ path: join(shots, `kakeibo-${width}.png`), fullPage: true }) }
       const trigger = expenseRow
-      await checkRow(page, trigger, width, '支出詳細')
+      await checkRow(page, trigger, width, '支出詳細', '支出詳細を閉じる')
       if (width === 1280) { await trigger.focus(); await trigger.press('Enter') }
       else await expenseRow.locator(':scope > span').first().tap()
       const detail = page.getByRole('dialog', { name: '支出詳細' })
+      await expectActionTargets44(detail)
       await expect(detail.getByRole('heading')).toBeInViewport()
       expect(await detail.locator('.transaction-detail-modal').evaluate((element) => element.scrollTop)).toBe(0)
       for (const value of [purpose, accountName, eventName, 'testuser_external（世帯外）', '精算済み', '1% / 99,999,999円']) await expect(detail).toContainText(value)
       await expect(detail.locator('.transaction-detail-memo')).toHaveText(memo)
       // 精算済みの割り勘がある支出は編集・削除できない(#277)。
-      for (const name of ['編集', '削除']) await expect(detail.getByRole('button', { name, exact: true })).toBeDisabled()
+      await expect(detail.getByRole('button', { name: '編集', exact: true })).toBeDisabled()
+      await expect(detail.getByRole('button', { name: /の支出を削除$/ })).toHaveCount(0)
       await fits(page)
       if (shots) await page.screenshot({ path: join(shots, `expense-detail-${width}.png`) })
       await detail.getByRole('heading').click()
@@ -78,7 +80,7 @@ for (const width of [1280, 390, 320]) {
       await page.keyboard.press('Escape')
       await expect(trigger).toBeFocused()
       await trigger.press('Space')
-      await detail.getByRole('button', { name: '閉じる' }).click()
+      await detail.getByRole('button', { name: '閉じる', exact: true }).click()
       if (width === 1280) await expenseRow.locator(':scope > span').last().click()
       else await expenseRow.locator(':scope > span').last().tap()
       await detail.click({ position: { x: 2, y: 2 } })
@@ -90,18 +92,18 @@ for (const width of [1280, 390, 320]) {
       }
       await panel.getByRole('button', { name: '支出：内容なしの詳細', exact: true }).click()
       await expect(detail).toContainText('内容なし')
-      await detail.getByRole('button', { name: '閉じる' }).click()
+      await detail.getByRole('button', { name: '閉じる', exact: true }).click()
       await panel.getByRole('button', { name: `収入：${incomeContent}の詳細`, exact: true }).click()
       const incomeDetail = page.getByRole('dialog', { name: '収入詳細' })
       await expect(incomeDetail.locator('dt').filter({ hasText: /世帯合計対象|割り勘内訳/ })).toHaveCount(0)
       await expect(incomeDetail.locator('dt').filter({ hasText: /^口座$/ }).locator('xpath=following-sibling::dd[1]')).toHaveText(accountName)
       await fits(page)
-      await incomeDetail.getByRole('button', { name: '閉じる' }).click()
+      await incomeDetail.getByRole('button', { name: '閉じる', exact: true }).click()
       await panel.locator('.list-row-button').filter({ hasText: purpose }).filter({ hasText: '+' }).click()
       await expect(incomeDetail).toContainText(accountName)
       await fits(page)
       if (shots) await page.screenshot({ path: join(shots, `income-detail-${width}.png`) })
-      await incomeDetail.getByRole('button', { name: '閉じる' }).click()
+      await incomeDetail.getByRole('button', { name: '閉じる', exact: true }).click()
       await page.emulateMedia({ colorScheme: 'dark' })
       await fits(page)
       for (const className of ['calendar-income', 'calendar-expense']) {

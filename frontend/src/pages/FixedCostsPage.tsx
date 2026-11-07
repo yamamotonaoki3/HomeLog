@@ -19,11 +19,15 @@ export function FixedCostsPage() {
   const [members, setMembers] = useState<HouseholdMember[]>([])
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [fixedCostsLoaded, setFixedCostsLoaded] = useState(false)
   const [modalTarget, setModalTarget] = useState<FixedCost | null | undefined>(undefined)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [view, setView] = useState<'detail' | 'edit' | 'delete'>('detail')
   const origin = useRef<HTMLButtonElement | null>(null)
   const register = useRef<HTMLButtonElement>(null)
+  const deleteOrigin = useRef<HTMLButtonElement | null>(null)
+  const deleteReturnView = useRef<'detail' | 'edit'>('detail')
+  const restoreDeleteFocus = useRef(false)
   const selected = fixedCosts.find((cost) => cost.id === selectedId)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
@@ -35,6 +39,7 @@ export function FixedCostsPage() {
   const fetchFixedCosts = useCallback(async () => {
     const response = await apiClient.get<FixedCost[]>('/fixed-costs')
     setFixedCosts(response.data)
+    setFixedCostsLoaded(true)
   }, [])
 
   const paymentSourceName = useCallback(
@@ -101,6 +106,24 @@ export function FixedCostsPage() {
     if (selectedId !== null && !selected) closeDetail()
   }, [selectedId, selected, closeDetail])
 
+  useEffect(() => {
+    if (view !== 'delete' && restoreDeleteFocus.current) {
+      restoreDeleteFocus.current = false
+      deleteOrigin.current?.focus()
+    }
+  }, [view])
+
+  const requestDelete = (trigger: HTMLButtonElement) => {
+    deleteOrigin.current = trigger
+    deleteReturnView.current = modalTarget != null ? 'edit' : 'detail'
+    setView('delete')
+  }
+  const cancelDelete = () => {
+    if (deleting) return
+    restoreDeleteFocus.current = true
+    setView(deleteReturnView.current)
+  }
+
   const handleSaved = async (saved: FixedCost) => {
     const wasEdit = modalTarget != null
     setFixedCosts((prev) => [...prev.filter((cost) => cost.id !== saved.id), saved])
@@ -115,7 +138,7 @@ export function FixedCostsPage() {
   }
 
   const handleDelete = async () => {
-    if (!selected || deleting) return
+    if (!selected || !selected.editable || deleting) return
     const deletedId = selected.id
     setDeleting(true)
     try {
@@ -123,11 +146,13 @@ export function FixedCostsPage() {
     } catch (err) {
       showToast(getApiErrorMessage(err, '固定費の削除に失敗しました'))
       setDeleting(false)
-      setView('detail')
+      restoreDeleteFocus.current = true
+      setView(deleteReturnView.current)
       return
     }
     setFixedCosts((prev) => prev.filter((fixedCost) => fixedCost.id !== deletedId))
     setDeleting(false)
+    setModalTarget(undefined)
     origin.current = null
     closeDetail()
     showToast('固定費を削除しました')
@@ -154,12 +179,20 @@ export function FixedCostsPage() {
             固定費を登録
           </button>
         </div>
+        {!fixedCostsLoaded && <p role="status">固定費一覧を確認できません</p>}
+        {fixedCosts.length === 0 ? (fixedCostsLoaded && (
+          <div className="fixed-cost-empty">
+            <h3>固定費はありません</h3>
+            <p>家賃やサブスクリプションを登録すると、毎月の支払日に支出へ自動計上されます。</p>
+            <button type="button" className="btn btn-secondary" onClick={() => setModalTarget(null)}>登録を始める</button>
+          </div>
+        )) : <>
         <div className="list-row-heading fixed-cost-grid"><span>固定費名</span><span>金額</span><span>支払日</span><span>引き落とし元</span></div>
-        {fixedCosts.length === 0 ? <p>固定費はありません</p> : fixedCosts.map((cost) => (
+        {fixedCosts.map((cost) => (
           <button key={cost.id} type="button" className="list-row-button fixed-cost-grid" aria-label={`${cost.name}の詳細`} onClick={(event) => { origin.current = event.currentTarget; setSelectedId(cost.id); setView('detail') }}>
             <span>{cost.name}</span><span>{cost.amount}円</span><span>{cost.paymentDay}日</span><span>{paymentSourceName(cost)}</span>
           </button>
-        ))}
+        ))}</>}
       </div>
       {modalTarget !== undefined && (
         <FixedCostModal
@@ -169,10 +202,12 @@ export function FixedCostsPage() {
           membersLoaded={membersLoaded}
           onClose={() => { setModalTarget(undefined); setView('detail'); if (!selectedId) register.current?.focus() }}
           onSaved={handleSaved}
+          hidden={view === 'delete'}
+          onDelete={modalTarget?.editable ? requestDelete : undefined}
         />
       )}
-      {selected && view === 'detail' && modalTarget === undefined && <FixedCostDetailModal fixedCost={selected} paymentSource={paymentSourceName(selected)} members={members} membersLoaded={membersLoaded} onClose={closeDetail} onEdit={() => { setView('edit'); setModalTarget(selected) }} onDelete={() => setView('delete')} />}
-      {selected && view === 'delete' && <FixedCostDeleteModal name={selected.name} busy={deleting} onClose={() => setView('detail')} onDelete={handleDelete} />}
+      {selected && <FixedCostDetailModal hidden={view !== 'detail' || modalTarget !== undefined} fixedCost={selected} paymentSource={paymentSourceName(selected)} members={members} membersLoaded={membersLoaded} onClose={closeDetail} onEdit={() => { setView('edit'); setModalTarget(selected) }} onDelete={requestDelete} />}
+      {selected && view === 'delete' && <FixedCostDeleteModal name={selected.name} busy={deleting} onClose={cancelDelete} onDelete={handleDelete} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )

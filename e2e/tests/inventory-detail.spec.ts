@@ -21,18 +21,57 @@ for (const width of [1280, 390, 320]) {
       expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)
       const edit = page.getByRole('dialog', { name: '在庫詳細・編集' })
       for (const cell of await row.locator('span').all()) {
+        const beforeOpen = await page.evaluate(() => ({ y: window.scrollY, position: document.body.style.position }))
         if (width < 400) await cell.tap()
         else await cell.click()
         await expect(edit.getByLabel('品名', { exact: true })).toBeFocused()
         await expect(edit.getByLabel('品名', { exact: true })).toHaveValue(name)
+        expect(await page.evaluate(() => document.body.style.position)).toBe('fixed')
+        for (const input of await edit.locator('input:visible, select:visible, textarea:visible').all()) {
+          expect(await input.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
+        }
         await page.keyboard.press('Escape')
         await expect(row).toBeFocused()
+        await expect.poll(() => page.evaluate(() => document.body.style.position)).toBe(beforeOpen.position)
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(beforeOpen.y)
       }
       for (const key of ['Enter', 'Space']) {
         await row.press(key)
         await expect(edit).toBeVisible()
         await page.keyboard.press('Escape')
         await expect(row).toBeFocused()
+      }
+      if (width === 390) {
+        await page.setViewportSize({ width, height: 420 })
+        await row.click()
+        await expect(edit.getByLabel('品名', { exact: true })).toBeFocused()
+        expect(await edit.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+        const consumption = edit.getByLabel('1日の消費量（任意）')
+        const cancel = edit.getByRole('button', { name: 'キャンセル' })
+        const initialModalBox = (await edit.boundingBox())!
+        const initialCancelBox = (await cancel.boundingBox())!
+        // 下部が実際に見切れる長いフォームで、Tabだけでスクロールを追従させる。
+        expect(initialCancelBox.y).toBeGreaterThan(initialModalBox.y + initialModalBox.height)
+        for (const target of [consumption, cancel]) {
+          for (let tabs = 0; tabs < 30; tabs++) {
+            if (await target.evaluate(el => el === document.activeElement)) break
+            await page.keyboard.press('Tab')
+          }
+          await expect(target).toBeFocused()
+          // toBeVisibleだけではoverflowで切れた要素も通るため、実座標で検証する。
+          // boundingBox/evaluateは読み取りのみ。focus/click/scrollIntoViewは使わない。
+          await expect.poll(async () => {
+            const modalBox = (await edit.boundingBox())!
+            const targetBox = (await target.boundingBox())!
+            return {
+              top: targetBox.y >= Math.max(0, modalBox.y) - 1,
+              bottom: targetBox.y + targetBox.height <= Math.min(420, modalBox.y + modalBox.height) + 1,
+            }
+          }).toEqual({ top: true, bottom: true })
+        }
+        await page.keyboard.press('Escape')
+        await expect(row).toBeFocused()
+        await page.setViewportSize({ width, height: 900 })
       }
       await row.click({ position: { x: 3, y: 3 } })
       await edit.getByLabel('値段（円・任意）').fill('0')

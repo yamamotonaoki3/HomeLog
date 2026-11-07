@@ -104,6 +104,8 @@ export function EventsPage() {
       {modalTarget !== undefined && (
         <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) requestAnimationFrame(restoreFocus) }} onSaved={handleSaved}
           onDeleted={modalTarget?.editable ? () => {
+            // 削除が確定した行はcommit前にまだ接続されていても復帰先にしない。
+            detailTrigger.current = null
             setEvents(previous => previous.filter(event => event.id !== modalTarget.id))
             setModalTarget(undefined)
             requestAnimationFrame(restoreFocus)

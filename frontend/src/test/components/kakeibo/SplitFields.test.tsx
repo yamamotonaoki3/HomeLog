@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { SplitFields } from '../../../components/kakeibo/SplitFields'
@@ -58,4 +58,44 @@ describe('固定費の世帯外割り勘', () => {
     render(<SplitFields amount={1000} members={[]} membersLoaded={false} initialSplits={Array.from({ length: 20 }, (_, i) => ({ ...external, debtorExternalId: i + 1, debtorExternalName: 'a'.repeat(50), ratio: 0 }))} maxRows={20} onChange={onChange} />)
     expect(onChange.mock.lastCall?.[0].valid).toBe(true)
   })
+  it('ratioは既存floorの円と入力割合、本人の端数残分を併記し送信値は変えない', () => {
+    const onChange = vi.fn()
+    render(<SplitFields amount={101} members={[]} initialSplits={[
+      { debtorUserId: null, debtorExternalName: '[E2E_TEST] A', ratio: 33.33 },
+      { debtorUserId: null, debtorExternalName: '[E2E_TEST] B', ratio: 33.33 },
+    ]} onChange={onChange} />)
+    expect(screen.getByLabelText('相手1の負担')).toHaveTextContent('33円（33.33%）')
+    expect(screen.getByLabelText('相手2の負担')).toHaveTextContent('33円（33.33%）')
+    expect(screen.getByText('あなたの負担: 35円（33.34%）')).toBeVisible()
+    expect(onChange.mock.lastCall?.[0].splits).toEqual([
+      { debtorExternalName: '[E2E_TEST] A', ratio: 33.33 }, { debtorExternalName: '[E2E_TEST] B', ratio: 33.33 },
+    ])
+  })
+  it('amountは既存round2の参考割合と本人残額を併記する', () => {
+    const onChange = vi.fn()
+    render(<SplitFields amount={101} members={[]} initialSplits={[{ debtorUserId: null, debtorExternalName: '[E2E_TEST] A', amountDue: 33 }]} initialSplitInputType="amount" onChange={onChange} />)
+    expect(screen.getByLabelText('相手1の負担')).toHaveTextContent('33円（32.67%）')
+    expect(screen.getByText('あなたの負担: 68円（67.33%）')).toBeVisible()
+    expect(onChange.mock.lastCall?.[0].splits).toEqual([{ debtorExternalName: '[E2E_TEST] A', amountDue: 33 }])
+  })
+  it('不正な相手と負担入力は各入力近傍のエラーへ関連付ける', () => {
+    const onChange = vi.fn()
+    render(<SplitFields amount={1000} members={members} initialSplits={[{ debtorUserId: null, debtorExternalName: '', ratio: -1 }]} onChange={onChange} />)
+    const name = screen.getByLabelText('世帯外の人の名前')
+    const value = screen.getByLabelText('負担割合（％）')
+    for (const field of [name, value]) {
+      expect(field).toHaveAttribute('aria-invalid', 'true')
+      expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveAttribute('role', 'alert')
+    }
+    const row = name.closest('li')!
+    expect(within(row).getByText('割り勘の相手(世帯外の人)の名前を入力してください')).toBeVisible()
+    expect(within(row).getByText('割り勘の負担分を正しく入力してください')).toBeVisible()
+    expect(onChange.mock.lastCall?.[0].valid).toBe(false)
+  })
+  it('元金額未入力でNaNや架空の0円負担を確定表示しない', () => {
+    render(<SplitFields amount={0} members={[]} initialSplits={[external]} onChange={vi.fn()} />)
+    expect(screen.getByLabelText('相手1の負担')).toHaveTextContent('金額入力後に表示')
+    expect(screen.getByLabelText('相手1の負担')).not.toHaveTextContent('NaN')
+  })
+
 })

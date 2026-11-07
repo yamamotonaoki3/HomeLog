@@ -134,3 +134,81 @@
 .kakeibo-monthly-summary p {
   margin: 4px 0;
 }
+
+/* #424 口座・カードのタブ別コンパクト一覧と既存フォーム。 */
+.accounts-page { min-width:0; overflow-wrap:anywhere; }
+.accounts-page .panel { min-width:0; }
+.accounts-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.accounts-tabs button { flex:1; min-width:0; min-height:44px; padding:8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font:inherit; cursor:pointer; }
+.accounts-tabs button[aria-selected=true] { color:#1d4ed8; border-color:#2563eb; background:#eff6ff; }
+.accounts-page .accounts-actions { margin-bottom:12px; }
+.accounts-list { list-style:none; padding:0; margin:0; }
+.accounts-list > li { border-bottom:1px solid #e2e8f0; padding:6px 0; min-width:0; }
+.accounts-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.7fr) minmax(0,1fr); gap:8px; align-items:center; width:100%; min-height:44px; text-align:left; padding:8px 0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+.accounts-row > span { min-width:0; overflow-wrap:anywhere; }
+.accounts-row > :last-child { text-align:right; font-variant-numeric:tabular-nums; }
+.accounts-row:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
+.accounts-detail { padding:8px 12px; background:#f8fafc; overflow-wrap:anywhere; }
+.accounts-detail .accounts-card-list { margin-bottom:12px; }
+.accounts-page .btn,.accounts-form-modal button,.account-transactions-modal button { min-height:44px; min-width:44px; max-width:100%; overflow-wrap:anywhere; }
+.accounts-page .accounts-detail .btn { white-space:normal; text-align:left; }
+.accounts-form-modal { min-width:0; overflow-wrap:anywhere; padding-bottom:max(24px,env(safe-area-inset-bottom)); }
+.accounts-form-modal input,.accounts-form-modal select { min-width:0; max-width:100%; box-sizing:border-box; }
+.accounts-form-modal .modal-actions { flex-wrap:wrap; }
+.account-transactions-modal { width:min(640px,100%); min-width:0; padding-bottom:max(24px,env(safe-area-inset-bottom)); overflow-wrap:anywhere; }
+.account-history-header { position:sticky; top:0; z-index:1; display:flex; align-items:start; gap:8px; background:#fff; padding-bottom:8px; }
+.account-history-header h2 { flex:1; min-width:0; font-size:18px; margin:0; }
+.account-history-header-actions { display:flex; gap:4px; flex-shrink:0; }
+.account-history-header-actions button { display:inline-flex; align-items:center; justify-content:center; padding:8px; }
+.account-transactions-modal .table { table-layout:fixed; }
+.account-transactions-modal .table th,.account-transactions-modal .table td { overflow-wrap:anywhere; vertical-align:top; }
+@media(max-width:480px) { .accounts-page { padding:12px; } .accounts-page .panel { padding:10px; } .accounts-row { gap:6px; } .account-transactions-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } .account-transactions-modal .table th,.account-transactions-modal .table td { padding:6px 3px; } .account-history-header h2 { font-size:16px; } }
+
+/* #425 割り勘の入力・負担表示。固定費との共用計算やpayloadは変えない。 */
+.transaction-split-toggle { margin-top:12px; min-height:44px; width:100%; }
+.transaction-modal .split-fields,.fixed-cost-modal .split-fields { min-width:0; margin-top:12px; }
+.transaction-modal .split-fields > label,.fixed-cost-modal .split-fields > label { display:flex; align-items:center; min-height:44px; gap:8px; }
+.transaction-modal .split-fields button,.fixed-cost-modal .split-fields button { min-height:44px; min-width:44px; }
+.transaction-modal .split-rows,.fixed-cost-modal .split-rows { list-style:none; padding:0; }
+.transaction-modal .split-row,.fixed-cost-modal .split-row { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"kind kind" "identity identity" "identityerror identityerror" "value unit" "valueerror valueerror" "share share" "remove remove"; gap:8px; min-width:0; padding:12px 0; border-bottom:1px solid #e2e8f0; }
+.transaction-modal .split-row select,.transaction-modal .split-row input,.fixed-cost-modal .split-row select,.fixed-cost-modal .split-row input { width:100%; min-width:0; max-width:100%; box-sizing:border-box; flex:initial; }
+.split-row [aria-label="割り勘の相手の種別"] { grid-area:kind; }
+.split-row [aria-label="世帯メンバー"],.split-row [aria-label="世帯外の人の名前"] { grid-area:identity; }
+.split-row input[type=number] { grid-area:value; }
+.split-row .split-unit { grid-area:unit; align-self:center; }
+.split-row .split-share { grid-area:share; margin:0; overflow-wrap:anywhere; }
+.split-row .split-identity-error { grid-area:identityerror; }
+.split-row .split-value-error { grid-area:valueerror; }
+.split-row .split-row-error { margin:0; overflow-wrap:anywhere; }
+.split-row > button { grid-area:remove; justify-self:end; }
+
+/* #422 partial: 記憶policyを変えず履歴と設定欄を整理する。 */
+.transaction-filters { display:flex; flex-wrap:wrap; align-items:end; gap:8px 12px; margin:12px 0; }
+.transaction-filters label { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1 1 140px; }
+.transaction-filters input { width:100%; min-width:0; max-width:100%; min-height:44px; padding:8px; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:6px; }
+.transaction-filters button { min-height:44px; }
+.transaction-period { color:#475569; margin:8px 0; }
+.kakeibo-page .transaction-grid { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr); }
+.kakeibo-page .transaction-grid > span { min-width:0; overflow-wrap:anywhere; }
+.transaction-detail-modal { width:min(560px,100%); min-width:0; overflow-wrap:anywhere; padding-bottom:max(24px,env(safe-area-inset-bottom)); }
+.transaction-detail-titlebar { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:8px; background:#fff; padding-bottom:8px; }
+.transaction-detail-titlebar h2 { margin:0; min-width:0; }
+.transaction-detail-header-actions { display:flex; gap:8px; flex-shrink:0; }
+.transaction-detail-header-actions button { display:inline-flex; align-items:center; justify-content:center; padding:8px; }
+.transaction-detail-modal button,.transaction-modal button,.kakeibo-page .toolbar button { min-width:44px; min-height:44px; max-width:100%; }
+.transaction-detail-modal .modal-actions { flex-wrap:wrap; }
+.transaction-detail-modal .event-detail-list dd { min-width:0; overflow-wrap:anywhere; }
+.transaction-modal { padding-bottom:max(24px,env(safe-area-inset-bottom)); }
+.transaction-modal .modal-actions { flex-wrap:wrap; }
+.transaction-modal [hidden] { display:none; }
+@media(max-width:480px) { .kakeibo-page .transaction-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px 8px; } .kakeibo-page .transaction-grid > span:nth-child(1) { grid-area:1/1; } .kakeibo-page .transaction-grid > span:nth-child(2) { grid-area:2/1/3/3; } .kakeibo-page .transaction-grid > span:nth-child(3) { grid-area:1/2; text-align:right; } .transaction-detail-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } }
+
+/* #422 世帯合計チェックはlabel全体を操作領域にする。 */
+.transaction-modal label[for="tx-household-total"] { display:flex; align-items:center; gap:8px; min-height:44px; }
+
+/* #422 履歴の種別/カテゴリー選択はnative controlの高さだけを確保する。 */
+.kakeibo-page [data-testid="transaction-panel"] .toolbar select { min-height:44px; }
+
+/* #422 削除確認の操作と履歴管理リンクだけ操作高を確保する。 */
+.kakeibo-page [aria-labelledby="transaction-delete-title"] button,
+.kakeibo-page [data-testid="transaction-panel"] .toolbar a.btn { min-height:44px; }

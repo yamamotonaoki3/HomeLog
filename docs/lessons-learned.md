@@ -4,6 +4,8 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 
 ## 索引
 
+- 2026-11-07: Testing LibraryとPlaywrightの同名クエリでオプションを混同しない
+
 - 2026-11-02: 同じ画面でURLのフラグメントだけが変わる遷移では、待機中の旧リクエストの応答が新しい状態を上書きしないよう世代で守る
 
 - 2026-10-25: requestAnimationFrameはReactのDOM更新完了を保証せず、disabled解除前のfocusは失敗する
@@ -30,6 +32,15 @@ Codexレビューで採用された指摘や、実装中の手直しのうち、
 - 2026-10-11: ファイルアップロードAPIは「パース前のボディ上限」「Mapでの許可リスト」「外部APIの200内エラー」「放置された一時ファイルの掃除」を最初から設計に入れる
 
 ## 記録
+
+### 2026-11-07: Testing LibraryとPlaywrightの同名クエリでオプションを混同しない
+
+- **種別**: 実装中のビルド検証で発見（Issue #423）
+- **対象領域・関連ファイル**: `frontend/src/test/pages/FixedCostsPage.test.tsx`、`FixedCostDetailFlow.test.tsx`
+- **何が起きたか / 対応**: Testing Libraryの`getByRole`へPlaywrightの`exact:true`を渡し、Vitestは通るがTypeScriptビルドがTS2769で失敗した。Testing Libraryの`ByRoleOptions`にはこの項目がなく、文字列`name`は既定で完全一致するため、4箇所の不要なオプションだけを除去した。
+- **次回の行動規則**: 同名APIでも使うライブラリの型を確認し、Playwrightのオプションを単体テストへコピーしない。単体テストの成功だけで型の正しさを判断せず、frontend全体のbuildも確認する。
+- **状態**: 有効
+
 
 ### 2026-10-25: requestAnimationFrameはReactのDOM更新完了を保証せず、disabled解除前のfocusは失敗する
 

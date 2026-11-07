@@ -9,11 +9,11 @@ const item = { id: 1, name: 'testuser_牛乳', categoryId: 1, storeId: null, qua
 const other = { ...item, id: 2, name: 'testuser_卵' }
 const baseProps = { inventory: [item, other], categories: [{ id: 1, name: '食品', isDefault: true }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn() }
 
-function setup(options: { status?: number; message?: string; delayMs?: number } = {}) {
+function setup(options: { status?: number; message?: string; pending?: Promise<void> } = {}) {
   const calls: string[] = []
   server.use(http.delete('/api/inventory-items/:id', async ({ params }) => {
     calls.push(String(params.id))
-    if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs))
+    if (options.pending) await options.pending
     if (options.status) return HttpResponse.json({ code: 'RESOURCE_NOT_FOUND', message: options.message }, { status: options.status })
     return new HttpResponse(null, { status: 204 })
   }))
@@ -96,16 +96,27 @@ describe('在庫の削除(×ボタンと確認ダイアログ)', () => {
   })
 
   it('通信中は二重送信できず、閉じる操作も無効になる', async () => {
-    const { calls, onRefresh, onNotify } = setup({ delayMs: 80 })
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    const { calls, onRefresh, onNotify } = setup({ pending })
     const user = userEvent.setup()
     render(<InventoryPanel {...baseProps} onRefresh={onRefresh} onNotify={onNotify} />)
     await user.click(screen.getByRole('button', { name: 'testuser_牛乳を削除' }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
-    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'キャンセル' })).toBeDisabled()
-    await user.keyboard('{Escape}')
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    try {
+      expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'キャンセル' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: '削除する' }))
+      await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+      await user.keyboard('{Escape}')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(calls).toEqual(['1'])
+      expect(onNotify).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
     await waitFor(() => expect(onNotify).toHaveBeenCalledWith('在庫を削除しました'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(calls).toEqual(['1'])
   })
 })

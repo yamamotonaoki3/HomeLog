@@ -9,14 +9,20 @@ interface Props {
   membersLoaded: boolean
   onClose: () => void
   onEdit: () => void
-  onDelete: () => void
+  onDelete: (trigger: HTMLButtonElement) => void
+  hidden?: boolean
 }
 
-export function FixedCostDetailModal({ fixedCost: cost, paymentSource, members, membersLoaded, onClose, onEdit, onDelete }: Props) {
+export function FixedCostDetailModal({ fixedCost: cost, paymentSource, members, membersLoaded, onClose, onEdit, onDelete, hidden = false }: Props) {
   const ref = useDialog(onClose, '[data-close]')
-  return <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-overlay" hidden={hidden} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <div ref={ref} className="modal fixed-cost-modal" role="dialog" aria-modal="true" aria-labelledby="fixed-cost-detail-title">
-      <h2 id="fixed-cost-detail-title">固定費詳細</h2>
+      <div className="fixed-cost-titlebar">
+        <h2 id="fixed-cost-detail-title">固定費詳細</h2>
+        {cost.editable && <button type="button" className="btn btn-danger fixed-cost-delete-action" aria-label={`${cost.name}を削除`} onClick={(event) => onDelete(event.currentTarget)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+        </button>}
+      </div>
       <dl>
         <dt>固定費名</dt><dd>{cost.name}</dd>
         <dt>金額</dt><dd>{cost.amount}円</dd>
@@ -37,7 +43,6 @@ export function FixedCostDetailModal({ fixedCost: cost, paymentSource, members, 
       <div className="modal-actions">
         {cost.editable && <>
           <button type="button" className="btn btn-primary" onClick={onEdit}>編集</button>
-          <button type="button" className="btn btn-secondary" onClick={onDelete}>削除</button>
         </>}
         <button type="button" className="btn btn-secondary" data-close onClick={onClose}>閉じる</button>
       </div>
@@ -52,6 +57,7 @@ export function FixedCostDeleteModal({ name, busy, onClose, onDelete }: { name: 
     <div ref={ref} className="modal fixed-cost-modal" role="dialog" aria-modal="true" aria-labelledby="fixed-cost-delete-title">
       <h2 id="fixed-cost-delete-title">固定費を削除しますか？</h2>
       <p>「{name}」を削除します。この操作は取り消せません。</p>
+      <p>今後の自動計上を停止します。固定費の割り勘設定は削除されますが、すでに計上された支出は残ります。</p>
       <div className="modal-actions">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={onDelete}>削除する</button>
         <button type="button" className="btn btn-secondary" data-cancel disabled={busy} onClick={close}>キャンセル</button>
