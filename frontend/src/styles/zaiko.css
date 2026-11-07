@@ -16,7 +16,7 @@
 }
 .inventory-list-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(3.5rem, .3fr) minmax(3.5rem, .3fr);
+  grid-template-columns: minmax(0, 1fr) minmax(4rem, auto) 1.25rem;
   gap: 8px;
   align-items: center;
 }
@@ -269,3 +269,30 @@
 .inventory-category-form .modal-actions {
   gap: 8px;
 }
+
+/* #420: 在庫の行下操作と既存詳細フォームの操作領域 */
+.inventory-list-grid > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.inventory-list-quantity { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.inventory-low-stock { color: #b45309; font-weight: 700; text-align: center; }
+.inventory-expanded { padding: 12px; border-bottom: 1px solid #ddd; background: #f8fafc; min-width: 0; }
+.inventory-expanded[hidden] { display: none; }
+.inventory-inline-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.inventory-delta-form { margin: 12px 0; }
+.inventory-delta-form label { display: block; margin-bottom: 4px; }
+.inventory-delta-form > div { display: flex; gap: 8px; }
+.inventory-delta-form button { flex-shrink: 0; white-space: nowrap; }
+.inventory-delta-form input { width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; padding: 8px; }
+.inventory-expanded .hint { overflow-wrap: anywhere; }
+.inventory-expanded .btn,
+.inventory-modal .btn,
+.inventory-delete-dialog .btn,
+[data-testid="inventory-panel"] > .toolbar .btn { min-width: 44px; min-height: 44px; }
+.inventory-expanded .inventory-step-options { grid-template-columns: repeat(2, 44px); }
+.inventory-modal .inventory-step-options { grid-template-columns: repeat(2, 44px); }
+.inventory-modal .inventory-quantity-inline { grid-template-columns: minmax(0, 1fr) 44px; }
+.inventory-modal .inventory-quantity-inline .btn { width: 44px; height: 44px; }
+.inventory-modal { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.inventory-modal input, .inventory-modal select { min-height: 44px; font-size: 16px; }
+.inventory-filters input, .inventory-filters select, .inventory-delete-button { min-height: 44px; }
+.inventory-row .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.inventory-details-button { max-width: 100%; white-space: normal; }

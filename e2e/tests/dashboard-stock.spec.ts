@@ -1,7 +1,7 @@
 ﻿import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
-import { setupUserWithHousehold } from './support/flows'
+import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`買い物・在庫カードの値段・残数と折り返し ${width}px`, async ({ page, consoleGuard }) => {
@@ -76,7 +76,7 @@ for (const width of [1280, 390, 320]) {
       await card.screenshot({ path: join(shots, `stock-${width}.png`), style: '.primary-nav { visibility: hidden; }' })
     }
     await page.goto('/zaiko')
-    await page.getByTestId('inventory-panel').getByRole('button', { name: `${items[0].name}の詳細`, exact: true }).click()
+    await openInventoryDetails(page, page.getByTestId('inventory-panel').getByRole('button', { name: `${items[0].name}の詳細`, exact: true }))
     const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
     await page.getByLabel('値段（円・任意）').fill('980')
     await page.getByRole('button', { name: '保存', exact: true }).click()

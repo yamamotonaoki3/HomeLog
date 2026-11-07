@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { newUser, type E2EUser } from './test-data'
 
 export async function register(page: Page, user: E2EUser): Promise<void> {
@@ -92,4 +92,19 @@ export async function addTransaction(
   }
   await modal.getByRole('button', { name: '登録', exact: true }).click()
   await expect(modal).toBeHidden()
+}
+
+/** 在庫B欄から明示的な詳細設定を開く。旧row直開きsetupを新UIの実操作へ接続する。 */
+export async function openInventoryDetails(page: Page, row: Locator): Promise<Locator> {
+  const rowName = await row.getAttribute('aria-label')
+  if (!rowName?.endsWith('の詳細')) throw new Error('在庫行の対象名がありません')
+  const name = rowName.slice(0, -'の詳細'.length)
+  if (await row.getAttribute('aria-expanded') !== 'true') await row.click()
+  await expect(row).toHaveAttribute('aria-expanded', 'true')
+  const operations = page.getByRole('region', { name: name + 'の数量変更', exact: true })
+  await expect(operations).toBeVisible()
+  await operations.getByRole('button', { name: name + 'の詳細設定', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '在庫詳細・編集', exact: true })
+  await expect(dialog).toBeVisible()
+  return dialog
 }

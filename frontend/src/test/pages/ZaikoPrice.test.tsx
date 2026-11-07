@@ -26,17 +26,23 @@ function setup(path = '/zaiko') {
   return { bodies, inventory }
 }
 
+async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>) {
+  const row = await screen.findByRole('button', { name: 'testuser_牛乳の詳細' })
+  if (row.getAttribute('aria-expanded') !== 'true') await user.click(row)
+  await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
+}
+
 describe('値段入力', () => {
   it('編集初期値を表示しPATCHで0と空欄nullを保存、数量を送らない', async () => {
     const { bodies } = setup(); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '0')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(bodies[0]).toMatchObject({ price: 0 }))
     expect(bodies[0]).not.toHaveProperty('quantity')
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('0')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -71,12 +77,12 @@ describe('値段入力', () => {
   })
   it('編集のキャンセルと保存失敗では表示を維持し、再試行で両一覧を更新する', async () => {
     const { bodies } = setup(); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(bodies).toHaveLength(0)
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
@@ -85,7 +91,7 @@ describe('値段入力', () => {
     await screen.findByText('保存失敗')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('980')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')

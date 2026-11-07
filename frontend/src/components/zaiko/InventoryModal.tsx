@@ -5,6 +5,8 @@ import type { Category, Store, InventoryItem } from '../../api/zaikoTypes'
 import { validPrice, PRICE_ERROR } from './price'
 import { useInventoryDialog } from './useInventoryDialog'
 
+const CONSUMPTION_ERROR = '1日の消費量は0.1〜99999.9、小数点第一位までで入力してください'
+
 interface Props {
   item?: InventoryItem
   categories: Category[]
@@ -12,6 +14,8 @@ interface Props {
   stores: Store[]
   onStoresChange: (stores: Store[]) => void
   busy?: boolean
+  quantityStopped?: boolean
+  quantityNotice?: string
   step?: number
   onStep?: (step: number) => void
   onAdjust?: (sign: 1 | -1) => void
@@ -19,7 +23,7 @@ interface Props {
   onSaved: () => Promise<void>
 }
 
-export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, step = 1, onStep, onAdjust }: Props) {
+export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, quantityStopped = false, quantityNotice, step = 1, onStep, onAdjust }: Props) {
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(String(item?.categoryId ?? categories[0]?.id ?? ''))
   const [storeId, setStoreId] = useState(item?.storeId == null ? '' : String(item.storeId))
@@ -28,7 +32,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const [price, setPrice] = useState(item?.price == null ? '' : String(item.price))
   const [dailyConsumption, setDailyConsumption] = useState(item?.dailyConsumption == null ? '' : String(item.dailyConsumption))
   const [autoConsumptionEnabled, setAutoConsumptionEnabled] = useState(item?.autoConsumptionEnabled ?? false)
-  const consumptionTouched = useRef(!!item)
+  const [consumptionCorrectionOpen, setConsumptionCorrectionOpen] = useState(false)
   const categoryPending = useRef(false)
   const categoryNameInput = useRef<HTMLInputElement>(null)
   const categorySelect = useRef<HTMLSelectElement>(null)
@@ -105,8 +109,9 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     e.preventDefault()
     if (pending.current || busy || categoryPending.current) return
     const daily = dailyConsumption.trim() === '' ? null : Number(dailyConsumption)
-    if (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7)) {
-      setError('1日の消費量は0.1〜99999.9、小数点第一位までで入力してください')
+    if ((autoConsumptionEnabled && daily === null) || (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7))) {
+      if (!autoConsumptionEnabled) setConsumptionCorrectionOpen(true)
+      setError(CONSUMPTION_ERROR)
       return
     }
     if (!validPrice(price)) { setError(PRICE_ERROR); return }
@@ -158,7 +163,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     <div className="modal-overlay inventory-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) close() }}>
       <div ref={dialogRef} className="modal inventory-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
         <h2 id="inventory-modal-title">{item ? '在庫詳細・編集' : '在庫を登録'}</h2>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="inv-name">品名</label>
           <input id="inv-name" type="text" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
           <div className="inventory-category-heading">
@@ -221,17 +226,18 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             <div className="inventory-quantity-row">
               <div className="inventory-quantity-controls inventory-quantity-inline">
                 <span className="qty-value" aria-live="polite">{item.quantity.toFixed(1)}</span>
-                <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を増やす`} onClick={() => onAdjust?.(1)}>＋</button>
-                <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を減らす`} onClick={() => onAdjust?.(-1)}>－</button>
+                <button type="button" className="btn btn-secondary" disabled={locked || quantityStopped} aria-label={`${item.name}を増やす`} onClick={() => onAdjust?.(1)}>＋</button>
+                <button type="button" className="btn btn-secondary" disabled={locked || quantityStopped} aria-label={`${item.name}を減らす`} onClick={() => onAdjust?.(-1)}>－</button>
               </div>
               <div className="inventory-step-options" role="group" aria-label="増減幅">
                 <span>増減幅</span>
                 {[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary"
-                  aria-pressed={step === value} disabled={locked}
+                  aria-pressed={step === value} disabled={locked || quantityStopped}
                   onClick={() => onStep?.(value)}>{value}</button>)}
               </div>
             </div>
             <p className="hint">個数の変更はキャンセルしても元に戻りません</p>
+            {quantityNotice && <p className="error" role="alert">{quantityNotice}</p>}
           </> : <>
             <label htmlFor="inv-quantity">在庫個数</label>
             <input id="inv-quantity" type="number" step="0.1" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
@@ -248,23 +254,23 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             onChange={(e) => setThreshold(e.target.value)}
           />
           <p className="hint">在庫個数がこの数以下になると、買い物リストに自動追加されます</p>
-          <label htmlFor="inv-consumption">1日の消費量（任意）</label>
-          <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
-            disabled={locked} value={dailyConsumption} aria-describedby="inv-consumption-hint"
-            onChange={(event) => {
-              const value = event.target.value
-              setDailyConsumption(value)
-              if (value === '') setAutoConsumptionEnabled(false)
-              else if (!consumptionTouched.current) { setAutoConsumptionEnabled(true); consumptionTouched.current = true }
-            }} />
-          <p id="inv-consumption-hint" className="hint">空欄の場合は自動消費しません</p>
           <button type="button" role="switch" aria-label="自動消費" aria-checked={autoConsumptionEnabled}
-            className="btn inventory-consumption-switch" disabled={locked || dailyConsumption.trim() === ''}
-            onClick={() => { consumptionTouched.current = true; setAutoConsumptionEnabled((enabled) => !enabled) }}>
+            aria-controls="inventory-consumption-fields" className="btn inventory-consumption-switch" disabled={locked}
+            onClick={() => { setConsumptionCorrectionOpen(false); setAutoConsumptionEnabled(enabled => !enabled) }}>
             自動消費：{autoConsumptionEnabled ? 'オン' : 'オフ'}
           </button>
+          {(autoConsumptionEnabled || consumptionCorrectionOpen) && <div id="inventory-consumption-fields">
+            <label htmlFor="inv-consumption">1日の消費量（任意）</label>
+            <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
+              disabled={locked} value={dailyConsumption}
+              aria-invalid={error === CONSUMPTION_ERROR || undefined}
+              aria-describedby={error === CONSUMPTION_ERROR ? 'inv-consumption-hint inv-consumption-error' : 'inv-consumption-hint'}
+              onChange={event => setDailyConsumption(event.target.value)} />
+            <p id="inv-consumption-hint" className="hint">オンで保存するには消費量を入力してください。オフにしても入力した量は保持します。</p>
+            {error === CONSUMPTION_ERROR && <p id="inv-consumption-error" className="error" role="alert">{error}</p>}
+          </div>}
           <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
-          {error && <p className="error" role="alert">{error}</p>}
+          {error && error !== CONSUMPTION_ERROR && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={locked}>
               保存

@@ -2,7 +2,7 @@ import { mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { APIRequestContext, Browser, Page } from '@playwright/test'
 import { expect, test } from './console-guard'
-import { register, createHousehold } from './support/flows'
+import { register, createHousehold, openInventoryDetails } from './support/flows'
 import { E2E_PASSWORD } from './support/test-data'
 
 // README の GIF 用に、画面操作を動画で録画する(#306)。README_GIF_DIR を指定したときだけ動く。
@@ -184,9 +184,8 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
   await record(browser, 'zaiko', async (p) => {
     await p.goto('/zaiko')
     await pause(p, 1200)
-    await p.getByRole('button', { name: '卵の詳細', exact: true }).click()
+    const detail = await openInventoryDetails(p, p.getByRole('button', { name: '卵の詳細', exact: true }))
     await pause(p)
-    const detail = p.getByRole('dialog').first()
     const plus = detail.getByRole('button', { name: /増やす/ }).first()
     await plus.click()
     await pause(p, 400)
