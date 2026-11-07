@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { inventoryItems, shoppingListItems, stores, zaikoCategories } from '../db/schema'
 import { fromTenths, isOneDecimalPlace, MAX_VALUE, toTenths } from '../lib/decimal'
 import { errorResponse } from '../lib/errors'
+import { processShoppingPurchase } from '../lib/shopping-purchases'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
 import { priceSchema } from '../lib/price'
@@ -73,6 +74,8 @@ shoppingListItemsRoute.get('/', async (c) => {
       isManual: shoppingListItems.isManual,
       purchased: shoppingListItems.purchased,
       purchasedQuantityTenths: shoppingListItems.purchasedQuantityTenths,
+      plannedQuantityTenths: shoppingListItems.plannedQuantityTenths,
+      purchaseRevision: shoppingListItems.purchaseRevision,
     })
     .from(shoppingListItems)
     .innerJoin(inventoryItems, eq(inventoryItems.id, shoppingListItems.inventoryItemId))
@@ -91,6 +94,8 @@ shoppingListItemsRoute.get('/', async (c) => {
       isManual: row.isManual,
       purchased: row.purchased,
       purchasedQuantity: fromTenths(row.purchasedQuantityTenths),
+      plannedQuantity: fromTenths(row.plannedQuantityTenths),
+      purchaseRevision: row.purchaseRevision,
     })),
   )
 })
@@ -134,7 +139,7 @@ shoppingListItemsRoute.post('/', async (c) => {
   const statements = [c.env.DB.prepare(
     `INSERT INTO shopping_list_items
        (household_id, inventory_item_id, is_manual, purchased, purchased_quantity_tenths)
-     VALUES (?, ?, 1, 0, 0) RETURNING id`,
+       VALUES (?, ?, 1, 0, 0) RETURNING id`,
   ).bind(householdId, inventoryItemId)]
   if (price !== undefined) {
     statements.push(c.env.DB.prepare('UPDATE inventory_items SET price = ? WHERE id = ? AND household_id = ?')
@@ -161,6 +166,8 @@ shoppingListItemsRoute.post('/', async (c) => {
       isManual: true,
       purchased: false,
       purchasedQuantity: 0,
+      plannedQuantity: 1,
+      purchaseRevision: 0,
     },
     201,
   )
@@ -230,6 +237,7 @@ shoppingListItemsRoute.post('/update', async (c) => {
       return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
     }
 
+    if (entry.plannedQuantityExplicit) return c.json(errorResponse('RESOURCE_CONFLICT', '買い物リストまたは在庫が変更されました。再取得してください'), 409)
     const deltaTenths = toTenths(line.purchasedQuantity)
     const provisionalNewQuantityTenths = item.quantityTenths + deltaTenths
     if (provisionalNewQuantityTenths < 0 || provisionalNewQuantityTenths > maxTenths) {
@@ -256,7 +264,7 @@ shoppingListItemsRoute.post('/update', async (c) => {
         SELECT i.id, r.delta_tenths FROM requested r
         JOIN shopping_list_items s ON s.id = r.entry_id AND s.inventory_item_id = r.item_id AND s.household_id = ?
         JOIN inventory_items i ON i.id = s.inventory_item_id AND i.household_id = ?
-        WHERE s.purchase_revision = r.purchase_revision AND i.quantity_tenths + r.delta_tenths BETWEEN 0 AND ?
+        WHERE s.planned_quantity_explicit = 0 AND s.purchase_revision = r.purchase_revision AND i.quantity_tenths + r.delta_tenths BETWEEN 0 AND ?
       )
       UPDATE inventory_items SET quantity_tenths = quantity_tenths + (SELECT delta_tenths FROM eligible WHERE eligible.id = inventory_items.id)
       WHERE id IN (SELECT id FROM eligible) AND (SELECT COUNT(*) FROM eligible) = ?
@@ -281,4 +289,25 @@ shoppingListItemsRoute.post('/update', async (c) => {
   const removedShoppingListItemIds = lines.filter(({ entry }) => removedIds.has(entry.id)).map(({ entry }) => entry.id)
 
   return c.json({ updatedInventoryItems, removedShoppingListItemIds })
+})
+
+shoppingListItemsRoute.post('/purchases', async (c) => {
+  const householdId = await resolveHouseholdId(drizzle(c.env.DB), c.get('userId'))
+  if(householdId === null) return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE),404)
+  const result = await processShoppingPurchase(c.env.DB, {householdId,actorUserId:c.get('userId')}, await parseJsonBody(c))
+  return c.json(result.body as Record<string,unknown>,result.status)
+})
+
+shoppingListItemsRoute.patch('/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const parsed = z.object({plannedQuantity:z.number().min(0.1).max(MAX_VALUE).refine(isOneDecimalPlace),expectedPurchaseRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)}).safeParse(await parseJsonBody(c))
+  if(!Number.isSafeInteger(id)||id<=0||!parsed.success)return c.json(errorResponse('VALIDATION_ERROR','入力内容を確認してください'),400)
+  const householdId=await resolveHouseholdId(drizzle(c.env.DB),c.get('userId'))
+  if(householdId===null)return c.json(errorResponse('RESOURCE_NOT_FOUND',HOUSEHOLD_NOT_FOUND_MESSAGE),404)
+  const row=await c.env.DB.prepare('UPDATE shopping_list_items SET planned_quantity_tenths=?,planned_quantity_explicit=1,purchase_revision=purchase_revision+1 WHERE id=? AND household_id=? AND purchase_revision=? AND purchase_revision<9007199254740991 RETURNING id,planned_quantity_tenths,purchase_revision')
+    .bind(toTenths(parsed.data.plannedQuantity),id,householdId,parsed.data.expectedPurchaseRevision).first<{id:number;planned_quantity_tenths:number;purchase_revision:number}>()
+  if(row)return c.json({id:row.id,plannedQuantity:fromTenths(row.planned_quantity_tenths),purchaseRevision:row.purchase_revision})
+  const exists=await findOwnedEntry(drizzle(c.env.DB),householdId,id)
+  if(!exists)return c.json(errorResponse('RESOURCE_NOT_FOUND',NOT_FOUND_MESSAGE),404)
+  return c.json(errorResponse('RESOURCE_CONFLICT','買い物リストまたは在庫が変更されました。再取得してください'),409)
 })
