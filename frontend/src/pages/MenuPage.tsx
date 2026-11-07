@@ -1,35 +1,36 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
 import { addWeeks, getMondayOf } from '../lib/week'
 import { Toast } from '../components/Toast'
-import { filterByKeyword, normalizeKeyword } from '../lib/keyword'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
+import { MenuAddSheet, type AddMode } from '../components/kondate/MenuAddSheet'
+import { MenuTitle } from '../components/kondate/MenuTitle'
+import { recipeSite } from '../lib/recipeSite'
+import { useDialog } from '../hooks/useDialog'
 
-// リストへの追加方法は「レシピを選ぶ(確定登録)」「自由メモを入力する(ラフ登録)」の
-// 2種類をトグルで切り替える(F10_kondate_menu.md 5章)。
-type AddMode = 'recipe' | 'memo'
-
-// 献立リストの1件分をどう表示するかを決める共通ロジック。
-// recipeIdがあり、recipeTitleもあれば「レシピ名」を、recipeIdはあるがrecipeTitleがnull
-// なら「レシピが削除済み」なので「(削除されたレシピ)」を、それ以外はfreeTextMemoを表示する。
 function displayLabel(entry: MenuEntry): string {
-  if (entry.recipeId !== null) {
-    return entry.recipeTitle ?? '(削除されたレシピ)'
-  }
-  return entry.freeTextMemo ?? ''
+  return entry.recipeId !== null ? entry.recipeTitle ?? '(削除されたレシピ)' : entry.freeTextMemo ?? ''
 }
 
-// 献立のタイトル。WEBレシピは元ページを新しいタブで、それ以外のレシピはアプリ内の詳細を開く(#289)。
-// 手入力の献立や削除済み・未取得のレシピはリンクにしない。
-function EntryTitle({ entry, recipe, onOpen }: { entry: MenuEntry; recipe: Recipe | undefined; onOpen: (recipe: Recipe) => void }) {
-  const label = displayLabel(entry)
-  if (!recipe || entry.recipeTitle === null) return <>{label}</>
-  if (recipe.sourceType === 'web' && recipe.url) {
-    return <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">{label}</a>
-  }
-  return <button type="button" className="menu-entry-link" onClick={() => onOpen(recipe)}>{label}</button>
+function DeleteConfirmation({ entry, busy, error, onClose, onDelete }: {
+  entry: MenuEntry; busy: boolean; error: string; onClose: () => void; onDelete: () => void
+}) {
+  const close = () => { if (!busy) onClose() }
+  const ref = useDialog(close, '[data-menu-delete-cancel]')
+  return <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) close() }}>
+    <div ref={ref} className="modal menu-delete-modal" role="dialog" aria-modal="true" aria-labelledby="menu-delete-title">
+      <h2 id="menu-delete-title">献立を削除</h2>
+      <p>「{displayLabel(entry)}」を献立から削除しますか？この操作は取り消せません。レシピ原本は削除されません。</p>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="modal-actions">
+        <button type="button" className="btn btn-danger" disabled={busy} onClick={onDelete}>献立から削除</button>
+        <button type="button" className="btn btn-secondary" data-menu-delete-cancel disabled={busy} onClick={close}>キャンセル</button>
+      </div>
+    </div>
+  </div>
 }
 
 export function MenuPage() {
@@ -37,233 +38,152 @@ export function MenuPage() {
   const [entries, setEntries] = useState<MenuEntry[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
   const [addMode, setAddMode] = useState<AddMode>('recipe')
-  const [selectedRecipeId, setSelectedRecipeId] = useState('')
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [recipeKeyword, setRecipeKeyword] = useState('')
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null)
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
+  const [uncertain, setUncertain] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const pending = useRef(false)
+  const [deleteTarget, setDeleteTarget] = useState<MenuEntry | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const addTrigger = useRef<HTMLButtonElement>(null)
+  const detailTrigger = useRef<HTMLButtonElement | null>(null)
+  const deleteTrigger = useRef<HTMLButtonElement | null>(null)
   const [toast, setToast] = useState({ message: '', showKey: 0 })
-
-  const showToast = useCallback((message: string) => {
-    setToast((prev) => ({ message, showKey: prev.showKey + 1 }))
-  }, [])
-
-  // 直近で投げたfetchEntriesリクエストの通し番号(リクエストID)を覚えておくためのref。
-  // useStateと違い、refへの代入は再描画を起こさず、非同期処理の途中でも常に最新の値を
-  // 同期的に参照できる。「週」の文字列だけで新旧を判定すると、同じ週に対して複数の
-  // fetchEntriesが重なった場合(例: 献立を連続で素早く追加し、その都度再取得が走った場合)に
-  // 後から投げたリクエストの結果を、さらに後から返ってきた古いリクエストの結果で
-  // 上書きしてしまう可能性がある。そこで「週が変わったかどうか」ではなく
-  // 「自分より後に投げられたリクエストが存在するかどうか」を判定できるよう、
-  // 呼び出しごとに単調増加する数値IDを発行して比較する。
+  const showToast = useCallback((message: string) => setToast(prev => ({ message, showKey: prev.showKey + 1 })), [])
   const requestIdRef = useRef(0)
-  // 現在選択されている週を常に指すref。レンダーのたびに(useEffectを待たず)同期的に
-  // 更新されるため、handleAdd内でawaitを挟んだ後に「送信時点から週が変わっていないか」を
-  // 判定するのに使う(通常のuseState変数はhandleAdd呼び出し時点の値で固定されてしまうため)。
   const currentWeekRef = useRef(weekStartDate)
   currentWeekRef.current = weekStartDate
 
-  const fetchEntries = useCallback(async (targetWeek: string) => {
+  const fetchEntries = useCallback(async (targetWeek: string, signal?: AbortSignal) => {
     const requestId = ++requestIdRef.current
-    const response = await apiClient.get<MenuEntry[]>('/menu-entries', { params: { weekStartDate: targetWeek } })
-    if (requestIdRef.current !== requestId) {
-      // このリクエストを投げた後に、さらに新しいfetchEntries呼び出しが発生していた場合、
-      // この結果は古いので画面に反映しない(週の切り替えだけでなく、同じ週への
-      // 連続リクエストが重なったケースもこれで防げる)。
-      return
-    }
-    setEntries(response.data)
+    const response = await apiClient.get<MenuEntry[]>('/menu-entries', { params: { weekStartDate: targetWeek }, signal })
+    if (!signal?.aborted && requestIdRef.current === requestId && currentWeekRef.current === targetWeek) setEntries(response.data)
   }, [])
 
-  // 週が切り替わるたびにリストを取得し直す。レシピ一覧は初回のみ取得すればよい
-  // (レシピ側の変更はレシピ画面で行うため、この画面の週送り操作では変わらない)。
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
     setLoading(true)
-    // 週を切り替えた時点で、表示中の一覧を一旦クリアする。クリアしないと、取得に
-    // 失敗した場合や取得が完了する前の一瞬、前の週のデータ(削除ボタン込み)が
-    // 新しい週の画面としてそのまま表示され続けてしまう。
     setEntries([])
-    Promise.allSettled([fetchEntries(weekStartDate), apiClient.get<Recipe[]>('/recipes')])
+    Promise.allSettled([fetchEntries(weekStartDate, controller.signal), apiClient.get<Recipe[]>('/recipes', { signal: controller.signal })])
       .then(([entriesResult, recipesResult]) => {
         if (cancelled) return
-        if (entriesResult.status === 'rejected') {
-          showToast(getApiErrorMessage(entriesResult.reason, '献立の取得に失敗しました。時間をおいて再度お試しください'))
-        }
-        if (recipesResult.status === 'fulfilled') {
-          // お気に入りのレシピを候補一覧の先頭に表示する
-          // (F10_kondate_menu.md 5章「最近使ったレシピ/お気に入り」の簡易版)。
-          setRecipes(
-            [...recipesResult.value.data].sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite)),
-          )
-        } else {
-          showToast(getApiErrorMessage(recipesResult.reason, 'レシピの取得に失敗しました。時間をおいて再度お試しください'))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
+        if (entriesResult.status === 'rejected') showToast(getApiErrorMessage(entriesResult.reason, '献立の取得に失敗しました。時間をおいて再度お試しください'))
+        if (recipesResult.status === 'fulfilled') setRecipes([...recipesResult.value.data].sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite)))
+        else showToast(getApiErrorMessage(recipesResult.reason, 'レシピの取得に失敗しました。時間をおいて再度お試しください'))
+      }).finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; controller.abort() }
   }, [weekStartDate, fetchEntries, showToast])
 
-  const filteredRecipes = filterByKeyword(recipes, recipeKeyword, recipe => recipe.title)
+  const closeAdd = () => {
+    setAddOpen(false)
+    // 明示的な呼出元復帰を優先し、StrictModeのdialog再登録にも依存しない。
+    addTrigger.current?.focus()
+  }
 
-  const handleAdd = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleAdd = async (event: FormEvent) => {
+    event.preventDefault()
+    if (pending.current || uncertain) return
     setError('')
-
-    const payload =
-      addMode === 'recipe'
-        ? { weekStartDate, recipeId: selectedRecipeId === '' ? null : Number(selectedRecipeId) }
-        : { weekStartDate, freeTextMemo: memo.trim() === '' ? null : memo.trim() }
-
-    if (addMode === 'recipe' && payload.recipeId === null) {
-      setError('レシピを選択してください')
-      return
-    }
-    if (addMode === 'memo' && (!('freeTextMemo' in payload) || payload.freeTextMemo === null)) {
-      setError('メモを入力してください')
-      return
-    }
-
+    if (addMode === 'recipe' && selectedIds.length === 0) { setError('レシピを選択してください'); return }
+    if (addMode === 'memo' && !memo.trim()) { setError('メモを入力してください'); return }
+    const targetWeek = weekStartDate
+    const ids = [...selectedIds]
+    const mode = addMode
+    pending.current = true
     setSubmitting(true)
+    let successCount = 0
+    let failed = false
+    let resultUncertain = false
+    let refreshFailed = false
     try {
-      await apiClient.post('/menu-entries', payload)
-    } catch (err) {
-      setError(getApiErrorMessage(err, '献立の追加に失敗しました'))
+      const payloads = mode === 'recipe' ? ids.map(recipeId => ({ weekStartDate: targetWeek, recipeId })) : [{ weekStartDate: targetWeek, freeTextMemo: memo.trim() }]
+      for (const payload of payloads) {
+        try {
+          await apiClient.post('/menu-entries', payload)
+          successCount++
+          if ('recipeId' in payload) setSelectedIds(previous => previous.filter(id => id !== payload.recipeId))
+          else setMemo('')
+        } catch (err) {
+          failed = true
+          const rejectedBeforeWrite = isAxiosError(err) && [400, 401, 403, 404].includes(err.response?.status ?? 0)
+          if (!rejectedBeforeWrite) {
+            resultUncertain = true
+            setUncertain(true)
+            setError('追加結果を確認できません。再送せず、閉じて一覧を確認してください。画面を再読み込みするまで追加は停止します。')
+          } else setError((successCount ? successCount + '件追加しました。残りの追加に失敗しました。' : '') + getApiErrorMessage(err, '献立の追加に失敗しました'))
+          break
+        }
+      }
+      if ((successCount > 0 || resultUncertain) && currentWeekRef.current === targetWeek) {
+        try { await fetchEntries(targetWeek) }
+        catch {
+          refreshFailed = true
+          if (resultUncertain) setError(previous => previous + '一覧を更新できませんでした。画面を再読み込みして一覧を確認してください。')
+          else showToast('献立は追加済みですが、一覧の取得に失敗しました')
+        }
+      }
+      if (!failed) {
+        closeAdd()
+        setRecipeKeyword('')
+        if (!refreshFailed) showToast('献立を追加しました')
+      }
+    } finally {
+      pending.current = false
       setSubmitting(false)
-      return
     }
+  }
 
-    setSelectedRecipeId('')
-    setMemo('')
-    setSubmitting(false)
-
-    // 送信中に週が切り替えられていた場合、この時点のweekStartDate(送信開始時点の週)は
-    // もう画面に表示されていない週なので再取得しない。放置すると、切り替え後の週の
-    // 取得より後にこの再取得が完了した場合、latestRequestedWeekRefが古い週で
-    // 上書きされてしまい、以後その週への切り替え時にレスポンスが正しく反映されなくなる。
-    if (currentWeekRef.current !== weekStartDate) {
-      showToast('献立を追加しました')
-      return
-    }
+  const handleDelete = async () => {
+    if (!deleteTarget || pending.current) return
+    const target = deleteTarget
+    pending.current = true
+    setSubmitting(true)
+    setDeleteError('')
     try {
-      await fetchEntries(weekStartDate)
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '献立一覧の取得に失敗しました'))
-      return
-    }
-    showToast('献立を追加しました')
+      await apiClient.delete('/menu-entries/' + target.id)
+      if (currentWeekRef.current === target.weekStartDate) setEntries(previous => previous.filter(entry => entry.id !== target.id))
+      setDeleteTarget(null)
+      addTrigger.current?.focus()
+      showToast('献立を削除しました')
+    } catch (err) { setDeleteError(getApiErrorMessage(err, '献立の削除に失敗しました')) }
+    finally { pending.current = false; setSubmitting(false) }
   }
 
-  const handleDelete = async (entry: MenuEntry) => {
-    try {
-      await apiClient.delete(`/menu-entries/${entry.id}`)
-    } catch (err) {
-      showToast(getApiErrorMessage(err, '献立の削除に失敗しました'))
-      return
-    }
-    setEntries((prev) => prev.filter((e) => e.id !== entry.id))
-    showToast('献立を削除しました')
-  }
-
-  if (loading) {
-    return <p>読み込み中...</p>
-  }
-
-  return (
-    <div className="page">
-      <div className="panel" data-testid="menu-panel">
-        <div className="toolbar">
-          <h2>献立表</h2>
-          <button type="button" aria-label="先週" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, -1))}>
-            <span aria-hidden="true">◀</span>
-          </button>
-          <span>{weekStartDate} の週</span>
-          <button type="button" aria-label="次週" className="btn btn-secondary" onClick={() => setWeekStartDate((prev) => addWeeks(prev, 1))}>
-            <span aria-hidden="true">▶</span>
-          </button>
-        </div>
-
-        <form onSubmit={handleAdd} noValidate>
-          <fieldset>
-            <legend>追加方法</legend>
-            <label>
-              <input type="radio" name="add-mode" checked={addMode === 'recipe'} onChange={() => setAddMode('recipe')} />
-              レシピから選ぶ
-            </label>
-            <label>
-              <input type="radio" name="add-mode" checked={addMode === 'memo'} onChange={() => setAddMode('memo')} />
-              自由メモ
-            </label>
-          </fieldset>
-          {addMode === 'recipe' ? (
-            <div className="menu-recipe-picker">
-              <input
-                type="search"
-                aria-label="レシピを検索"
-                placeholder="キーワードで絞り込み"
-                value={recipeKeyword}
-                onChange={(e) => {
-                  const keyword = e.target.value
-                  setRecipeKeyword(keyword)
-                  // 絞り込みで見えなくなったレシピが選ばれたまま追加されないよう、選択を解除する。
-                  const selected = recipes.find((recipe) => String(recipe.id) === selectedRecipeId)
-                  if (selected && !normalizeKeyword(selected.title).includes(normalizeKeyword(keyword))) setSelectedRecipeId('')
-                }}
-              />
-              <fieldset className="menu-recipe-candidates">
-                <legend>レシピ候補</legend>
-                <div className="menu-recipe-results">
-                {filteredRecipes.length === 0 ? (
-                  <p role="status">該当するレシピがありません</p>
-                ) : (
-                  filteredRecipes.map((recipe) => (
-                    <label className="menu-recipe-candidate" key={recipe.id}>
-                      <input
-                        type="radio"
-                        name="menu-recipe"
-                        value={recipe.id}
-                        checked={selectedRecipeId === String(recipe.id)}
-                        onChange={(e) => setSelectedRecipeId(e.target.value)}
-                      />
-                      <span>{recipe.isFavorite ? '★ ' : ''}{recipe.title}</span>
-                    </label>
-                  ))
-                )}
-                </div>
-              </fieldset>
-            </div>
-          ) : (
-            <input aria-label="自由メモの内容" type="text" maxLength={100} value={memo} onChange={(e) => setMemo(e.target.value)} />
-          )}
-          <p className="error">{error}</p>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            追加
-          </button>
-        </form>
-
-        <ul>
-          {entries.length === 0 ? (
-            <li>この週の献立はまだありません</li>
-          ) : (
-            entries.map((entry) => (
-              <li key={entry.id}>
-                <EntryTitle entry={entry} recipe={recipes.find((recipe) => recipe.id === entry.recipeId)} onOpen={setDetailRecipe} />
-                <button type="button" className="btn btn-tiny" onClick={() => handleDelete(entry)}>
-                  削除
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
+  return <div className="page">
+    <div className="panel" data-testid="menu-panel">
+      <div className="toolbar menu-toolbar">
+        <h2>献立表</h2>
+        <button type="button" aria-label="先週" className="btn btn-secondary" disabled={submitting || addOpen || deleteTarget !== null} onClick={() => setWeekStartDate(value => addWeeks(value, -1))}><span aria-hidden="true">◀</span></button>
+        <span>{weekStartDate} の週</span>
+        <button type="button" aria-label="次週" className="btn btn-secondary" disabled={submitting || addOpen || deleteTarget !== null} onClick={() => setWeekStartDate(value => addWeeks(value, 1))}><span aria-hidden="true">▶</span></button>
       </div>
-      {detailRecipe && <RecipeDetailModal recipe={detailRecipe} onClose={() => setDetailRecipe(null)} />}
-      <Toast message={toast.message} showKey={toast.showKey} />
+      <button ref={addTrigger} type="button" className="btn btn-primary menu-add-trigger" disabled={loading} onClick={() => { if (!uncertain) setError(''); setAddOpen(true) }}>レシピを追加</button>
+      {loading ? <p>読み込み中...</p> : <ul className="menu-list" aria-label="この週の献立">
+        {entries.length === 0 ? <li>この週の献立はまだありません</li> : entries.map(entry => {
+          const recipe = recipes.find(item => item.id === entry.recipeId)
+          const available = recipe && entry.recipeTitle !== null
+          return <li key={entry.id} className="menu-list-row">
+            <MenuTitle text={displayLabel(entry)} siteLabel={recipeSite(recipe?.url)}>
+              {available && (recipe.sourceType === 'web' && recipe.url
+                ? <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">レシピを見る</a>
+                : <button type="button" className="menu-entry-link" onClick={event => { detailTrigger.current = event.currentTarget; setDetailRecipe(recipe) }}>レシピを見る</button>)}
+            </MenuTitle>
+            <button type="button" className="btn btn-secondary menu-delete-trigger" onClick={event => { deleteTrigger.current = event.currentTarget; setDeleteError(''); setDeleteTarget(entry) }}>削除</button>
+          </li>
+        })}
+      </ul>}
     </div>
-  )
+    {addOpen && <MenuAddSheet recipes={recipes} mode={addMode} keyword={recipeKeyword} selectedIds={selectedIds} memo={memo} error={error} busy={submitting} uncertain={uncertain}
+      onMode={setAddMode} onKeyword={setRecipeKeyword} onToggle={id => setSelectedIds(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])}
+      onClear={() => setSelectedIds([])} onMemo={setMemo} onSubmit={handleAdd} onClose={closeAdd} />}
+    {deleteTarget && <DeleteConfirmation entry={deleteTarget} busy={submitting} error={deleteError} onDelete={() => { void handleDelete() }} onClose={() => { setDeleteTarget(null); deleteTrigger.current?.focus() }} />}
+    {detailRecipe && <RecipeDetailModal recipe={detailRecipe} onClose={() => { setDetailRecipe(null); detailTrigger.current?.focus() }} />}
+    <Toast message={toast.message} showKey={toast.showKey} />
+  </div>
 }

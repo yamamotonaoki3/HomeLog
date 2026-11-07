@@ -235,3 +235,37 @@
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+
+/* #419 献立一覧と追加シート。レシピ管理画面のスタイルには適用しない。 */
+.menu-list { list-style: none; padding: 0; margin: 16px 0 0; }
+.menu-list-row { display: flex; align-items: start; gap: 8px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+.menu-title { flex: 1; min-width: 0; }
+.menu-title-toggle { display: block; min-height: 44px; width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 4px 0; cursor: pointer; }
+.menu-title-text { overflow-wrap: anywhere; white-space: normal; }
+.menu-title-clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.menu-site { display: block; color: #64748b; font-size: 13px; overflow-wrap: anywhere; }
+.menu-title-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.menu-add-trigger, .menu-delete-trigger { min-height: 44px; }
+.menu-add-sheet { width: min(560px, 100%); }
+.menu-sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.menu-sheet-header h2 { margin: 0; }
+.menu-sheet-header button { min-height: 44px; }
+.menu-selection-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.menu-selection-summary p { margin: 0; flex: 1; }
+.menu-selection-summary button { min-height: 44px; }
+.menu-add-sheet .menu-recipe-candidate { align-items: start; }
+.menu-candidate-check { display: flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; cursor: pointer; }
+.menu-add-sheet .menu-candidate-check input { width: 24px; height: 24px; margin: 0; }
+.menu-add-sheet .menu-recipe-candidate > .menu-title { align-self: stretch; }
+.menu-add-sheet .menu-recipe-candidate:has(input:checked) { background: #eff6ff; }
+.menu-add-sheet .menu-recipe-candidates, .menu-add-sheet .menu-recipe-picker input[type="search"] { max-width: none; }
+.menu-memo-label { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.menu-memo-label input { width: 100%; min-width: 0; box-sizing: border-box; }
+.menu-sheet-actions { display: flex; justify-content: flex-end; margin-top: 16px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.menu-sheet-actions button { min-height: 44px; }
+.menu-delete-modal p { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .menu-sheet-overlay { align-items: flex-end; padding: 0; }
+  .menu-add-sheet { border-radius: 14px 14px 0 0; max-height: 90dvh; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .menu-recipe-results { max-height: min(240px, 35dvh); }
+}
