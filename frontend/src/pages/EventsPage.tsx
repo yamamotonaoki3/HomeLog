@@ -72,7 +72,7 @@ export function EventsPage() {
       <div className="panel" data-testid="events-panel">
         <div className="toolbar">
           <h2>イベント一覧</h2>
-          <button ref={addButton} type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
+          <button ref={addButton} type="button" className="btn btn-primary event-register-button" onClick={() => setModalTarget(null)}>
             イベントを登録
           </button>
         </div>
