@@ -16,6 +16,8 @@ interface Props {
   membersLoaded?: boolean
   onClose: () => void
   onSaved: (saved: FixedCost) => Promise<void>
+  hidden?: boolean
+  onDelete?: (trigger: HTMLButtonElement) => void
 }
 
 function initialAccountSelection(fixedCost: FixedCost | null): string {
@@ -37,7 +39,7 @@ function toInitialSplits(fixedCost: FixedCost | null): InitialSplit[] {
   }))
 }
 
-export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = true, onClose, onSaved }: Props) {
+export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = true, onClose, onSaved, hidden = false, onDelete }: Props) {
   const isEdit = fixedCost !== null
   const [name, setName] = useState(fixedCost?.name ?? '')
   const [amount, setAmount] = useState(fixedCost ? String(fixedCost.amount) : '')
@@ -50,6 +52,7 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
   const [split, setSplit] = useState<SplitFieldsResult | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(fixedCost?.personal || fixedCost?.includeInHouseholdTotal || fixedCost?.splits.length))
   const close = () => { if (!submitting) onClose() }
   const ref = useDialog(close, '#fc-name')
 
@@ -76,6 +79,7 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
       return
     }
     if (split?.enabled && !split.valid) {
+      setDetailsOpen(true)
       setError(split.errorMessage || '割り勘の入力内容を確認してください')
       return
     }
@@ -116,10 +120,18 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
   }
 
   return (
-    <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) close() }}>
+    <div className="modal-overlay" hidden={hidden} onClick={(event) => { if (event.target === event.currentTarget) close() }}>
       <div ref={ref} className="modal fixed-cost-modal" role="dialog" aria-modal="true" aria-labelledby="fixed-cost-form-title">
-        <h2 id="fixed-cost-form-title">{isEdit ? '固定費を編集' : '固定費を登録'}</h2>
+        <div className="fixed-cost-titlebar">
+          <h2 id="fixed-cost-form-title">{isEdit ? '固定費を編集' : '固定費を登録'}</h2>
+          {fixedCost?.editable && onDelete && <button type="button" className="btn btn-danger fixed-cost-delete-action" aria-label={`${fixedCost.name}を削除`} disabled={submitting} onClick={(event) => onDelete(event.currentTarget)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+          </button>}
+        </div>
+        <p className="fixed-cost-posting-note">毎月の支払日に支出へ自動計上されます。登録する金額は月額の予定です。計上済みの支出は家計簿で確認できます。</p>
         <form onSubmit={handleSubmit} noValidate>
+          <section aria-labelledby="fc-basic-title">
+          <h3 id="fc-basic-title">基本情報</h3>
           <label htmlFor="fc-name">固定費名</label>
           <input
             id="fc-name"
@@ -160,6 +172,9 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
               </Fragment>
             ))}
           </select>
+          </section>
+          <button type="button" className="btn btn-secondary fixed-cost-settings-toggle" aria-expanded={detailsOpen} aria-controls="fc-details" onClick={() => setDetailsOpen((open) => !open)}>詳細設定</button>
+          <div id="fc-details" hidden={!detailsOpen}>
           <fieldset>
             <legend>公開範囲</legend>
             <label>
@@ -190,7 +205,8 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
             initialSplitInputType={fixedCost?.splitInputType ?? undefined}
             onChange={handleSplitChange}
           />
-          <p className="error">{error}</p>
+          </div>
+          {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               {isEdit ? '更新' : '登録'}
