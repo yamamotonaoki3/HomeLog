@@ -20,6 +20,22 @@ for (const width of [1280, 390, 320]) {
       consoleGuard.watch(page)
       await setupUserWithHousehold(page, 'event_datetime' + width)
       await page.goto('/events')
+      const registerButton = page.getByRole('button', { name: 'イベントを登録', exact: true })
+      await expect(registerButton).toBeVisible()
+      const registerStyle = await registerButton.evaluate(el => {
+        const style = getComputedStyle(el)
+        const rect = el.getBoundingClientRect()
+        return { background: style.backgroundColor, color: style.color, width: rect.width, height: rect.height }
+      })
+      expect(registerStyle.background).toBe('rgb(0, 0, 0)')
+      expect(registerStyle.color).toBe('rgb(255, 255, 255)')
+      expect(registerStyle.width).toBeGreaterThanOrEqual(44)
+      expect(registerStyle.height).toBeGreaterThanOrEqual(44)
+      await registerButton.focus()
+      await page.keyboard.press('Tab')
+      await page.keyboard.press('Shift+Tab')
+      await expect(registerButton).toBeFocused()
+      expect(await registerButton.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid')
       let dateColumnX: number | undefined
       for (const [index, label] of ['終日', '09:00〜', '09:00〜12:00'].entries()) {
         const name = `[E2E_TEST] 日時${index}`
