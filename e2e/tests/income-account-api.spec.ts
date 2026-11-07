@@ -63,7 +63,8 @@ for (const width of [1280, 390, 320]) {
       await page.goto('/accounts')
       await expect(page.getByText(name, { exact: true })).toBeVisible()
       await shot('accounts')
-      await page.getByRole('button', { name, exact: true }).click()
+      await page.getByRole('button', { name: name + 'の詳細', exact: true }).click()
+      await page.getByRole('region', { name: name + 'の詳細', exact: true }).getByRole('button', { name: name + 'の取引履歴', exact: true }).click()
       await expect(page.getByTestId('account-transactions-modal')).toContainText(content)
       await shot('account-history')
 

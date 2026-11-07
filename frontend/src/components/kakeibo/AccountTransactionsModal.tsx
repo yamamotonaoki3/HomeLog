@@ -57,7 +57,7 @@ export function AccountTransactionsModal({ account, onClose, onDeleted }: Props)
   useEffect(() => {
     const dialog = ref.current
     if (phase === 'confirm' && previousPhase.current === 'idle') {
-      dialog?.querySelector<HTMLElement>('[data-cancel]')?.focus({ preventScroll: true })
+      dialog?.querySelector<HTMLElement>('[data-cancel]')?.focus()
     } else if (phase === 'idle' && previousPhase.current === 'confirm') {
       deleteButtonRef.current?.focus({ preventScroll: true })
     } else if (phase === 'refresh-failed') {
@@ -88,7 +88,7 @@ export function AccountTransactionsModal({ account, onClose, onDeleted }: Props)
   const confirming = phase === 'confirm' || phase === 'busy'
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) close() }}>
       <div
         ref={ref}
         className="modal account-transactions-modal"
@@ -97,10 +97,18 @@ export function AccountTransactionsModal({ account, onClose, onDeleted }: Props)
         aria-modal="true"
         aria-labelledby="account-transactions-title"
       >
-        <h2 id="account-transactions-title">
-          {account.name} の取引履歴
-          {data && <span>（残高: {data.currentBalance}円）</span>}
-        </h2>
+        <div className="account-history-header">
+          <h2 id="account-transactions-title">
+            {account.name} の取引履歴
+            {data && <span>（残高: {data.currentBalance}円）</span>}
+          </h2>
+          <div className="account-history-header-actions">
+            {phase === 'idle' && <button ref={deleteButtonRef} type="button" className="btn btn-danger" aria-label={account.name + 'を削除'} onClick={() => setPhase('confirm')}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+            </button>}
+            <button type="button" className="btn btn-secondary" data-close aria-label="取引履歴を閉じる" disabled={phase === 'busy'} onClick={close}>×</button>
+          </div>
+        </div>
 
         {loading && <p>読み込み中...</p>}
         {!loading && error && <p className="error">{error}</p>}
@@ -164,18 +172,7 @@ export function AccountTransactionsModal({ account, onClose, onDeleted }: Props)
                 キャンセル
               </button>
             </>
-          ) : (
-            phase === 'idle' && (
-              <button
-                ref={deleteButtonRef}
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setPhase('confirm')}
-              >
-                口座を削除
-              </button>
-            )
-          )}
+          ) : null}
           <button type="button" className="btn btn-secondary" data-close disabled={phase === 'busy'} onClick={close}>
             閉じる
           </button>
