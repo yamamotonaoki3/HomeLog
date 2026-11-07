@@ -2,12 +2,16 @@ import { StrictMode } from 'react'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { KakeiboPage } from '../../pages/KakeiboPage'
+import { AuthContext, type AuthContextValue } from '../../context/authContextValue'
 import type { Event } from '../../api/eventTypes'
 import type { Account, Expense, FixedCost, Income } from '../../api/kakeiboTypes'
+
+const testAuth: AuthContextValue = { isAuthenticated: true, user: { id: 909, displayName: 'testuser_page' }, userStatus: 'ready', login: vi.fn(), cancelDeletion: vi.fn(), logout: vi.fn(), updateDisplayName: vi.fn() }
+afterEach(() => localStorage.clear())
 
 const defaultCategories = [
   { id: 1, name: '食費', isDefault: true },
@@ -125,7 +129,7 @@ function setupApi(initial: Partial<MockState> = {}) {
 function renderKakeiboPage() {
   return render(
     <MemoryRouter initialEntries={['/kakeibo']}>
-      <KakeiboPage />
+      <AuthContext.Provider value={testAuth}><KakeiboPage /></AuthContext.Provider>
     </MemoryRouter>,
   )
 }
@@ -1145,7 +1149,7 @@ describe('#422 partialの独立受入', () => {
   })
   it.each(['edit', 'delete'] as const)('StrictModeで%sの親を保持し、子Escは元操作へ復帰', async action => {
     const { calls } = setupApi({ expenses: [lunchExpense] })
-    render(<StrictMode><MemoryRouter><KakeiboPage /></MemoryRouter></StrictMode>)
+    render(<StrictMode><AuthContext.Provider value={testAuth}><MemoryRouter><KakeiboPage /></MemoryRouter></AuthContext.Provider></StrictMode>)
     const user = userEvent.setup()
     const row = await screen.findByRole('button', { name: '支出：ランチの詳細' })
     await user.click(row)
@@ -1164,5 +1168,20 @@ describe('#422 partialの独立受入', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(row).toHaveFocus()
     expect(calls.some(call => ['PUT', 'DELETE'].includes(call.method))).toBe(false)
+  })
+})
+
+
+describe('#422 認証本人の口座記憶', () => {
+  it('readyのuser.idだけで記憶を復元し、loading中の旧userを使わない', async () => {
+    setupApi()
+    localStorage.setItem('homelog.lastTransactionAccount.v1:909:expense', '{"selection":"account:5"}')
+    const view = render(<MemoryRouter><AuthContext.Provider value={{ ...testAuth, userStatus: 'loading' }}><KakeiboPage /></AuthContext.Provider></MemoryRouter>)
+    const user = userEvent.setup()
+    await waitFor(() => expect(screen.getByRole('button', { name: '収支を登録' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '収支を登録' }))
+    expect(screen.getByLabelText('口座/カード（任意）')).toHaveValue('')
+    view.rerender(<MemoryRouter><AuthContext.Provider value={testAuth}><KakeiboPage /></AuthContext.Provider></MemoryRouter>)
+    await waitFor(() => expect(screen.getByLabelText('口座/カード（任意）')).toHaveValue('account:5'))
   })
 })

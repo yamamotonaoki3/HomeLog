@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { useDialog } from '../../hooks/useDialog'
+import { availableTransactionAccount, readLastTransactionAccount, writeLastTransactionAccount } from '../../lib/lastTransactionAccount'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Event } from '../../api/eventTypes'
 import type { Account, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
@@ -10,6 +11,7 @@ import type { TransactionSelection } from './TransactionDetailModal'
 type Kind = 'expense' | 'income'
 
 interface Props {
+  userId?: number | null
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
   accounts: Account[]
@@ -39,7 +41,13 @@ function firstCategoryId(categories: KakeiboCategory[] | IncomeCategory[]) {
   return categories[0] ? String(categories[0].id) : ''
 }
 
-export function TransactionModal({
+export function TransactionModal(props: Props) {
+  // 利用者が変わると旧利用者の未保存draftも破棄する。
+  return <TransactionForm key={props.userId ?? 'unknown'} {...props} />
+}
+
+function TransactionForm({
+  userId = null,
   expenseCategories,
   incomeCategories,
   accounts,
@@ -73,7 +81,21 @@ export function TransactionModal({
     editing ? String(editing.data.categoryId) : firstCategoryId(initialKind === 'expense' ? expenseCategories : incomeCategories),
   )
   const [includeInHouseholdTotal, setIncludeInHouseholdTotal] = useState(expense?.includeInHouseholdTotal ?? false)
-  const [accountSelection, setAccountSelection] = useState(expense?.cardId != null ? `card:${expense.cardId}` : expense?.accountId != null ? `account:${expense.accountId}` : income?.accountId != null ? String(income.accountId) : '')
+  const [accountSelection, setAccountSelection] = useState(expense?.cardId != null ? `card:${expense.cardId}` : expense?.accountId != null ? `account:${expense.accountId}` : income?.accountId != null ? String(income.accountId) : !editing && accountsStatus === 'ok' ? availableTransactionAccount(initialKind, readLastTransactionAccount(userId, initialKind), accounts) : '')
+  const accountChanged = useRef(false)
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => { active.current = false }
+  }, [])
+  useEffect(() => {
+    if (editing || accountsStatus !== 'ok') return
+    setAccountSelection(current => availableTransactionAccount(kind, accountChanged.current ? current : readLastTransactionAccount(userId, kind), accounts))
+  }, [accounts, accountsStatus, editing, kind, userId])
+  const handleAccountChange = (value: string) => {
+    accountChanged.current = true
+    setAccountSelection(value)
+  }
   const [eventSelection, setEventSelection] = useState(expense?.eventId != null ? String(expense.eventId) : '')
   const [memo, setMemo] = useState(editing?.data.memo ?? '')
   const [error, setError] = useState('')
@@ -89,7 +111,8 @@ export function TransactionModal({
   const handleKindChange = (nextKind: Kind) => {
     setKind(nextKind)
     setCategoryId(firstCategoryId(nextKind === 'expense' ? expenseCategories : incomeCategories))
-    setAccountSelection('')
+    accountChanged.current = false
+    setAccountSelection(accountsStatus === 'ok' ? availableTransactionAccount(nextKind, readLastTransactionAccount(userId, nextKind), accounts) : '')
     setEventSelection('')
     setError('')
   }
@@ -169,15 +192,18 @@ export function TransactionModal({
         })
       }
     } catch (err) {
+      if (!active.current) return
       setError(getApiErrorMessage(err, `${kind === 'expense' ? '支出' : '収入'}の${editing ? '更新' : '登録'}に失敗しました`))
       setSubmitting(false)
       return
     }
 
+    if (!active.current) return
+    writeLastTransactionAccount(userId, kind, accountSelection)
     try {
       await onSaved(kind)
     } catch (err) {
-      setError(getApiErrorMessage(err, '一覧の更新に失敗しました'))
+      if (active.current) setError(getApiErrorMessage(err, '一覧の更新に失敗しました'))
     }
   }
 
@@ -253,7 +279,7 @@ export function TransactionModal({
           {kind === 'income' && (
             <>
               <label htmlFor="tx-income-account">入金先口座（必須）</label>
-              <select id="tx-income-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)} disabled={incomeAccountUnavailable} required>
+              <select id="tx-income-account" value={accountSelection} onChange={(e) => handleAccountChange(e.target.value)} disabled={incomeAccountUnavailable} required>
                 <option value="">選択してください</option>
                 {income?.accountId != null && !accounts.some((account) => account.id === income.accountId) && <option value={income.accountId}>{income.accountName ?? '削除済み口座'}</option>}
                 {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
@@ -267,7 +293,7 @@ export function TransactionModal({
               <select
                 id="tx-account"
                 value={accountSelection}
-                onChange={(e) => setAccountSelection(e.target.value)}
+                onChange={(e) => handleAccountChange(e.target.value)}
               >
                 <option value="">選択しない</option>
                 {accounts.map((account) => (

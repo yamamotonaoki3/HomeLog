@@ -2,6 +2,7 @@ import { isAxiosError } from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
+import { useAuth } from '../context/useAuth'
 import { getCurrentUserId } from '../api/tokenStorage'
 import type { DashboardSummary } from '../api/dashboardTypes'
 import type { Event, SummaryPeriod } from '../api/eventTypes'
@@ -33,6 +34,7 @@ function isInMonth(dateStr: string, year: number, month: number): boolean {
 }
 
 export function KakeiboPage() {
+  const { user, userStatus } = useAuth()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
@@ -556,6 +558,7 @@ export function KakeiboPage() {
       {deleting && <TransactionDeleteModal transaction={deleting} busy={deleteBusy} error={deleteError} onClose={() => setDeleting(null)} onDelete={handleDelete} />}
       {(modalOpen || editing) && (
         <TransactionModal
+          userId={userStatus === 'ready' ? user?.id ?? null : null}
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
