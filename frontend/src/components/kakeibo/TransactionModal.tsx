@@ -78,7 +78,7 @@ export function TransactionModal({
   const [memo, setMemo] = useState(editing?.data.memo ?? '')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [splitSettingsOpen, setSplitSettingsOpen] = useState((initialSplits?.length ?? 0) > 0)
+  const [splitSettingsOpen, setSplitSettingsOpen] = useState((initialSplits?.length ?? 0) > 0 || Boolean(expense?.includeInHouseholdTotal || expense?.eventId || editing?.data.memo))
   // 開いたら日付欄へフォーカスし、Tab移動をモーダル内に閉じ込める。Escapeで閉じるが、保存中は閉じない
   // (キャンセルボタンと同じ。保存完了前に古いデータで再操作・二重登録させないため)。
   const dialogRef = useDialog(() => { if (!submitting) onClose() }, '#tx-date')
@@ -126,6 +126,7 @@ export function TransactionModal({
     }
     const trimmedMemo = memo.trim()
     if (trimmedMemo.length > 255) {
+      setSplitSettingsOpen(true)
       setError('メモは255文字以内で入力してください')
       return
     }
@@ -181,7 +182,7 @@ export function TransactionModal({
   }
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget && !submitting) onClose() }}>
       <div ref={dialogRef} className="modal event-modal transaction-modal" data-testid="transaction-modal" role="dialog" aria-modal="true" aria-labelledby="transaction-modal-title">
         <h2 id="transaction-modal-title">{editing ? `${kind === 'expense' ? '支出' : '収入'}を編集` : '登録'}</h2>
         {!editing && <div className="tabs" role="tablist">
@@ -280,6 +281,11 @@ export function TransactionModal({
                   </Fragment>
                 ))}
               </select>
+            </>
+          )}
+          <button type="button" className="btn btn-secondary transaction-split-toggle" aria-expanded={splitSettingsOpen} aria-controls="transaction-split-settings" onClick={() => setSplitSettingsOpen(open => !open)}>その他の設定</button>
+          <div id="transaction-split-settings" role="region" aria-label="その他の設定" hidden={!splitSettingsOpen}>
+            {kind === 'expense' && <>
               <label htmlFor="tx-household-total">
                 <input
                   id="tx-household-total"
@@ -298,14 +304,11 @@ export function TransactionModal({
                   </option>
                 ))}
               </select>
-              <button type="button" className="btn btn-secondary transaction-split-toggle" aria-expanded={splitSettingsOpen} aria-controls="transaction-split-settings" onClick={() => setSplitSettingsOpen(open => !open)}>その他の設定</button>
-              <div id="transaction-split-settings" role="region" aria-label="その他の設定" hidden={!splitSettingsOpen}>
               <SplitFields amount={Number(amount) || 0} members={members} membersLoaded={membersLoaded} initialSplits={initialSplits} initialSplitInputType={initialSplitInputType} onChange={handleSplitChange} />
-              </div>
-            </>
-          )}
+            </>}
           <label htmlFor="tx-memo">メモ</label>
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
+          </div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>

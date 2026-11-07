@@ -129,7 +129,7 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
   await record(browser, 'kakeibo', async (p) => {
     await p.goto('/kakeibo')
     await pause(p, 1200)
-    await p.getByRole('button', { name: '登録', exact: true }).first().click()
+    await p.getByRole('button', { name: '収支を登録', exact: true }).click()
     const modal = p.getByTestId('transaction-modal')
     await modal.getByLabel('金額').pressSequentially('1280', { delay: 120 })
     await modal.getByLabel('使用用途（任意）').pressSequentially('パン屋さん', { delay: 120 })
@@ -139,7 +139,7 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
     await pause(p)
     await p.getByTestId('transaction-panel').locator('.list-row-button').filter({ hasText: 'パン屋さん' }).click()
     await pause(p, 1800)
-    await p.getByRole('dialog', { name: '支出詳細' }).getByRole('button', { name: '閉じる' }).click()
+    await p.getByRole('dialog', { name: '支出詳細' }).getByRole('button', { name: '閉じる', exact: true }).click()
     await pause(p)
   })
 

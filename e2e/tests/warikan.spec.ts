@@ -6,7 +6,7 @@ import { addTransaction, getInviteCode, joinHousehold, register, setupUserWithHo
 import { newUser } from './support/test-data'
 
 async function addExternalExpense(page: Page, purpose: string, externalName: string) {
-  await page.getByRole('button', { name: '登録', exact: true }).first().click()
+  await page.getByRole('button', { name: '収支を登録', exact: true }).click()
   const modal = page.getByTestId('transaction-modal')
   await modal.getByLabel('金額').fill('3000')
   await modal.getByLabel('使用用途（任意）').fill(purpose)

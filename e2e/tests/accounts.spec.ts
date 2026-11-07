@@ -241,7 +241,7 @@ test('口座に紐づけた支出が取引履歴と残高に反映される', as
   await expect(accounts.getByRole('button', { name: accountName + 'の詳細', exact: true })).toContainText('10000円')
   const purpose = '[E2E_TEST] 日用品'
   await page.goto('/kakeibo')
-  await page.getByRole('button', { name: '登録', exact: true }).first().click()
+  await page.getByRole('button', { name: '収支を登録', exact: true }).click()
   const modal = page.getByTestId('transaction-modal')
   await modal.getByLabel('金額').fill('2500')
   await modal.getByLabel('使用用途（任意）').fill(purpose)

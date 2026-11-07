@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react'
 import { useDialog } from '../../hooks/useDialog'
 import type { Account, Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 import type { ExpenseSplit, SplitStatus } from '../../api/warikanTypes'
@@ -5,7 +6,7 @@ import type { ExpenseSplit, SplitStatus } from '../../api/warikanTypes'
 export type TransactionSelection = { kind: 'expense'; data: Expense } | { kind: 'income'; data: Income }
 const statusLabels: Record<SplitStatus, string> = { unpaid: '未請求', requested: '請求中', payment_reported: '受領確認待ち', pending: '保留中', settled: '精算済み' }
 
-export function TransactionDetailModal({ transaction, accounts, expenseCategories, incomeCategories, events, splits, splitStatus, onClose, onEdit, onDelete }: {
+export function TransactionDetailModal({ transaction, accounts, expenseCategories, incomeCategories, events, splits, splitStatus, onClose, onEdit, onDelete, hidden = false }: {
   transaction: TransactionSelection
   accounts: Account[]
   expenseCategories: KakeiboCategory[]
@@ -16,8 +17,17 @@ export function TransactionDetailModal({ transaction, accounts, expenseCategorie
   onClose: () => void
   onEdit?: () => void
   onDelete?: () => void
+  hidden?: boolean
 }) {
   const ref = useDialog(onClose, '[data-close]')
+  const actionTrigger = useRef<HTMLButtonElement | null>(null)
+  useLayoutEffect(() => {
+    if (hidden || !actionTrigger.current) return
+    const origin = actionTrigger.current
+    const target = origin.isConnected && !origin.matches(':disabled') ? origin : ref.current?.querySelector<HTMLElement>('[data-close]')
+    target?.focus()
+    actionTrigger.current = null
+  }, [hidden, ref])
   const expense = transaction.kind === 'expense' ? transaction.data : null
   const data = transaction.data
   const title = expense ? '支出詳細' : '収入詳細'
@@ -28,9 +38,17 @@ export function TransactionDetailModal({ transaction, accounts, expenseCategorie
   const locked = ownSplits.some((split) => split.status !== 'unpaid')
   const disabled = !!expense && (splitStatus !== 'ok' || locked)
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title} data-testid="transaction-detail-modal" hidden={hidden} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div ref={ref} className="modal event-modal transaction-detail-modal">
-        <h2>{title}</h2>
+        <div className="transaction-detail-titlebar">
+          <h2>{title}</h2>
+          <div className="transaction-detail-header-actions">
+            {!disabled && onDelete && <button type="button" className="btn btn-danger" aria-label={((transaction.kind === 'expense' ? transaction.data.purpose : transaction.data.content) || '内容なし') + 'の' + (expense ? '支出' : '収入') + 'を削除'} onClick={event => { actionTrigger.current = event.currentTarget; onDelete() }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+            </button>}
+            <button data-close type="button" className="btn btn-secondary" aria-label={title + 'を閉じる'} onClick={onClose}>×</button>
+          </div>
+        </div>
         <dl className="event-detail-list">
           <dt>日付</dt><dd>{transaction.kind === 'expense' ? transaction.data.expenseDate : transaction.data.incomeDate}</dd>
           <dt>内容</dt><dd>{(transaction.kind === 'expense' ? transaction.data.purpose : transaction.data.content) || '内容なし'}</dd>
@@ -53,8 +71,7 @@ export function TransactionDetailModal({ transaction, accounts, expenseCategorie
         </dl>
         {locked && <p>請求中・精算済みの割り勘がある支出は編集・削除できません</p>}
         <div className="modal-actions">
-          <button type="button" className="btn btn-primary" disabled={disabled} onClick={onEdit}>編集</button>
-          <button type="button" className="btn btn-secondary" disabled={disabled} onClick={onDelete}>削除</button>
+          <button type="button" className="btn btn-primary" disabled={disabled} onClick={event => { actionTrigger.current = event.currentTarget; onEdit?.() }}>編集</button>
           <button data-close type="button" className="btn btn-secondary" onClick={onClose}>閉じる</button>
         </div>
       </div>

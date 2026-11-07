@@ -1,4 +1,4 @@
-import { useMemo, type Ref } from 'react'
+import { useMemo, useState, type Ref } from 'react'
 import { Link } from 'react-router-dom'
 import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
@@ -45,6 +45,8 @@ export function TransactionListPanel({
   addButtonRef,
   addDisabled,
 }: Props) {
+  const [keyword, setKeyword] = useState('')
+  const [month, setMonth] = useState('')
   const rows = useMemo<TransactionRow[]>(() => {
     const expenseRows: TransactionRow[] = expenses.map((expense) => ({
       id: expense.id,
@@ -61,9 +63,10 @@ export function TransactionListPanel({
       amount: income.amount,
     }))
 
-    const filtered = typeFilter === 'expense' ? expenseRows : typeFilter === 'income' ? incomeRows : [...expenseRows, ...incomeRows]
+    const filtered = (typeFilter === 'expense' ? expenseRows : typeFilter === 'income' ? incomeRows : [...expenseRows, ...incomeRows])
+      .filter(row => (!month || row.date.slice(0, 7) === month) && row.description.toLocaleLowerCase().includes(keyword.trim().toLocaleLowerCase()))
     return filtered.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [expenses, incomes, typeFilter])
+  }, [expenses, incomes, typeFilter, keyword, month])
 
   return (
     <div className="panel" data-testid="transaction-panel">
@@ -93,7 +96,7 @@ export function TransactionListPanel({
           </select>
         )}
         <button ref={addButtonRef} type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
-          登録
+          収支を登録
         </button>
         <Link to="/fixed-costs" className="btn btn-secondary">
           固定費
@@ -102,15 +105,22 @@ export function TransactionListPanel({
           カテゴリー管理
         </Link>
       </div>
+      <div className="transaction-filters">
+        <label htmlFor="transaction-keyword">収支を検索<input id="transaction-keyword" type="search" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
+        <label htmlFor="transaction-month">履歴の対象月<input id="transaction-month" type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>
+        <button type="button" className="btn btn-secondary" disabled={keyword === '' && month === ''} onClick={() => { setKeyword(''); setMonth('') }}>検索・月を解除</button>
+      </div>
+      <p className="transaction-period">履歴: {month ? month.slice(0, 4) + '年' + Number(month.slice(5, 7)) + '月' : '全期間'}</p>
       <div className="transaction-list">
         <div className="list-row-heading transaction-grid"><span>日付</span><span>内容</span><span>金額</span></div>
-        {rows.length === 0 ? <p>{emptyMessage(typeFilter)}</p> : rows.map((row) => (
+        {rows.length === 0 ? <p>{keyword.trim() || month ? '条件に一致する収支はありません' : emptyMessage(typeFilter)}</p> : rows.map((row) => (
           <button key={`${row.kind}-${row.id}`} type="button" className="list-row-button transaction-grid"
+            aria-describedby={'transaction-date-' + row.kind + '-' + row.id + ' transaction-amount-' + row.kind + '-' + row.id}
             aria-label={`${row.kind === 'income' ? '収入' : '支出'}：${row.description || '内容なし'}の詳細`}
             onClick={(event) => onSelectTransaction(row.kind, row.id, event.currentTarget)}>
-            <span>{row.date}</span>
+            <span id={'transaction-date-' + row.kind + '-' + row.id}>{row.date}</span>
             <span>{row.description || '内容なし'}</span>
-            <span className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</span>
+            <span id={'transaction-amount-' + row.kind + '-' + row.id} className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</span>
           </button>
         ))}
       </div>
