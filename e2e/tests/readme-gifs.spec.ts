@@ -177,7 +177,7 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
     await p.getByLabel('初期残高').fill('50000')
     await pause(p)
     await p.getByRole('button', { name: '登録', exact: true }).click()
-    await expect(p.getByRole('table', { name: '口座一覧' })).toContainText('つみたて口座')
+    await expect(p.getByRole('list', { name: '口座一覧' })).toContainText('つみたて口座')
     await pause(p, 1500)
   })
 

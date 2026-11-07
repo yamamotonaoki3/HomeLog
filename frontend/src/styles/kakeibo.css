@@ -134,3 +134,32 @@
 .kakeibo-monthly-summary p {
   margin: 4px 0;
 }
+
+/* #424 口座・カードのタブ別コンパクト一覧と既存フォーム。 */
+.accounts-page { min-width:0; overflow-wrap:anywhere; }
+.accounts-page .panel { min-width:0; }
+.accounts-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.accounts-tabs button { flex:1; min-width:0; min-height:44px; padding:8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font:inherit; cursor:pointer; }
+.accounts-tabs button[aria-selected=true] { color:#1d4ed8; border-color:#2563eb; background:#eff6ff; }
+.accounts-page .accounts-actions { margin-bottom:12px; }
+.accounts-list { list-style:none; padding:0; margin:0; }
+.accounts-list > li { border-bottom:1px solid #e2e8f0; padding:6px 0; min-width:0; }
+.accounts-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.7fr) minmax(0,1fr); gap:8px; align-items:center; width:100%; min-height:44px; text-align:left; padding:8px 0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+.accounts-row > span { min-width:0; overflow-wrap:anywhere; }
+.accounts-row > :last-child { text-align:right; font-variant-numeric:tabular-nums; }
+.accounts-row:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
+.accounts-detail { padding:8px 12px; background:#f8fafc; overflow-wrap:anywhere; }
+.accounts-detail .accounts-card-list { margin-bottom:12px; }
+.accounts-page .btn,.accounts-form-modal button,.account-transactions-modal button { min-height:44px; min-width:44px; max-width:100%; overflow-wrap:anywhere; }
+.accounts-page .accounts-detail .btn { white-space:normal; text-align:left; }
+.accounts-form-modal { min-width:0; overflow-wrap:anywhere; padding-bottom:max(24px,env(safe-area-inset-bottom)); }
+.accounts-form-modal input,.accounts-form-modal select { min-width:0; max-width:100%; box-sizing:border-box; }
+.accounts-form-modal .modal-actions { flex-wrap:wrap; }
+.account-transactions-modal { width:min(640px,100%); min-width:0; padding-bottom:max(24px,env(safe-area-inset-bottom)); overflow-wrap:anywhere; }
+.account-history-header { position:sticky; top:0; z-index:1; display:flex; align-items:start; gap:8px; background:#fff; padding-bottom:8px; }
+.account-history-header h2 { flex:1; min-width:0; font-size:18px; margin:0; }
+.account-history-header-actions { display:flex; gap:4px; flex-shrink:0; }
+.account-history-header-actions button { display:inline-flex; align-items:center; justify-content:center; padding:8px; }
+.account-transactions-modal .table { table-layout:fixed; }
+.account-transactions-modal .table th,.account-transactions-modal .table td { overflow-wrap:anywhere; vertical-align:top; }
+@media(max-width:480px) { .accounts-page { padding:12px; } .accounts-page .panel { padding:10px; } .accounts-row { gap:6px; } .account-transactions-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } .account-transactions-modal .table th,.account-transactions-modal .table td { padding:6px 3px; } .account-history-header h2 { font-size:16px; } }
