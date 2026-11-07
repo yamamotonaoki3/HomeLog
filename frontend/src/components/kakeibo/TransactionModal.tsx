@@ -12,6 +12,7 @@ type Kind = 'expense' | 'income'
 
 interface Props {
   userId?: number | null
+  identityLoading?: boolean
   expenseCategories: KakeiboCategory[]
   incomeCategories: IncomeCategory[]
   accounts: Account[]
@@ -48,6 +49,7 @@ export function TransactionModal(props: Props) {
 
 function TransactionForm({
   userId = null,
+  identityLoading = false,
   expenseCategories,
   incomeCategories,
   accounts,
@@ -130,7 +132,7 @@ function TransactionForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (submitting) return
+    if (submitting || identityLoading) return
     if (kind === 'income' && (accountsStatus !== 'ok' || (!accounts.some((account) => String(account.id) === accountSelection) && !(income?.accountId != null && String(income.accountId) === accountSelection)))) {
       setError('入金先口座を選択してください')
       return
@@ -337,7 +339,7 @@ function TransactionForm({
           </div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || identityLoading || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>
               {editing ? '保存' : '登録'}
             </button>
             <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onClose}>

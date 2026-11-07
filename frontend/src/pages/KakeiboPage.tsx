@@ -64,6 +64,12 @@ export function KakeiboPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const addButton = useRef<HTMLButtonElement>(null)
+  const focusAddButton = useCallback(() => {
+    const trigger = addButton.current
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus({ preventScroll: true })
+    }
+  }, [])
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const closeDetail = useCallback(() => {
     setSelected(null)
@@ -400,10 +406,12 @@ export function KakeiboPage() {
       fetchDashboardSummary().catch(() => undefined)
       fetchEventSummaries(events, eventPeriod).catch(() => undefined)
       setModalOpen(false)
+      focusAddButton()
       showToast('支出を登録しました')
       return
     }
     setModalOpen(false)
+    focusAddButton()
     showToast('収入を登録しました')
     const results = await Promise.allSettled([
       fetchIncomes(incomeCategoryFilter),
@@ -559,6 +567,7 @@ export function KakeiboPage() {
       {(modalOpen || editing) && (
         <TransactionModal
           userId={userStatus === 'ready' ? user?.id ?? null : null}
+          identityLoading={userStatus === 'loading'}
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
@@ -576,7 +585,7 @@ export function KakeiboPage() {
           }))}
           initialSplitInputType={editingSplits[0]?.splitInputType}
           initialKind={initialKind}
-          onClose={() => { setModalOpen(false); setEditing(null) }}
+          onClose={() => { setModalOpen(false); setEditing(null); if (!editing) focusAddButton() }}
           onSaved={editing ? handleEdited : handleSaved}
         />
       )}

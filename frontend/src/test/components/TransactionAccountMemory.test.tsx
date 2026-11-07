@@ -285,4 +285,34 @@ describe('#422 前回口座記憶', () => {
     expect(remembered()).toBe('{"selection":""}')
   })
 
+  it('本人情報loading中は送信開始0で、ready後の保存一回を本人確定remountで失わない', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const request = vi.spyOn(apiClient, 'post')
+    server.use(http.post('/api/expenses', async () => { await gate; return HttpResponse.json({}, { status: 201 }) }))
+    const p = props()
+    const view = render(<StrictMode><TransactionModal {...p} userId={null} identityLoading /></StrictMode>)
+    try {
+      fireEvent.change(screen.getByLabelText('金額'), { target: { value: '1000' } })
+      const button = screen.getByRole('button', { name: '登録' })
+      fireEvent.submit(button.closest('form')!)
+      expect(request).not.toHaveBeenCalled()
+      expect(button).toBeDisabled()
+      view.rerender(<StrictMode><TransactionModal {...p} identityLoading={false} /></StrictMode>)
+      fireEvent.change(screen.getByLabelText('金額'), { target: { value: '1000' } })
+      await userEvent.setup().click(screen.getByRole('button', { name: '登録' }))
+      expect(request).toHaveBeenCalledOnce()
+      expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
+      fireEvent.submit(screen.getByRole('button', { name: '登録' }).closest('form')!)
+      expect(request).toHaveBeenCalledOnce()
+      await act(async () => { release(); await request.mock.results[0].value })
+      await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+      expect(remembered()).toBe('{"selection":""}')
+    } finally {
+      release()
+      await act(async () => { await Promise.allSettled(request.mock.results.map(result => result.value)) })
+      request.mockRestore()
+    }
+  })
+
 })

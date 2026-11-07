@@ -195,3 +195,62 @@ test.describe('390px 未指定の編集境界 #422', () => {
     expect(await storedSelections(page)).toEqual([{ kind: 'expense', value: { selection: '' } }])
   })
 })
+
+
+test.describe('390px 本人情報loading送信境界 #422', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+  test('実auth/meの配送を待つ間はopen可能でPOST0、ready後の一回保存だけを記憶する', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await setupUserWithHousehold(page, 'ledger_memory_loading')
+    const fixture = await seed(page, 'loading')
+    let release!: () => void, entered!: () => void, completed!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const arrived = new Promise<void>(resolve => { entered = resolve })
+    const finished = new Promise<void>(resolve => { completed = resolve })
+    let intercepted = false, posts = 0
+    page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/expenses') posts++ })
+    await page.route('**/api/auth/me', async route => {
+      if (intercepted) { await route.continue(); return }
+      intercepted = true
+      try {
+        const response = await route.fetch()
+        expect(response.status()).toBe(200)
+        entered()
+        await gate
+        await route.fulfill({ response })
+      } finally { completed() }
+    })
+    try {
+      await page.goto('/kakeibo')
+      await arrived
+      const modal = await open(page)
+      const submit = modal.getByRole('button', { name: '登録', exact: true })
+      await modal.getByLabel('金額', { exact: true }).fill('1000')
+      await expect(submit).toBeDisabled()
+      await modal.locator('form').dispatchEvent('submit')
+      expect(await api<unknown[]>(page, 'GET', 'expenses')).toEqual([])
+      expect(posts).toBe(0)
+      await shot(page, 390, 'identity-loading')
+      release()
+      await finished
+      await expect(submit).toBeEnabled()
+      await page.keyboard.press('Escape')
+      await expect(modal).toBeHidden()
+      await expect(triggerOf(page)).toBeFocused()
+      await open(page)
+      await expenseSelect(modal).selectOption('account:' + fixture.account.id)
+      const purpose = '[E2E_TEST] loading確定後一回保存'
+      const body = await save(page, 'expense', purpose, 1000)
+      expect(body).toMatchObject({ amount: 1000, purpose, accountId: fixture.account.id, cardId: null })
+      expect(posts).toBe(1)
+      const expenses = await api<{ purpose: string }[]>(page, 'GET', 'expenses')
+      expect(expenses.filter(expense => expense.purpose === purpose)).toHaveLength(1)
+      expect((await api<Account[]>(page, 'GET', 'accounts')).find(account => account.id === fixture.account.id)?.balance).toBe(9000)
+      expect(await storedSelections(page)).toEqual([{ kind: 'expense', value: { selection: 'account:' + fixture.account.id } }])
+    } finally {
+      release()
+      if (intercepted) await finished
+      await page.unroute('**/api/auth/me')
+    }
+  })
+})
