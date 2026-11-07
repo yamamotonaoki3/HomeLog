@@ -260,6 +260,16 @@ erDiagram
         integer purchase_revision
         timestamp added_at
     }
+    shopping_purchase_requests {
+        bigint household_id PK,FK
+        bigint actor_user_id PK,FK
+        text request_id PK
+        text request_json
+        integer response_status "nullable during batch"
+        text response_json "nullable during batch"
+        integer guard "CHECK = 1"
+        timestamp created_at
+    }
     recipes {
         bigserial id PK
         bigint household_id FK
@@ -312,6 +322,8 @@ erDiagram
     households ||--o{ stores : "持つ"
     households ||--o{ inventory_items : "持つ"
     households ||--o{ shopping_list_items : "持つ"
+    households ||--o{ shopping_purchase_requests : "購入要求のscope"
+    users ||--o{ shopping_purchase_requests : "購入者"
     households ||--o{ recipes : "持つ"
     households ||--o{ menu_entries : "持つ"
 
@@ -712,7 +724,33 @@ Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレー�
 | is_manual | BOOLEAN | ○ | 手動追加か自動追加か |
 | purchased | BOOLEAN | ○ | 購入済みチェック |
 | purchased_quantity | NUMERIC(6,1) | — | 購入個数 |
-| purchase_revision | INTEGER | ○ | DEFAULT 0。並行購入の検出用の内部更新番号。成功した購入でのみ増加（Workers、#394） |
+| purchase_revision | INTEGER | ○ | DEFAULT 0。予定保存と正数量購入の共通CAS。GETへpurchaseRevision公開。予定の同値保存も増加、数量0/Cron/在庫増減/再送は不変（Workers、#455） |
+
+Workersの物理列purchased_quantity_tenthsは10倍整数。0025で以下を追加し、既存ID・出自・購入入力・revision・added_at・在庫/価格を変更しない。
+
+|追加物理列|型・初期値|制約・意味|
+|---|---|---|
+|planned_quantity_tenths|INTEGER NOT NULL DEFAULT 10|整数1〜999999。全既存/新規行の予定初期値1|
+|planned_quantity_explicit|INTEGER NOT NULL DEFAULT 0|0/1。予定保存・部分購入残数は1、自動買切り不足で次予定1へ戻すと0。API非公開|
+
+保護1の自動項目は閾値超過でも同期削除しない。is_manualの出自は途中変更しない。未保護旧/updateは旧意味のまま、保護行混在は全件409。
+
+### shopping_purchase_requests（購入要求の確定結果、Workers #455）
+
+|物理列|型・必須|意味|
+|---|---|---|
+|household_id|INTEGER NOT NULL|households FK、ON DELETE CASCADE。複合PK|
+|actor_user_id|INTEGER NOT NULL|users FK、ON DELETE CASCADE。複合PK|
+|request_id|TEXT NOT NULL|小文字UUID。複合PK|
+|request_json|TEXT NOT NULL|version1と要求順id/purchasedQuantity/expectedPurchaseRevisionだけ。数量を丸める前の正規化JSON|
+|response_status|INTEGER NULL|NULLまたは200/400/404/409のCHECK。購入batch中のみNULL、確定後は不変|
+|response_json|TEXT NULL|購入batch中のみNULL。確定成功snapshotまたはmarker付き確定拒否ErrorResponse|
+|guard|INTEGER NOT NULL DEFAULT 1|named CHECK shopping_purchase_guardで1のみ。batch内不成立をSQL例外にする|
+|created_at|TEXT NOT NULL DEFAULT current_timestamp|作成日時|
+
+PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは保存しない。買い物行/在庫にはFKを張らず、商品削除後も保存結果を回復する。成功候補と拒否候補の通常INSERTが同じPKで競争し、勝者だけを保存する。OR REPLACEや既存結果の更新で拒否/成功を反転させない。未知障害は拒否行を作らない。期限削除を追加しない。物理ユーザー/世帯削除はcascade、論理退会中はrequireAuthで拒否する。
+
+同scope/key/bodyは保存HTTP/JSONを返し、異bodyは専用MISMATCH409。不完全/破損台帳は500として再購入・削除・自動修復しない。成功batch末尾ではresponse更新1件・PK1行・status200・確定snapshot完全一致を同transaction内でassertし、失敗なら商品と台帳を全rollbackする。
 
 ### recipes（レシピ）
 

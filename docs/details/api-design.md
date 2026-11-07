@@ -335,7 +335,9 @@ PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィ
 | --- | --- | --- |
 | GET | `/api/shopping-list-items` | 買い物リスト取得（並び替えパラメータ対応） |
 | POST | `/api/shopping-list-items` | 品目の手動追加 |
+| PATCH | `/api/shopping-list-items/{id}` | 予定数をrevision条件付きで保存 |
 | DELETE | `/api/shopping-list-items/{id}` | 品目の手動削除 |
+| POST | `/api/shopping-list-items/purchases` | 要求ID付き購入・予定残数保持 |
 | POST | `/api/shopping-list-items/update` | 購入済みチェック分を一括更新し在庫へ反映 |
 
 ### GET /api/shopping-list-items?sort=name|category|store
@@ -343,14 +345,14 @@ PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィ
 レスポンス（200 OK）:
 ```json
 [
-  { "id": 1, "inventoryItemId": 100, "name": "牛乳", "isManual": false, "purchased": false, "purchasedQuantity": 0, "price": 1280 }
+  { "id": 1, "inventoryItemId": 100, "name": "牛乳", "isManual": false, "purchased": false, "purchasedQuantity": 0, "plannedQuantity": 1, "purchaseRevision": 0, "price": 1280 }
 ]
 ```
 
 ### POST /api/shopping-list-items
 
 リクエスト例：`{ "inventoryItemId": 100, "price": 980 }`。priceは任意。
-成功時は201で、GETと同じ形の単一行（isManual=true、purchased=false、purchasedQuantity=0）を返す。priceは常にnumberまたはnull。
+成功時は201で、GETと同じ形の単一行（isManual=true、purchased=false、purchasedQuantity=0、plannedQuantity=1、purchaseRevision=0）を返す。priceは常にnumberまたはnull。
 price省略は保存値維持、nullはクリア、数値は在庫の値段を上書きする。
 リストINSERTと指定priceの在庫UPDATEは単一D1 batchで原子的に行う。重複・UNIQUE競合は400で値段も変更しない。
 他世帯の在庫ID・不存在ID・不正入力は400。未認証は401。その他のDB失敗は500でbatch全体をロールバックする。
@@ -496,7 +498,7 @@ interface DashboardDayDetail {
 | 固定費 | `GET/POST fixed-costs` `PATCH/DELETE fixed-costs/:id` | [F05](features/F05_kakeibo_fixedcost.md) |
 | イベント | `GET/POST events` `PATCH/DELETE events/:id` `PATCH events/:id/show-on-dashboard` `GET events/:id/summary` | [F06](features/F06_kakeibo_event.md) |
 | 在庫 | `GET/POST inventory-items` `PATCH/DELETE inventory-items/:id` `PATCH inventory-items/:id/quantity` `GET/POST zaiko-categories` `PATCH/DELETE zaiko-categories/:id` `GET/POST stores` `PATCH/DELETE stores/:id` | [F07](features/F07_zaiko_inventory.md) |
-| 買い物リスト | `GET/POST shopping-list-items` `DELETE shopping-list-items/:id` `POST shopping-list-items/update` | [F08](features/F08_zaiko_shoppinglist.md) |
+| 買い物リスト | `GET/POST shopping-list-items` `DELETE shopping-list-items/:id` `PATCH shopping-list-items/:id` `POST shopping-list-items/purchases` `POST shopping-list-items/update` | [F08](features/F08_zaiko_shoppinglist.md) |
 | レシピ | `GET/POST recipes` `POST recipes/from-url` `PATCH/DELETE recipes/:id` `PATCH recipes/:id/favorite` `POST recipes/ocr/upload` `POST recipes/ocr/analyze` | [F09](features/F09_kondate_recipe.md) |
 | 献立表 | `GET/POST menu-entries` `DELETE menu-entries/:id` | [F10](features/F10_kondate_menu.md) |
 | 口座・カード | `GET/POST accounts` `PATCH/DELETE accounts/:id` `GET accounts/:id/transactions` `POST cards` `PATCH/DELETE cards/:id` `POST cards/:id/charges` | [F11](features/F11_kakeibo_account.md) |
@@ -511,3 +513,33 @@ interface DashboardDayDetail {
 一致すれば外部取得・保存を行わず409、共通形式 `{ code: "DUPLICATE_RECIPE_URL", message: "このURLのレシピは既に登録されています", details: [] }` を返す。
 保存も従来どおり `parsedUrl.toString()` の形式とする。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
 別世帯は対象外。URLなし（null・空文字）のレシピは複数可。既存重複データは維持し、UNIQUE制約は追加しない。
+旧/updateは未保護行の従来の入力・応答・数量0処理を維持する。予定編集または部分購入で保護された行を1件でも含む場合、事前検証とbatch内条件の双方で全体409 RESOURCE_CONFLICTとし、在庫を加算しない。旧APIには要求IDによる逐次再送保証がない。
+
+### PATCH /api/shopping-list-items/{id}（#455）
+
+入力は { plannedQuantity:number, expectedPurchaseRevision:number }。予定0.1〜99999.9・小数第一位、revisionは0以上の安全な整数、idは正の安全な整数。予定だけを保存し、同値でも保護フラグを1・purchaseRevisionを1増やす。保存時点の { id, plannedQuantity, purchaseRevision } をRETURNINGから200で返す。在庫は変更しない。不正400、不存在/他世帯404、古いrevisionまたは安全な加算上限409。
+
+### POST /api/shopping-list-items/purchases（#455）
+
+入力例:
+
+```json
+{ "requestId": "12345678-1234-4234-8234-123456789abc", "items": [{ "id": 1, "purchasedQuantity": 2, "expectedPurchaseRevision": 1 }] }
+```
+
+200応答例（予定3を2だけ購入）:
+
+```json
+{ "requestId": "12345678-1234-4234-8234-123456789abc", "updatedInventoryItems": [{ "id": 100, "quantity": 2 }], "removedShoppingListItemIds": [], "remainingShoppingListItems": [{ "id": 1, "plannedQuantity": 1, "purchaseRevision": 2 }] }
+```
+
+- requestIdは必須UUID（小文字へ正規化）。空items/重複idは400。idは正の安全な整数、revisionは0以上の安全な整数、実購入数は0〜99999.9・小数第一位。実購入0は存在/CAS検証のみで全列不変、結果配列に含めない。全0は空の3配列を200として保存する。
+- 正数量だけを在庫へ全量加算する。予定残数>0は閾値を超えても保持し、保護1/revision+1。買切り・超過は手動行を削除。自動行は更新後在庫が閾値以下なら次予定1/保護0/revision+1、閾値超なら削除。予定・在庫は10倍整数で計算し在庫上限99999.9を守る。安全にrevisionを加算できない正購入は409。
+- 3配列は正数量対象だけを要求順に返す。updatedInventoryItems.idは在庫ID、他は買い物行ID。確定時点のsnapshotであり、最新一覧とは別。価格・消費設定・基準日・未対象行は変更しない。
+- 認証と現在所属確認の後、actor+世帯+requestIdの保存結果を対象存在/CAS/数量範囲より先に照合する。同bodyは保存HTTP/JSONを再現し、行削除・条件改善後も再購入しない。異bodyは409 SHOPPING_PURCHASE_REQUEST_MISMATCH / details:[{field:'requestId',reason:'PAYLOAD_MISMATCH'}]。元bodyやsnapshotをこの409へ付けない。
+- 要求JSONはversion1、要求順のid/purchasedQuantity/expectedPurchaseRevisionのみ。有限数の元値で正規化し、キー順・空白・1と1.0を同一化、配列順を区別する。不正精度を丸めて正常値と同一化しない。
+- 初期数量上限400/対象なし404/CASまたはbatch内競合409は、同じ複合PKへ確定拒否を通常INSERTできた場合のみ永続拒否になる。成功batch先頭INSERTとのUNIQUE競争で負けた側は保存済み勝者のHTTP/JSONを返す。保存後の拒否にだけdetails:[{field:'purchase',reason:'PURCHASE_NOT_APPLIED'}]を付ける。codeは400 VALIDATION_ERROR、404 RESOURCE_NOT_FOUND、409 RESOURCE_CONFLICT。
+- 不正JSON/UUID/必須値・型/unsafe整数など正規化不能な400、未認証401、現在未所属404にはterminal保証/markerがない。未知SQL・通信障害500、MISMATCH、破損/不完全ledgerは結果不明。旧keyを捨て新keyへ自動移行しない。成功・拒否とも期限削除せず、別actor/別世帯へ結果を流用しない。
+- 単一D1 batchの全件guard、相対在庫更新、削除/残数/revision、成功台帳を原子的に確定する。末尾SQLはresponse更新件数1・PK1行・status200・要求順snapshot完全一致をassertし、不成立をSQL例外で全rollbackする。既知named CHECKだけ409候補として拒否INSERT調停へ進み、その他の障害を未反映保証へ変換しない。
+
+後続#421のFEは送信前にactor/世帯別pendingへ元requestId/bodyを保存する。成功200または一致したmarker付き保存拒否だけでpendingを解決し、MISMATCH/未知応答では元body回復を行う。logoutでも未解決記録を保持し、同user同世帯の認証確認後に利用者操作で回復する。別user/別世帯へ表示・送信せず、401refresh後の再送直前にもscope/sessionを照合する。200後のGET失敗は反映済みとして一覧再取得だけを行う。FEの実装・画面検証は#421で行う。

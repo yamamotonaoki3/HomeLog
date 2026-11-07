@@ -128,10 +128,23 @@ export const shoppingListItems = sqliteTable('shopping_list_items', {
   purchased: integer('purchased', { mode: 'boolean' }).notNull().default(false),
   purchasedQuantityTenths: integer('purchased_quantity_tenths').notNull().default(0),
   purchaseRevision: integer('purchase_revision').notNull().default(0),
+  plannedQuantityTenths: integer('planned_quantity_tenths').notNull().default(10),
+  plannedQuantityExplicit: integer('planned_quantity_explicit', { mode: 'boolean' }).notNull().default(false),
   addedAt: text('added_at')
     .notNull()
     .default(sql`(current_timestamp)`),
 })
+
+export const shoppingPurchaseRequests = sqliteTable('shopping_purchase_requests', {
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  actorUserId: integer('actor_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requestId: text('request_id').notNull(),
+  requestJson: text('request_json').notNull(),
+  responseStatus: integer('response_status'),
+  responseJson: text('response_json'),
+  guard: integer('guard').notNull().default(1),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (table) => [primaryKey({ columns: [table.householdId, table.actorUserId, table.requestId] })])
 
 export const kakeiboCategories = sqliteTable('kakeibo_categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
