@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { events, fixedCosts, menuEntries, recipes } from '../db/schema'
 import { currentMonthRange, currentWeekStart, formatJstToday, getJstToday, isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
+import { dashboardDayDetail } from '../lib/dashboard-day-detail'
 import { resolveOccurrences, type RecurrenceType } from '../lib/event-recurrence'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -164,6 +165,20 @@ dashboardRoute.get('/notifications/today', async (c) => {
   ).length
 
   return c.json({ notificationCount })
+})
+
+dashboardRoute.get('/day-detail', async (c) => {
+  const date = c.req.query('date')
+  if (!date || !isValidCalendarDate(date)) {
+    return c.json(errorResponse('VALIDATION_ERROR', 'dateは実在するYYYY-MM-DD形式で指定してください'), 400)
+  }
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(drizzle(c.env.DB), userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+  const today = getJstToday().toISOString().slice(0, 10)
+  return c.json(await dashboardDayDetail(c.env.DB, householdId, userId, date, today))
 })
 
 dashboardRoute.get('/calendar', async (c) => {

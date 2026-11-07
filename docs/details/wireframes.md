@@ -136,6 +136,8 @@ flowchart TD
 
 ## S-04 トップ画面（生活ダッシュボード＋カレンダー）
 
+日付詳細向けBackend API（#446）は `GET /api/dashboard/day-detail?date=YYYY-MM-DD`。既存の月間カレンダーAPIは維持する。日付詳細の4セクション・6状態を利用する画面改修は#431で後続対応（現時点では未実装）。
+
 対応: [F06_kakeibo_event](features/F06_kakeibo_event.md), [F12_kakeibo_household_summary](features/F12_kakeibo_household_summary.md), [F13_kakeibo_income](features/F13_kakeibo_income.md), [F07_zaiko_inventory](features/F07_zaiko_inventory.md), [F08_zaiko_shoppinglist](features/F08_zaiko_shoppinglist.md), [F10_kondate_menu](features/F10_kondate_menu.md)
 
 確認系の情報を画面遷移なしで把握できる「生活ダッシュボード」として定義する（[common-notes.md](common-notes.md) 9章の方針）。表示設定で選択したカードを、保存済みカード順で表示するカードグリッドにコンテナとして配置する。カード順の編集用グリッドはS-21のチェックリスト下にのみ配置する。旧S-16（世帯合計支出画面）・旧S-20（イベント別支出サマリーモーダル）はここに統合し廃止した。
@@ -905,6 +907,8 @@ flowchart TD
 ---
 
 ## S-19 日次詳細モーダル
+
+Backend契約（#446）: `GET /api/dashboard/day-detail?date=YYYY-MM-DD` が選択週の献立、可視イベント、本人実績の収支明細、可視固定費の予定額・6状態・権限内実額を返す。[API設計書](api-design.md)参照。ホームの表示設定と独立し、件数は取得した配列長を用いる。取得失敗を0件と扱わない。以下は現行画面の記述であり、#431の4セクション・初期全閉・イベント詳細導線・6状態表示は後続のフロントエンド実装で反映する。
 
 対応: [F06_kakeibo_event](features/F06_kakeibo_event.md), [F03_kakeibo_expense](features/F03_kakeibo_expense.md), [F10_kondate_menu](features/F10_kondate_menu.md)
 

@@ -377,6 +377,7 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 | --- | --- | --- |
 | GET | `/api/dashboard/summary` | ダッシュボード用の集計（在庫・家計簿・今日の状況）を取得 |
 | GET | `/api/dashboard/calendar?month=YYYY-MM` | 指定月のカレンダー表示用集計を取得 |
+| GET | `/api/dashboard/day-detail?date=YYYY-MM-DD` | 選択日の読み取り専用詳細を取得（#446） |
 | GET | `/api/dashboard/notifications/today` | 上部ナビゲーション表示用のJST当日通知件数を取得 |
 
 レスポンス（200 OK）:
@@ -426,6 +427,41 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 - `balance` はログインユーザー本人の当日の収入合計から支出合計を引いた値。
 - `notificationCount` は既存クライアントとの互換性のために残すJST当日の通知有効イベント数であり、新規UIの表示元には使用しない。トップナビゲーションの通知アラームは `GET /api/dashboard/notifications/today` を使用する。
 
+### GET /api/dashboard/day-detail（Workers、#446）
+
+認証必須。実在する `date=YYYY-MM-DD` を必須とする。欠落・不正日付は400 `VALIDATION_ERROR`、未認証は401、所属世帯なしは404 `RESOURCE_NOT_FOUND`。取得障害は既存の500応答とし、空配列や確認不能の成功応答に置き換えない。
+
+200応答の型:
+
+```ts
+type FixedCostPostingStatus = 'posted' | 'scheduled' | 'missing' | 'suppressed' | 'not_applicable' | 'unknown'
+interface DashboardDayDetail {
+  date: string
+  weekStartDate: string
+  menuEntries: { id: number; recipeId: number | null; recipeTitle: string | null; freeTextMemo: string | null; weekStartDate: string }[]
+  events: { id: number; name: string; isRecurring: boolean; recurrenceType: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'; eventDate: string }[]
+  finance: {
+    income: number; expense: number; balance: number
+    incomes: { id: number; incomeDate: string; amount: number; content: string }[]
+    expenses: { id: number; expenseDate: string; amount: number; purpose: string; fixedCostId: number | null; fixedCostYearMonth: string | null }[]
+  }
+  fixedCosts: {
+    id: number; name: string; amount: number; paymentDate: string; yearMonth: string
+    postingStatus: FixedCostPostingStatus
+    postedExpense: { id: number; expenseDate: string; amount: number } | null
+  }[]
+}
+```
+
+- `weekStartDate` は選択日を含む月曜開始週。献立は同世帯の当該週、id昇順。レシピ結合も同世帯に限定し、削除済みレシピのnullを保つ。
+- イベントは同世帯の共有または本人所有で、既存の繰り返し規則により選択日に発生するものだけ、id昇順。`eventDate` は原本日付で、発生日はトップの `date`。
+- 収入・支出は同世帯かつ本人（earner/payer）の選択日実績だけ、各id降順。合計はこの配列のみから算出し、固定費予定額を加算しない。`balance=income-expense`。件数は配列lengthから求め、差額0円と0件を区別する。
+- 本人支出の関連固定費が同世帯かつ共有/本人所有として可視でない場合、補助フィールド `fixedCostId` と `fixedCostYearMonth` は両方null。支出本体は本人の実績として返す。
+- 固定費は同世帯の共有/本人所有かつ現在の支払日を選択月の月末に丸めた日が選択日となる登録行、id昇順。`amount` は現在の予定額。`postedExpense` は固定費IDと計上年月を厳密照合した本人の記録実額で、支出日や金額の編集後も予定額と同一視しない。支出日を移動した場合の日次収支は移動先だけに含める。削除済み固定費は復元しない。
+- 他者作成の共有固定費は関連支出・抑止の有無にかかわらず `unknown` / `postedExpense:null`。本人作成固定費では本人支出があれば `posted`、支出なしで抑止があれば `suppressed`。両記録があればpostedを優先し、個人情報を含まない固定文で内部警告する。
+- 無記録の状態は順に、作成JST日より前の予定日なら `not_applicable`、過去月・不正/欠損履歴なら `unknown`、未来日/当日なら `scheduled`、当月過去日かつ予定日が実在する `effective_from` より後なら `missing`、それ以外は `unknown`。編集前/同日の過去設定を現在値から推測しない。missingは計上失敗や未決済の断定ではない。当日はJST翌日までscheduled。
+- GETはSELECTのみ。計上・カテゴリseed・抑止・残高・割勘・表示設定の更新は行わない。当日Cron/当月遅延回収や既存calendarの契約は変更しない。ホーム表示設定・cardOrderと独立し、権限は常に適用する。状態の日本語表示は[F05](features/F05_kakeibo_fixedcost.md)参照。
+
 ### GET /api/dashboard/notifications/today
 
 レスポンス（200 OK）:
@@ -465,7 +501,7 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 | 献立表 | `GET/POST menu-entries` `DELETE menu-entries/:id` | [F10](features/F10_kondate_menu.md) |
 | 口座・カード | `GET/POST accounts` `PATCH/DELETE accounts/:id` `GET accounts/:id/transactions` `POST cards` `PATCH/DELETE cards/:id` `POST cards/:id/charges` | [F11](features/F11_kakeibo_account.md) |
 | 収入 | `GET/POST incomes` `PUT/DELETE incomes/:id` `GET/POST income-categories` `PATCH/DELETE income-categories/:id` | [F13](features/F13_kakeibo_income.md) |
-| ダッシュボード | `GET dashboard/summary` `GET dashboard/calendar` `GET dashboard/notifications/today` | 6章・[F12](features/F12_kakeibo_household_summary.md) |
+| ダッシュボード | `GET dashboard/summary` `GET dashboard/calendar` `GET dashboard/day-detail` `GET dashboard/notifications/today` | 6章・[F12](features/F12_kakeibo_household_summary.md) |
 | 表示設定 | `GET/PUT user-settings` | [wireframes.md](wireframes.md) S-21 |
 
 
