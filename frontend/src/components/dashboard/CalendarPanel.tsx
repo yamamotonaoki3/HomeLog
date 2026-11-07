@@ -1,92 +1,74 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from '../../api/client'
 import type { Event } from '../../api/eventTypes'
-import { EventDetailModal } from './EventDetailModal'
 
 export interface CalendarEvent {
-  id: number
-  name: string
-  isRecurring: boolean
-  recurrenceType: Event['recurrenceType']
-  eventDate: string
+  id: number; name: string; isRecurring: boolean; recurrenceType: Event['recurrenceType']; eventDate: string
 }
-
 export interface CalendarDay {
-  date: string
-  fixedCosts: string[]
-  events: CalendarEvent[]
-  income: number
-  expense: number
-  balance: number
+  date: string; fixedCosts: string[]; events: CalendarEvent[]; income: number; expense: number; balance: number
 }
-
-interface CalendarResponse {
-  days: CalendarDay[]
+interface Props {
+  onSelectDate: (day: CalendarDay) => void
+  showEvents?: boolean; showIncome?: boolean; showExpense?: boolean
 }
-
-function currentMonth(): string {
+interface CalendarResponse { days: CalendarDay[] }
+const CATEGORIES = [
+  { key: 'events', label: 'イベント' }, { key: 'income', label: '収入' },
+  { key: 'expense', label: '支出' }, { key: 'fixed', label: '固定費' },
+] as const
+type Category = typeof CATEGORIES[number]['key']
+type CalendarState = { status: 'loading' } | { status: 'error' } | { status: 'ok'; data: CalendarResponse }
+function currentMonth() {
   const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return String(now.getFullYear()) + '-' + String(now.getMonth() + 1).padStart(2, '0')
 }
-
-function addMonths(month: string, amount: number): string {
+function addMonths(month: string, amount: number) {
   const [year, monthNumber] = month.split('-').map(Number)
   const date = new Date(year, monthNumber - 1 + amount, 1)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  return String(date.getFullYear()) + '-' + String(date.getMonth() + 1).padStart(2, '0')
 }
-
-export function CalendarPanel({
-  onSelectDate,
-  showEvents = true,
-  showIncome = true,
-  showExpense = true,
-}: {
-  onSelectDate: (day: CalendarDay) => void
-  showEvents?: boolean
-  showIncome?: boolean
-  showExpense?: boolean
-}) {
-  const [month, setMonth] = useState(currentMonth)
-  const [data, setData] = useState<CalendarResponse>({ days: [] })
-  const [selectedEvent, setSelectedEvent] = useState<{ event: CalendarEvent; date: string } | null>(null)
-
+function MonthGrid({ month, onSelectDate, showEvents = true, showIncome = true, showExpense = true }: Props & { month: string }) {
+  const [state, setState] = useState<CalendarState>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    let cancelled = false
-    apiClient.get<CalendarResponse>('/dashboard/calendar', { params: { month } }).then((response) => {
-      if (!cancelled) setData(response.data)
-    }).catch(() => {
-      if (!cancelled) setData({ days: [] })
-    })
-    return () => { cancelled = true }
-  }, [month])
-
+    const controller = new AbortController()
+    apiClient.get<CalendarResponse>('/dashboard/calendar', { params: { month }, signal: controller.signal })
+      .then(response => { if (!controller.signal.aborted) setState({ status: 'ok', data: response.data }) })
+      .catch(() => { if (!controller.signal.aborted) setState({ status: 'error' }) })
+    return () => controller.abort()
+  }, [month, attempt])
+  if (state.status === 'loading') return <p role="status">カレンダーを読み込み中...</p>
+  if (state.status === 'error') return <div><p role="alert">カレンダーを取得できませんでした</p><button type="button" onClick={() => { setState({ status: 'loading' }); setAttempt(value => value + 1) }}>再試行</button></div>
+  const leading = new Date(month + '-01T12:00:00').getDay()
+  return <>
+    <div className="calendar-weekdays" aria-hidden="true">{['日', '月', '火', '水', '木', '金', '土'].map(label => <span key={label}>{label}</span>)}</div>
+    <div className="calendar-grid">
+      {Array.from({ length: leading }, (_, i) => <span key={'empty-' + i} aria-hidden="true" />)}
+      {state.data.days.map(day => {
+        const visible: Record<Category, boolean> = { events: showEvents && day.events.length > 0, income: showIncome && day.income > 0, expense: showExpense && day.expense > 0, fixed: day.fixedCosts.length > 0 }
+        const categories = CATEGORIES.filter(category => visible[category.key])
+        return <button type="button" className="calendar-day calendar-day-date" key={day.date}
+          aria-label={day.date + (categories.length ? '、' + categories.map(category => category.label + 'あり').join('、') : '')}
+          onClick={() => onSelectDate(day)}>
+          <strong>{Number(day.date.slice(-2))}</strong>
+          <span className="calendar-dots" aria-hidden="true">{categories.map(category => <span className={'calendar-dot calendar-dot-' + category.key} data-category={category.key} key={category.key} />)}</span>
+        </button>
+      })}
+    </div>
+  </>
+}
+export function CalendarPanel(props: Props) {
+  const [month, setMonth] = useState(currentMonth)
   return <section className="calendar-panel">
     <div className="calendar-toolbar">
-      <button type="button" aria-label="前月" onClick={() => setMonth((value) => addMonths(value, -1))}>◀</button>
-      <h2>月間カレンダー</h2>
-      <span>{month.replace('-', '年')}月</span>
-      <button type="button" aria-label="次月" onClick={() => setMonth((value) => addMonths(value, 1))}>▶</button>
+      <button type="button" aria-label="前月" onClick={() => setMonth(value => addMonths(value, -1))}>◀</button>
+      <h2>月間カレンダー</h2><span>{month.replace('-', '年')}月</span>
+      <button type="button" aria-label="次月" onClick={() => setMonth(value => addMonths(value, 1))}>▶</button>
     </div>
-    <div className="calendar-grid">
-      {/* イベントボタンを日付ボタンの中に入れるとボタンの入れ子になりクリックも競合するため、セル内で兄弟要素として並べる */}
-      {data.days.map((day) => <div className="calendar-day" key={day.date}>
-        <button type="button" className="calendar-day-date" aria-label={day.date} onClick={() => onSelectDate(day)}>
-          <strong>{Number(day.date.slice(-2))}</strong>
-          {day.fixedCosts.map((fixedCost) => <span key={`fixed-${fixedCost}`}>●{fixedCost}</span>)}
-          {showIncome && day.income > 0 && <span className="calendar-income">+{day.income}円</span>}
-          {showExpense && day.expense > 0 && <span className="calendar-expense">-{day.expense}円</span>}
-        </button>
-        {showEvents && day.events.map((event) => <button
-          type="button"
-          className="calendar-event"
-          key={`event-${event.id}`}
-          aria-label={`イベント「${event.name}」の詳細`}
-          onClick={() => setSelectedEvent({ event, date: day.date })}
-        >
-          {event.isRecurring ? '📌' : ''}{event.name}
-        </button>)}
-      </div>)}
-    </div>
-    {selectedEvent && <EventDetailModal event={selectedEvent.event} date={selectedEvent.date} onClose={() => setSelectedEvent(null)} />}
+    <MonthGrid key={month} month={month} {...props} />
+    <ul className="calendar-legend" aria-label="カレンダーの凡例">{CATEGORIES.map(category => <li key={category.key}>
+      <span className={'calendar-dot calendar-dot-' + category.key} aria-hidden="true" />{category.label}
+    </li>)}</ul>
   </section>
 }

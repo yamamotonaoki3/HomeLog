@@ -143,9 +143,9 @@ flowchart TD
 - 自動計上された支出は通常の支出と同じく編集・削除できる。固定費マスタや翌月以降の計上には影響しない。
 - 削除した計上月（`fixed_cost_id`・`fixed_cost_year_month`）は`fixed_cost_posting_suppressions`に記録し、自動計上はその月をスキップする。
 
-## 日付詳細向けの読み取り状態（#446、Backend）
+## 日付詳細向けの読み取り状態（#446/#431）
 
-S-04/S-19向け `GET /api/dashboard/day-detail?date=YYYY-MM-DD` は、選択日に現在の設定で支払予定となる可視固定費を返す。API契約は[api-design.md](../api-design.md)参照。フロントエンドの利用・4セクション表示は後続#431で実装する。
+S-04/S-19向け `GET /api/dashboard/day-detail?date=YYYY-MM-DD` は、選択日に現在の設定で支払予定となる可視固定費を返す。API契約は[api-design.md](../api-design.md)参照。S-19は献立・イベント・収支・固定費の4欄を初期全閉で表示する。固定費欄では現在の予定額と以下の状態を表示し、計上記録の実額・支出日はpostedの場合だけ表示する。予定額を本人の日次実績へ再加算しない。
 
 | postingStatus | 表示ラベル | 意味 |
 | --- | --- | --- |

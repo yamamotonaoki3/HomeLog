@@ -148,7 +148,7 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       const dir = process.env.MENU_SEARCH_SCREENSHOT_DIR
       if (dir) { await mkdir(dir, { recursive: true }); await page.screenshot({ path: join(dir, `menu-link-${width}.png`), fullPage: true }) }
-      await dialog.getByRole('button', { name: '閉じる' }).click()
+      await dialog.getByRole('button', { name: '閉じる', exact: true }).click()
       await expect(dialog).toBeHidden()
     })
   }

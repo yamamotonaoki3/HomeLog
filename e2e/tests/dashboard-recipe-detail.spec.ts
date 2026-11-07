@@ -23,7 +23,7 @@ for (const width of [1280, 390, 320]) {
     let dialog = page.getByRole('dialog', { name: 'レシピ詳細' })
     await expect(dialog.getByRole('button', { name: '編集', exact: true })).toBeVisible()
     await expect(dialog.getByRole('button', { name: '削除', exact: true })).toBeVisible()
-    await dialog.getByRole('button', { name: '閉じる' }).click()
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).click()
 
     await page.goto('/menu')
     const menuAddTrigger = page.getByTestId('menu-panel').getByRole('button', { name: 'レシピを追加', exact: true })
@@ -73,7 +73,7 @@ for (const width of [1280, 390, 320]) {
       if (close === 'button') {
         await dialog.locator('.recipe-detail-modal').evaluate((el) => { el.scrollTop = 0 })
         await shot('recipe-detail')
-        await dialog.getByRole('button', { name: '閉じる' }).click()
+        await dialog.getByRole('button', { name: '閉じる', exact: true }).click()
       } else if (close === 'escape') await page.keyboard.press('Escape')
       else await dialog.click({ position: { x: 2, y: 2 } })
       await expect(dialog).toBeHidden()

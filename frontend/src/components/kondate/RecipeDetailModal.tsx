@@ -1,4 +1,5 @@
-import { useLayoutEffect, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useDialog } from '../../hooks/useDialog'
 import type { Recipe } from '../../api/kondateTypes'
 
 const SOURCE_LABELS: Record<string, string> = { manual: '手動', ocr: '画像解析', web: 'WEB' }
@@ -37,9 +38,17 @@ export function RecipeDetailModal({
   onEdit?: () => void
   onDelete?: () => void
 }) {
+  const modalRef = useDialog(onClose, '[data-recipe-close]')
+  const commonReady = useRef(false)
+  useEffect(() => {
+    commonReady.current = true
+    return () => { commonReady.current = false }
+  }, [])
+
+  // 初回commit内の既存Esc契約だけを補い、登録後は共通topmost処理に委ねる。
   useLayoutEffect(() => {
     const onKeyDown = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key === 'Escape') onClose()
+      if (!commonReady.current && keyEvent.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
@@ -59,8 +68,11 @@ export function RecipeDetailModal({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="modal recipe-detail-modal">
-        <span className="recipe-source-badge">{SOURCE_LABELS[recipe.sourceType] ?? recipe.sourceType}</span>
+      <div className="modal recipe-detail-modal" ref={modalRef}>
+        <div className="recipe-detail-header">
+          <span className="recipe-source-badge">{SOURCE_LABELS[recipe.sourceType] ?? recipe.sourceType}</span>
+          <button type="button" className="recipe-detail-close" data-recipe-close aria-label="レシピ詳細を閉じる" onClick={onClose}>×</button>
+        </div>
         <h2 className="recipe-detail-title">{recipe.title}</h2>
 
         {isWeb ? (
@@ -113,7 +125,7 @@ export function RecipeDetailModal({
           {onDelete && <button type="button" className="btn btn-secondary" onClick={onDelete}>
             削除
           </button>}
-          <button type="button" className="btn btn-secondary" onClick={onClose} autoFocus>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
             閉じる
           </button>
         </div>

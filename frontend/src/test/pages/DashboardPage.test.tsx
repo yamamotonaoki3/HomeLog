@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -111,13 +112,14 @@ describe('DashboardPage', () => {
     } })
   }
 
-  it.each(['button', 'escape', 'overlay'] as const)('献立のIDで同名レシピを選び閲覧専用で開き、%sで閉じるとフォーカスを戻す', async (close) => {
+  it.each((['button', 'escape', 'overlay'] as const).flatMap(close => [false, true].map(strict => ({ close, strict }))))('献立のIDで同名レシピを選び閲覧専用で開き、$closeで閉じるとフォーカスを戻す（StrictMode=$strict）', async ({ close, strict }) => {
     setupMenu()
     server.use(http.get('/api/recipes', () => HttpResponse.json([1, 2].map((id) => ({
       id, title: '[E2E_TEST] 同名', ingredients: `材料${id}`, steps: `手順${id}`,
       sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite: false,
     })))))
-    renderDashboardPage()
+    if (strict) render(<StrictMode><MemoryRouter><DashboardPage /></MemoryRouter></StrictMode>)
+    else renderDashboardPage()
     const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
     const list = screen.getByRole('list', { name: '今週の献立' })
     expect(within(list).getAllByRole('button')).toHaveLength(1)
@@ -453,7 +455,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('link', { name: '表示設定を開く' })).toHaveAttribute('href', '/settings/display')
   })
 
-  it('月間カレンダーにイベント・固定費・日次支出を表示する', async () => {
+  it('月間カレンダーはイベント・固定費・支出の有無を日付で読み上げる', async () => {
     setupApi({
       summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 },
       calendar: {
@@ -465,9 +467,11 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: '月間カレンダー' })).toBeInTheDocument()
     expect(screen.queryByText(/通知: \d+件/)).not.toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText(/通院/)).toBeInTheDocument()
-      expect(screen.getByText(/家賃/)).toBeInTheDocument()
-      expect(screen.getByText(/-1200円/)).toBeInTheDocument()
+      const day = screen.getByRole('button', { name: /2026-09-25.*イベントあり.*支出あり.*固定費あり/ })
+      expect(day.querySelectorAll('.calendar-dot')).toHaveLength(3)
+      expect(day).not.toHaveTextContent('通院')
+      expect(day).not.toHaveTextContent('家賃')
+      expect(day).not.toHaveTextContent('1200')
     })
   })
 
