@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -177,9 +178,15 @@ const bonusIncome: Income = {
 
 async function openModal() {
   const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: '登録' }))
+  await user.click(screen.getByRole('button', { name: '収支を登録' }))
   return user
 }
+
+async function openOtherSettings(user: ReturnType<typeof userEvent.setup>, modal = screen.getByTestId('transaction-modal')) {
+  const toggle = within(modal).getByRole('button', { name: 'その他の設定' })
+  if (toggle.getAttribute('aria-expanded') === 'false') await user.click(toggle)
+}
+
 
 describe('支出・収入の編集・削除 #277', () => {
   it.each(['ratio', 'amount'] as const)('未請求の世帯内・世帯外内訳を%sで初期表示し、既存IDをPUTする', async (splitInputType) => {
@@ -277,12 +284,12 @@ describe('支出・収入の編集・削除 #277', () => {
     const user = userEvent.setup()
     const row = await screen.findByRole('button', { name: `${label}：${name}の詳細` })
     await user.click(row)
-    await waitFor(() => expect(screen.getByRole('button', { name: '削除' })).toBeEnabled())
-    await user.click(screen.getByRole('button', { name: '削除' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /の(?:支出|収入)を削除$/ })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: /の(?:支出|収入)を削除$/ }))
     expect(screen.getByRole('dialog')).toHaveTextContent('この操作は取り消せません')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
-    await user.click(screen.getByRole('button', { name: '削除' }))
+    await user.click(screen.getByRole('button', { name: /の(?:支出|収入)を削除$/ }))
     const before = calls.length
     await user.click(screen.getByRole('button', { name: '削除する' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -298,8 +305,8 @@ describe('支出・収入の編集・削除 #277', () => {
     renderKakeiboPage()
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: '支出：ランチの詳細' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '削除' })).toBeEnabled())
-    await user.click(screen.getByRole('button', { name: '削除' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /の(?:支出|収入)を削除$/ })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: /の(?:支出|収入)を削除$/ }))
     await user.click(screen.getByRole('button', { name: '削除する' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
@@ -464,10 +471,10 @@ describe('KakeiboPage', () => {
     await user.click(row)
     row.remove()
     await user.keyboard('{Escape}')
-    expect(screen.getByRole('button', { name: '登録' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: '収支を登録' })).toHaveFocus()
   })
 
-  it('すべての種別で3列を維持し空用途も詳細を開ける', async () => {
+  it('すべての種別で日付・内容・金額を維持し空用途も詳細を開ける', async () => {
     setupApi({ expenses: [{ ...lunchExpense, purpose: '' }], incomes: [salaryIncome] })
     const user = userEvent.setup()
     renderKakeiboPage()
@@ -595,12 +602,13 @@ describe('KakeiboPage', () => {
     renderKakeiboPage()
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
 
-    await openModal()
+    const user = await openModal()
 
     const modal = screen.getByTestId('transaction-modal')
     expect(within(modal).getByRole('tab', { name: '支出' })).toHaveAttribute('aria-selected', 'true')
     expect(within(modal).getByLabelText('使用用途（任意）')).toBeInTheDocument()
-    expect(within(modal).getByLabelText('世帯合計に含める')).toBeInTheDocument()
+    await openOtherSettings(user, modal)
+    expect(within(modal).getByRole('checkbox', { name: '世帯合計に含める' })).toBeVisible()
   })
 
   it('種別が収入のときに登録ボタンを押すと収入タブがデフォルトで選択される', async () => {
@@ -610,7 +618,7 @@ describe('KakeiboPage', () => {
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
     await user.selectOptions(screen.getByLabelText('種別絞り込み'), '収入')
 
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(screen.getByRole('button', { name: '収支を登録' }))
 
     const modal = screen.getByTestId('transaction-modal')
     expect(within(modal).getByRole('tab', { name: '収入' })).toHaveAttribute('aria-selected', 'true')
@@ -686,7 +694,7 @@ describe('KakeiboPage', () => {
       }),
     )
 
-    await user.click(screen.getByRole('button', { name: '登録' }))
+    await user.click(screen.getByRole('button', { name: '収支を登録' }))
     const modal = screen.getByTestId('transaction-modal')
     await user.clear(within(modal).getByLabelText('金額'))
     await user.type(within(modal).getByLabelText('金額'), '1500')
@@ -803,7 +811,7 @@ describe('KakeiboPage', () => {
 
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
 
-    expect(screen.getByRole('button', { name: '登録' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '収支を登録' })).toBeDisabled()
   })
 
   it('初期取得で支出一覧だけ失敗しても取得できた収入を反映する', async () => {
@@ -827,7 +835,7 @@ describe('KakeiboPage', () => {
     server.use(http.get('/api/income-categories', () => HttpResponse.json([])))
     renderKakeiboPage()
     await waitFor(() => expect(screen.getByText('収支の記録はありません')).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: '登録' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '収支を登録' })).toBeEnabled()
     const user = await openModal()
     const modal = screen.getByTestId('transaction-modal')
 
@@ -928,7 +936,8 @@ describe('KakeiboPage', () => {
     await user.type(within(modal).getByLabelText('使用用途（任意）'), '旅行代')
     await user.clear(within(modal).getByLabelText('金額'))
     await user.type(within(modal).getByLabelText('金額'), '5000')
-    await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
+    await openOtherSettings(user, modal)
+    await user.selectOptions(within(modal).getByRole('combobox', { name: 'イベント（任意）' }), '旅行')
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByText('旅行代')).toBeInTheDocument())
@@ -947,7 +956,8 @@ describe('KakeiboPage', () => {
     const user = await openModal()
     const modal = screen.getByTestId('transaction-modal')
 
-    await user.selectOptions(within(modal).getByLabelText('イベント（任意）'), '旅行')
+    await openOtherSettings(user, modal)
+    await user.selectOptions(within(modal).getByRole('combobox', { name: 'イベント（任意）' }), '旅行')
 
     expect(within(modal).getByLabelText('金額')).toHaveValue(3000)
   })
@@ -987,7 +997,7 @@ describe('KakeiboPage 今月支出/今月収入/世帯合計対象額サマリ�
     expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：45300円')
   })
 
-  it('4項目を1行ずつ表示し、固定費予定額は自分が登録した固定費の合計を表示する (#282)', async () => {
+  it('差額を含む5項目を1行ずつ表示し、固定費予定額は自分が登録した固定費の合計を表示する (#282)', async () => {
     const fixed = { paymentDay: 1, personal: false, includeInHouseholdTotal: false, accountId: null, cardId: null, splitInputType: null, splits: [] }
     setupApi({
       fixedCosts: [
@@ -1001,7 +1011,7 @@ describe('KakeiboPage 今月支出/今月収入/世帯合計対象額サマリ�
     const summary = await screen.findByTestId('monthly-summary')
     await waitFor(() => expect(summary).toHaveTextContent('今月の固定費予定額：83000円'))
     expect([...summary.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
-      '今月支出：0円', '今月収入：0円', '世帯合計対象額：45300円', '今月の固定費予定額：83000円',
+      '今月支出：0円', '今月収入：0円', '今月差額：0円', '世帯合計対象額：45300円', '今月の固定費予定額：83000円',
     ])
     expect(screen.queryByTestId('fixed-cost-summary')).not.toBeInTheDocument()
   })
@@ -1056,7 +1066,8 @@ describe('KakeiboPage 世帯合計対象額の再取得', () => {
     const modal = screen.getByTestId('transaction-modal')
     await user.clear(within(modal).getByLabelText('金額'))
     await user.type(within(modal).getByLabelText('金額'), '3000')
-    await user.click(within(modal).getByLabelText('世帯合計に含める'))
+    await openOtherSettings(user, modal)
+    await user.click(within(modal).getByRole('checkbox', { name: '世帯合計に含める' }))
     await user.click(within(modal).getByRole('button', { name: '登録' }))
 
     await waitFor(() => expect(screen.getByTestId('monthly-summary')).toHaveTextContent('世帯合計対象額：3000円'))
@@ -1111,5 +1122,47 @@ describe('KakeiboPage イベント別支出サマリー', () => {
     renderKakeiboPage()
 
     await waitFor(() => expect(screen.getByText('ダッシュボード表示対象のイベントはありません')).toBeInTheDocument())
+  })
+})
+
+
+describe('#422 partialの独立受入', () => {
+  it('履歴filterを変更しても当月サマリーと全期間取得契約を変えない', async () => {
+    const { calls } = setupApi({ expenses: [{ ...lunchExpense, expenseDate: dateInMonth(0, 1), amount: 200 }, { ...suppliesExpense, expenseDate: dateInMonth(-1, 1), amount: 100 }], incomes: [{ ...salaryIncome, incomeDate: dateInMonth(0, 2), amount: 500 }] })
+    renderKakeiboPage()
+    const user = userEvent.setup()
+    const summary = await screen.findByTestId('monthly-summary')
+    expect(summary).toHaveTextContent('今月差額：300円')
+    expect(within(summary).getByRole('heading', { name: /当月サマリー/ })).toBeVisible()
+    const initialGets = calls.filter(call => call.method === 'GET' && /expenses|incomes/.test(call.url)).length
+    fireEvent.change(screen.getByLabelText('履歴の対象月'), { target: { value: dateInMonth(-1, 1).slice(0, 7) } })
+    await user.type(screen.getByRole('searchbox', { name: '収支を検索' }), suppliesExpense.purpose)
+    expect(screen.getAllByRole('button', { name: /の詳細$/ })).toHaveLength(1)
+    expect(summary).toHaveTextContent('今月支出：200円')
+    expect(summary).toHaveTextContent('今月収入：500円')
+    expect(summary).toHaveTextContent('今月差額：300円')
+    expect(calls.filter(call => call.method === 'GET' && /expenses|incomes/.test(call.url))).toHaveLength(initialGets)
+  })
+  it.each(['edit', 'delete'] as const)('StrictModeで%sの親を保持し、子Escは元操作へ復帰', async action => {
+    const { calls } = setupApi({ expenses: [lunchExpense] })
+    render(<StrictMode><MemoryRouter><KakeiboPage /></MemoryRouter></StrictMode>)
+    const user = userEvent.setup()
+    const row = await screen.findByRole('button', { name: '支出：ランチの詳細' })
+    await user.click(row)
+    const parent = screen.getByRole('dialog', { name: '支出詳細' })
+    const trigger = await within(parent).findByRole('button', { name: action === 'edit' ? '編集' : 'ランチの支出を削除' })
+    await waitFor(() => expect(trigger).toBeEnabled())
+    await user.click(trigger)
+    const child = screen.getByRole('dialog', { name: action === 'edit' ? '支出を編集' : '支出を削除しますか？' })
+    expect(parent).toHaveAttribute('hidden')
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    await user.keyboard('{Escape}')
+    expect(child).not.toBeInTheDocument()
+    expect(parent).not.toHaveAttribute('hidden')
+    expect(trigger).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(row).toHaveFocus()
+    expect(calls.some(call => ['PUT', 'DELETE'].includes(call.method))).toBe(false)
   })
 })

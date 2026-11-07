@@ -498,8 +498,10 @@ export function KakeiboPage() {
   return (
     <div className="page kakeibo-page">
       <div className="panel kakeibo-monthly-summary" data-testid="monthly-summary">
+        <h2>当月サマリー（{currentYear}年{currentMonth}月）</h2>
         <p>今月支出：{monthlyExpenseTotal}円</p>
         <p>今月収入：{monthlyIncomeTotal}円</p>
+        <p>今月差額：{monthlyIncomeTotal - monthlyExpenseTotal}円</p>
         <p>世帯合計対象額：{dashboardSummary?.householdExpenseTotal ?? 0}円</p>
         <p>今月の固定費予定額：{fixedCostTotal}円</p>
       </div>
@@ -550,7 +552,7 @@ export function KakeiboPage() {
         onAddClick={() => setModalOpen(true)}
         addDisabled={addDisabled}
       />
-      {detail && !editing && !deleting && <TransactionDetailModal transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} onEdit={() => setEditing(detail)} onDelete={() => { setDeleteError(''); setDeleting(detail) }} />}
+      {detail && <TransactionDetailModal hidden={!!editing || !!deleting} transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} onEdit={() => setEditing(detail)} onDelete={() => { setDeleteError(''); setDeleting(detail) }} />}
       {deleting && <TransactionDeleteModal transaction={deleting} busy={deleteBusy} error={deleteError} onClose={() => setDeleting(null)} onDelete={handleDelete} />}
       {(modalOpen || editing) && (
         <TransactionModal

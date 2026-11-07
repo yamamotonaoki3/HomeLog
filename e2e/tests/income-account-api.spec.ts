@@ -59,7 +59,7 @@ for (const width of [1280, 390, 320]) {
       const detail = page.getByRole('dialog', { name: '収入詳細' })
       await expect(detail).toContainText(name)
       await shot('income-detail')
-      await detail.getByRole('button', { name: '閉じる' }).click()
+      await detail.getByRole('button', { name: '閉じる', exact: true }).click()
       await page.goto('/accounts')
       await expect(page.getByText(name, { exact: true })).toBeVisible()
       await shot('accounts')

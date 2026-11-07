@@ -26,9 +26,11 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
     await expect(page.getByTestId('events-panel').locator('.list-row-button').filter({ hasText: eventName })).toBeVisible()
 
     await page.goto('/kakeibo')
-    await page.getByRole('button', { name: '登録', exact: true }).first().click()
+    await page.getByRole('button', { name: '収支を登録', exact: true }).click()
     const modal = page.getByTestId('transaction-modal')
     await modal.getByRole('tab', { name: '支出' }).click()
+    const transactionSettings = modal.getByRole('button', { name: 'その他の設定', exact: true })
+    if (await transactionSettings.getAttribute('aria-expanded') !== 'true') await transactionSettings.click()
     await modal.getByLabel('イベント（任意）').selectOption({ label: eventName })
     await modal.getByLabel('金額').fill('700')
     await modal.getByLabel('使用用途（任意）').fill('[E2E_TEST] カード期間支出')
