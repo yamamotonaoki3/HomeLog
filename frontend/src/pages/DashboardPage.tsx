@@ -52,6 +52,7 @@ export function DashboardPage() {
   const [inventory, setInventory] = useState<Loadable<InventoryItem[]>>({ status: 'loading' })
   const [accountBalanceTotal, setAccountBalanceTotal] = useState<Loadable<number>>({ status: 'loading' })
   const [toast, setToast] = useState({ message: '', showKey: 0 })
+  const dayTrigger = useRef<HTMLElement | null>(null)
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings | null>(null)
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
@@ -299,7 +300,10 @@ export function DashboardPage() {
       <div className="dashboard-layout">
         {showCard('calendar') && (
           <CalendarPanel
-            onSelectDate={setSelectedDay}
+            onSelectDate={(day) => {
+              dayTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+              setSelectedDay(day)
+            }}
             showEvents={items?.calendar.events !== false}
             showIncome={items?.calendar.income !== false}
             showExpense={items?.calendar.expense !== false}
@@ -312,7 +316,7 @@ export function DashboardPage() {
           </p>
         )}
       </div>
-      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
+      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => { setSelectedDay(null); dayTrigger.current?.focus({ preventScroll: true }) }} />}
       {selectedRecipe && <RecipeDetailModal recipe={selectedRecipe} onClose={closeRecipe} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
