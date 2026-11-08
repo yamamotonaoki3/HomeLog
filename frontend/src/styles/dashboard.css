@@ -195,4 +195,5 @@
 .day-item-button { border:0; background:none; color:#1d4ed8; font:inherit; text-align:left; padding:4px 0; cursor:pointer; }
 .day-detail-body li { min-width:0; margin-block:6px; }
 .day-detail-body .modal-actions button, .day-event-detail button { min-height:44px; min-width:44px; }
+.day-bottom-close { min-height:44px; }
 @media(max-width:400px) { .calendar-panel { padding:12px 8px; } .calendar-grid { gap:2px; } .calendar-day.calendar-day-date { min-height:54px; } .day-detail-header,.day-detail-body { padding-left:12px; padding-right:12px; } }

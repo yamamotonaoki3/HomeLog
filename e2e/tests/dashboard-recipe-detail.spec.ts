@@ -73,7 +73,12 @@ for (const width of [1280, 390, 320]) {
       if (close === 'button') {
         await dialog.locator('.recipe-detail-modal').evaluate((el) => { el.scrollTop = 0 })
         await shot('recipe-detail')
-        await dialog.getByRole('button', { name: '閉じる', exact: true }).click()
+        const footer = dialog.getByRole('button', { name: '閉じる', exact: true })
+        await footer.scrollIntoViewIfNeeded()
+        const footerBox = await footer.boundingBox()
+        expect(footerBox!.width).toBeGreaterThanOrEqual(44)
+        expect(footerBox!.height).toBeGreaterThanOrEqual(44)
+        await footer.click()
       } else if (close === 'escape') await page.keyboard.press('Escape')
       else await dialog.click({ position: { x: 2, y: 2 } })
       await expect(dialog).toBeHidden()

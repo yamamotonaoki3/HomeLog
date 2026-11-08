@@ -156,6 +156,9 @@ for (const width of [1280, 390, 320]) {
       const footer = day.getByRole('button', { name: '閉じる', exact: true })
       expect(await footer.evaluate(el => getComputedStyle(el).position)).not.toMatch(/fixed|sticky/)
       await footer.scrollIntoViewIfNeeded()
+      const footerBox = await footer.boundingBox()
+      expect(footerBox!.width).toBeGreaterThanOrEqual(44)
+      expect(footerBox!.height).toBeGreaterThanOrEqual(44)
       await expect(day.getByRole('button', { name: '日付詳細を閉じる', exact: true })).toBeInViewport()
       if (process.env.DAY_DETAIL_SCREENSHOT_DIR) {
         await mkdir(process.env.DAY_DETAIL_SCREENSHOT_DIR, { recursive: true })

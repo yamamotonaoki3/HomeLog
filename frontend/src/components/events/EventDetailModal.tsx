@@ -19,7 +19,7 @@ export function EventDetailModal({ event, onClose }: { event: Event; onClose: ()
         </dl>
         <EventSummary event={event} />
         <div className="modal-actions">
-          <button data-close type="button" className="btn btn-secondary" onClick={onClose}>閉じる</button>
+          <button data-close type="button" className="btn btn-secondary event-detail-close" onClick={onClose}>閉じる</button>
         </div>
       </div>
     </div>
