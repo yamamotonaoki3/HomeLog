@@ -649,3 +649,67 @@ test('世帯再確認は両一覧の旧行を隔離しGET失敗後も新一覧�
     for (const resource of ['inventory-items', 'shopping-list-items']) await page.unroute('**/api/' + resource + '*')
   }
 })
+
+
+test('unknown待機中に別tabが同要求を解決するとnative storage通知でGET同期し失敗時も再POSTしない (#421)', async ({ page, consoleGuard }) => {
+  consoleGuard.watch(page)
+  const a = await fixture(page, 'purchase_native_storage_resolution')
+  const sent: Purchase[] = []
+  for (const tab of [page]) tab.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/shopping-list-items/purchases')) sent.push(request.postDataJSON()) })
+  consoleGuard.allow({ url: /\/api\/shopping-list-items\/purchases$/, message: 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' })
+  await page.route(purchaseUrl, async route => {
+    const actual = await route.fetch().catch(() => { throw new Error('[E2E_TEST] 購入応答の取得に失敗しました') })
+    expect(actual.status()).toBe(200)
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '[E2E_TEST] commit後の応答喪失' }) })
+  })
+  await choose(page, a.name)
+  await confirmShoppingPurchase(page)
+  await expect(recoveryButton(page)).toBeEnabled()
+  expect(sent).toHaveLength(1)
+  const original = await stored(page, a.key)
+  expect(original.requestId).toBe(sent[0].requestId)
+  await page.unroute(purchaseUrl)
+  const second = await page.context().newPage()
+  consoleGuard.watch(second)
+  second.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/shopping-list-items/purchases')) sent.push(request.postDataJSON()) })
+  const gate = barrier()
+  let synchronizing = false, reads = 0
+  consoleGuard.allow({ url: /\/api\/inventory-items$/, message: 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' })
+  await page.route('**/api/inventory-items', async route => {
+    if (!synchronizing || route.request().method() !== 'GET') { await route.continue(); return }
+    reads++
+    await gate.wait
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '[E2E_TEST] 他画面解決後GET失敗' }) })
+  })
+  try {
+    // Native storage events are intentionally NOT suppressed for this entry.
+    await second.goto('/zaiko/shopping')
+    await expect(recoveryButton(second)).toBeEnabled()
+    synchronizing = true
+    await recoveryButton(second).click()
+    await expect(recoveryButton(second)).toHaveCount(0)
+    await expect.poll(() => stored(second, a.key)).toBeNull()
+    await expect.poll(() => reads).toBe(1)
+    await expect(reflect(page)).toBeDisabled()
+    expect(sent).toHaveLength(2); expect(sent[1]).toEqual(sent[0])
+    gate.release()
+    const retry = page.getByRole('button', { name: '一覧を再取得', exact: true })
+    await expect(retry).toBeEnabled()
+    await expect(reflect(page)).toBeDisabled()
+    expect(sent).toHaveLength(2)
+    await page.unroute('**/api/inventory-items')
+    await retry.click()
+    await expect(retry).toHaveCount(0)
+    await expect(panel(page).getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
+    await page.getByRole('link', { name: '在庫一覧', exact: true }).click()
+    await expect(page.getByText('6.0', { exact: true })).toBeVisible()
+    expect(sent).toHaveLength(2)
+    expect(new Set(sent.map(body => body.requestId)).size).toBe(1)
+    expect(await stored(page, a.key)).toBeNull()
+    expect(await stock(page, a.inventoryId)).toBe(6)
+  } finally {
+    gate.release()
+    await page.unroute('**/api/inventory-items')
+    await second.close()
+  }
+})

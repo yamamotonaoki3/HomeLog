@@ -128,6 +128,118 @@ beforeEach(() => {
   server.use(http.get('/api/auth/me', () => HttpResponse.json({ id: 1 })), http.get('/api/households/me', () => HttpResponse.json({ id: 10 })))
 })
 afterEach(() => { clearTokens(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+it.each([
+  { trigger: 'storage', failRefresh: false }, { trigger: 'storage', failRefresh: true },
+  { trigger: 'recover', failRefresh: false }, { trigger: 'recover', failRefresh: true },
+  { trigger: 'recheck', failRefresh: false }, { trigger: 'recheck', failRefresh: true },
+] as const)('観測済みpendingの消失は自画面のGET完了まで新規購入を止める: $trigger / GET失敗=$failRefresh', async ({ trigger, failRefresh }) => {
+  const original = { requestId: '12345678-1234-4234-8234-123456789abc', items: lines }
+  expect((await savePending(scope, original, () => true)).kind).toBe('saved')
+  const gate = deferred(), onResolvedElsewhere = vi.fn(async () => {
+    await gate.promise
+    if (failRefresh) throw new Error('[E2E_TEST] list GET failed')
+  })
+  // An external deletion carries no success/NOT_APPLIED response. Only our own GET can synchronize rows.
+  const options = { ...callbacks(), onResolvedElsewhere }
+  let posts = 0
+  server.use(http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}, { status: 503 }) }))
+  const { result } = renderHook(() => useShoppingPurchases(options))
+  await waitFor(() => expect(result.current.status).toBe('unknown'))
+  expect(result.current.pending).toMatchObject(original)
+  const key = pendingKey(scope), oldValue = localStorage.getItem(key)
+  const deletion = () => window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage }))
+  let synchronizing: Promise<void> | undefined
+  try {
+    act(() => {
+      localStorage.removeItem(key)
+      if (trigger === 'storage') deletion()
+      else synchronizing = result.current[trigger]()
+    })
+    await waitFor(() => expect(onResolvedElsewhere).toHaveBeenCalledOnce())
+    expect(['ready', 'notApplied']).not.toContain(result.current.status)
+    await act(async () => { deletion(); await result.current.recheck(); await result.current.confirm(lines); await result.current.recover() })
+    expect(onResolvedElsewhere).toHaveBeenCalledOnce()
+    expect(['ready', 'notApplied']).not.toContain(result.current.status)
+    expect(posts).toBe(0); expect(readPending(scope).kind).toBe('empty')
+    expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+    await act(async () => { gate.resolve(); await synchronizing })
+    if (failRefresh) {
+      await waitFor(() => expect(result.current.message).toMatch(/一覧.*再取得/))
+      expect(['ready', 'notApplied']).not.toContain(result.current.status)
+      expect(result.current.message).not.toMatch(/購入.*反映済|購入を反映しました/)
+      await act(async () => { deletion(); await result.current.confirm(lines); await result.current.recover() })
+      expect(onResolvedElsewhere).toHaveBeenCalledOnce()
+    } else await waitFor(() => expect(result.current.status).toBe('ready'))
+    expect(posts).toBe(0); expect(options.onDetached).not.toHaveBeenCalled()
+    expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+  } finally { await act(async () => { gate.resolve(); await synchronizing }) }
+})
+
+it('未確認pendingを観測していない空storageイベントではGETも購入も始めない', async () => {
+  const options = { ...callbacks(), onResolvedElsewhere: vi.fn().mockResolvedValue(undefined) }
+  let posts = 0
+  server.use(http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}) }))
+  const { result } = renderHook(() => useShoppingPurchases(options))
+  await waitFor(() => expect(result.current.status).toBe('ready'))
+  await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key: pendingKey(scope), oldValue: null, newValue: null, storageArea: localStorage })) })
+  expect(result.current.status).toBe('ready'); expect(result.current.pending).toBeNull()
+  expect(options.onResolvedElsewhere).not.toHaveBeenCalled(); expect(posts).toBe(0)
+  expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+})
+
+it.each(['newKey', 'corrupt', 'blocked'] as const)('別tabの削除通知でも現在の保存内容が空でなければ旧pendingの同期で消費しない: %s', async (change) => {
+  expect((await savePending(scope, { requestId: '12345678-1234-4234-8234-123456789abc', items: lines }, () => true)).kind).toBe('saved')
+  const options = { ...callbacks(), onResolvedElsewhere: vi.fn().mockResolvedValue(undefined) }
+  let posts = 0
+  server.use(http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}) }))
+  const { result } = renderHook(() => useShoppingPurchases(options))
+  await waitFor(() => expect(result.current.status).toBe('unknown'))
+  const key = pendingKey(scope), oldValue = localStorage.getItem(key)
+  const replacement = { ...JSON.parse(oldValue!), requestId: '22345678-1234-4234-8234-123456789abc', items: [{ ...lines[0], expectedPurchaseRevision: 4 }] }
+  if (change === 'newKey') localStorage.setItem(key, JSON.stringify(replacement))
+  if (change === 'corrupt') localStorage.setItem(key, '{invalid [E2E_TEST]')
+  const stored = localStorage.getItem(key), read = Storage.prototype.getItem
+  const unreadable = change === 'blocked' ? vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, name: string) {
+    if (name === key) throw new Error('[E2E_TEST] storage unavailable')
+    return read.call(this, name)
+  }) : undefined
+  try {
+    await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage })) })
+    expect(result.current.status).toBe(change === 'newKey' ? 'unknown' : change)
+    if (change === 'newKey') expect(result.current.pending).toMatchObject(replacement)
+    await act(async () => { await result.current.confirm(lines) })
+    expect(posts).toBe(0); expect(options.onResolvedElsewhere).not.toHaveBeenCalled()
+    expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+  } finally { unreadable?.mockRestore() }
+  expect(localStorage.getItem(key)).toBe(stored)
+})
+
+it.each(['otherScope', 'access', 'session', 'actor'] as const)('別scopeや別credentialsのstorage通知で旧pendingの同期callbackを呼ばない: %s', async (change) => {
+  expect((await savePending(scope, { requestId: '12345678-1234-4234-8234-123456789abc', items: lines }, () => true)).kind).toBe('saved')
+  const options = { ...callbacks(), onResolvedElsewhere: vi.fn().mockResolvedValue(undefined) }
+  let posts = 0
+  server.use(http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}) }))
+  const { result, rerender } = renderHook(({ actor }) => useShoppingPurchases({ ...options, actorUserId: actor }), { initialProps: { actor: 1 } })
+  await waitFor(() => expect(result.current.status).toBe('unknown'))
+  const key = pendingKey(scope), oldValue = localStorage.getItem(key)
+  if (change === 'actor') {
+    server.use(http.get('/api/auth/me', () => HttpResponse.json({ id: 2 })))
+    await act(async () => { setTokens('testuser_b_access', 'testuser_b_refresh'); rerender({ actor: 2 }) })
+    await waitFor(() => expect(result.current.scope?.actorUserId).toBe(2))
+  }
+  await act(async () => {
+    if (change === 'access') setAccessToken('testuser_a_rotated_access')
+    if (change === 'session') setTokens('testuser_b_access', 'testuser_b_refresh')
+    if (change !== 'otherScope') localStorage.removeItem(key)
+    window.dispatchEvent(new StorageEvent('storage', { key: change === 'otherScope' ? pendingKey({ actorUserId: 1, householdId: 20 }) : key, oldValue, newValue: null, storageArea: localStorage }))
+  })
+  expect(options.onResolvedElsewhere).not.toHaveBeenCalled()
+  expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled(); expect(posts).toBe(0)
+  if (change === 'otherScope') {
+    expect(result.current.status).toBe('unknown'); expect(localStorage.getItem(key)).toBe(oldValue)
+  } else if (change !== 'actor') expect(['ready', 'notApplied']).not.toContain(result.current.status)
+})
+
 it('確認後保存済bodyだけを1回送信し対象を成功callbackへ渡す', async () => {
   const options = callbacks(); let posts = 0
   server.use(http.post('/api/shopping-list-items/purchases', async ({ request }) => { posts++; const body = await request.json() as { requestId: string }; expect(readPending(scope).kind).toBe('pending'); return HttpResponse.json(response(body.requestId)) }))

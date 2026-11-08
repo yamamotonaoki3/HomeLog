@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { ShoppingListPanel } from '../../components/zaiko/ShoppingListPanel'
 import { setTokens, clearTokens } from '../../api/tokenStorage'
+import { pendingKey, readPending, savePending } from '../../lib/shoppingPending'
 const inventory = [1,2].map(id => ({ id, name: 'testuser_品目'+id, categoryId: 1, storeId: id === 1 ? 1 : null, quantity: 0.5, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }))
 const shopping = inventory.map(i => ({ id: i.id+10, inventoryItemId: i.id, name: i.name, isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 3, purchaseRevision: 2, price: null }))
 const props = { shopping, inventory, categories: [{ id: 1, name: '食品', isDefault: true }], stores: [{ id: 1, name: '店舗A' }], sort: 'store' as const, onSortChange: vi.fn(), onRefresh: vi.fn().mockResolvedValue(undefined), onNotify: vi.fn(), actorUserId: 1 }
@@ -88,6 +89,150 @@ beforeEach(() => {
   server.use(http.get('/api/households/me',()=>HttpResponse.json({id:10})))
 })
 afterEach(()=>{clearTokens();vi.unstubAllGlobals()})
+it.each([
+ { failRefresh: false, untargeted: 'zero' },
+ { failRefresh: false, untargeted: 'unchecked' },
+ { failRefresh: true, untargeted: 'zero' },
+ { failRefresh: true, untargeted: 'unchecked' },
+])('idleの既知pendingがstorageで解決しても自画面のGET成功まで購入を止め未対象入力を保持する: GET失敗=$failRefresh / $untargeted', async ({ failRefresh, untargeted }) => {
+ const user = userEvent.setup(), gates = [deferred(), deferred()], notify = vi.fn()
+ const scope = { actorUserId: 1, householdId: 10 }, key = pendingKey(scope)
+ const original = { requestId: '12345678-1234-4234-8234-123456789abc', items: [{ id: 11, purchasedQuantity: 2, expectedPurchaseRevision: 2 }] }
+ let publish!: () => void, posts = 0, patches = 0, gets = 0
+ // No purchase response is available in this tab. These rows come only from its completed list GET.
+ const latest = [{ ...shopping[0], plannedQuantity: 1, purchaseRevision: 3 }, shopping[1]]
+ const refresh = vi.fn(async () => {
+  const index = gets++
+  await gates[index].promise
+  if (index === 0 && failRefresh) throw new Error('[E2E_TEST] list GET failed')
+  publish()
+ })
+ server.use(
+  http.get('/api/auth/me', () => HttpResponse.json({ id: 1 })),
+  http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}, { status: 503 }) }),
+  http.patch('/api/shopping-list-items/:id', () => { patches++; return HttpResponse.json({}, { status: 503 }) }),
+ )
+ const view = render(<ShoppingListPanel {...props} onRefresh={refresh} onNotify={notify} />)
+ publish = () => view.rerender(<ShoppingListPanel {...props} shopping={latest} onRefresh={refresh} onNotify={notify} />)
+ const first = screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする' })
+ const second = screen.getByRole('checkbox', { name: 'testuser_品目2を購入済みにする' })
+ await waitFor(() => expect(first).toBeEnabled())
+ await user.click(first); await user.click(second)
+ await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細' }))
+ const planned = screen.getByRole('textbox', { name: 'testuser_品目1の予定数' }), actual = screen.getByRole('textbox', { name: 'testuser_品目1の実購入数' })
+ await user.clear(planned); await user.type(planned, '5'); await user.clear(actual); await user.type(actual, '2')
+ await user.click(screen.getByRole('button', { name: '閉じる' }))
+ await user.click(screen.getByRole('button', { name: 'testuser_品目2の詳細' }))
+ const otherPlanned = screen.getByRole('textbox', { name: 'testuser_品目2の予定数' }), otherActual = screen.getByRole('textbox', { name: 'testuser_品目2の実購入数' })
+ await user.clear(otherPlanned); await user.type(otherPlanned, '8'); await user.clear(otherActual); await user.type(otherActual, untargeted === 'zero' ? '0' : '2.5')
+ await user.click(screen.getByRole('button', { name: '閉じる' }))
+ if (untargeted === 'unchecked') await user.click(second)
+ expect(screen.getByRole('button', { name: '購入を反映' })).toBeEnabled()
+ expect((await savePending(scope, original, () => true)).kind).toBe('saved')
+ const oldValue = localStorage.getItem(key)
+ await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue: null, newValue: oldValue, storageArea: localStorage })) })
+ await screen.findByRole('button', { name: '前回の購入結果を確認' })
+ expect(first).toBeDisabled(); expect(screen.getByRole('button', { name: '購入を反映' })).toBeDisabled()
+ expect(refresh).not.toHaveBeenCalled(); expect(posts).toBe(0)
+ const expectBlocked = async () => {
+  expect(screen.getByRole('button', { name: '購入を反映' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: '購入を反映' }))
+  expect(screen.queryByRole('dialog', { name: '購入内容の確認' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 3')
+  expect(screen.queryByText(/購入.*反映済|購入を反映しました/)).not.toBeInTheDocument()
+  expect(posts).toBe(0); expect(patches).toBe(0)
+ }
+ const expectUntargetedDraft = async () => {
+  expect(second).toHaveProperty('checked', untargeted === 'zero')
+  await user.click(screen.getByRole('button', { name: 'testuser_品目2の詳細' }))
+  expect(screen.getByRole('textbox', { name: 'testuser_品目2の予定数' })).toHaveValue('8')
+  expect(screen.getByRole('textbox', { name: 'testuser_品目2の実購入数' })).toHaveValue(untargeted === 'zero' ? '0' : '2.5')
+  await user.click(screen.getByRole('button', { name: '閉じる' }))
+ }
+ try {
+  await act(async () => {
+   localStorage.removeItem(key)
+   window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage }))
+  })
+  // This observation exposes the real listener gap, independently of any proposed hook callback API.
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+  await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage })) })
+  expect(refresh).toHaveBeenCalledTimes(1)
+  await expectBlocked()
+  expect(readPending(scope).kind).toBe('empty')
+  await act(async () => { gates[0].resolve() })
+  if (failRefresh) {
+   const retry = await screen.findByRole('button', { name: '一覧を再取得' })
+   await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage })) })
+   expect(refresh).toHaveBeenCalledTimes(1)
+   await expectBlocked(); await expectUntargetedDraft()
+   expect(first).toBeChecked()
+   await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細' }))
+   expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数' })).toHaveValue('5')
+   expect(screen.getByRole('textbox', { name: 'testuser_品目1の実購入数' })).toHaveValue('2')
+   await user.click(screen.getByRole('button', { name: '閉じる' }))
+   await user.click(retry)
+   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2))
+   await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage })) })
+   expect(refresh).toHaveBeenCalledTimes(2)
+   expect(retry).toBeDisabled(); await expectBlocked()
+   await act(async () => { gates[1].resolve() })
+  }
+  await waitFor(() => expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 1'))
+  await waitFor(() => expect(first).toBeEnabled())
+  // The old checked revision must not be rebased merely because the external pending disappeared.
+  expect(screen.getByRole('button', { name: '購入を反映' })).toBeDisabled()
+  expect(screen.getByText(/予定が変更されています/)).toBeInTheDocument()
+  await expectUntargetedDraft()
+  await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細' }))
+  expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数' })).toHaveValue('5')
+  expect(screen.getByRole('textbox', { name: 'testuser_品目1の実購入数' })).toHaveValue('2')
+  await user.click(screen.getByRole('button', { name: '閉じる' }))
+  await user.click(first); await user.click(first)
+  expect(screen.getByRole('button', { name: '購入を反映' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '購入を反映' }))
+  const confirmation = screen.getByRole('dialog', { name: '購入内容の確認' })
+  expect(confirmation).toHaveTextContent('testuser_品目1'); expect(confirmation).not.toHaveTextContent('testuser_品目2')
+  expect(posts).toBe(0); expect(patches).toBe(0); expect(refresh).toHaveBeenCalledTimes(failRefresh ? 2 : 1)
+  expect(screen.queryByText(/購入.*反映済|購入を反映しました/)).not.toBeInTheDocument()
+  expect(notify.mock.calls.every(([message]) => !/購入.*反映済|購入を反映しました/.test(message))).toBe(true)
+ } finally { await act(async () => { gates.forEach(gate => gate.resolve()) }) }
+})
+
+it('別tabのpending解決で古い購入確認を閉じGET完了後も入力を保持する', async () => {
+ const user = userEvent.setup(), entered = deferred(), release = deferred()
+ const scope = { actorUserId: 1, householdId: 10 }, key = pendingKey(scope)
+ let posts = 0
+ server.use(
+  http.get('/api/auth/me', () => HttpResponse.json({ id: 1 })),
+  http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}, { status: 503 }) }),
+ )
+ const refresh = vi.fn(async () => { entered.resolve(); await release.promise })
+ render(<ShoppingListPanel {...props} onRefresh={refresh} />)
+ const check = screen.getByLabelText('testuser_品目1を購入済みにする')
+ await waitFor(() => expect(check).toBeEnabled())
+ await user.click(check)
+ await user.click(screen.getByText('購入を反映', { selector: 'button' }))
+ expect(screen.getByText('購入内容の確認', { selector: 'h2' })).toBeInTheDocument()
+ const original = { requestId: '12345678-1234-4234-8234-123456789abc', items: [{ id: 11, purchasedQuantity: 2, expectedPurchaseRevision: 2 }] }
+ expect((await savePending(scope, original, () => true)).kind).toBe('saved')
+ const oldValue = localStorage.getItem(key)
+ await act(async () => { window.dispatchEvent(new StorageEvent('storage', { key, oldValue: null, newValue: oldValue, storageArea: localStorage })) })
+ try {
+  await act(async () => {
+   localStorage.removeItem(key)
+   window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: null, storageArea: localStorage }))
+   await entered.promise
+  })
+  expect(screen.queryByText('購入内容の確認', { selector: 'h2' })).not.toBeInTheDocument()
+  expect(screen.getByText('購入を反映', { selector: 'button' })).toBeDisabled()
+  expect(posts).toBe(0); expect(check).toBeChecked()
+  await act(async () => { release.resolve() })
+  await waitFor(() => expect(check).toBeEnabled())
+  expect(check).toBeChecked(); expect(posts).toBe(0); expect(refresh).toHaveBeenCalledOnce()
+ } finally { await act(async () => { release.resolve() }) }
+})
+
 it.each([false,true])('通常追加は同refresh-sessionのaccess更新後も成功を受理し入力をリセットする: GET失敗=%s',async(failRefresh)=>{
  const user=userEvent.setup(),notify=vi.fn(),refresh=failRefresh?vi.fn().mockRejectedValue(new Error('GET')):vi.fn().mockResolvedValue(undefined)
  const bodies:unknown[]=[]

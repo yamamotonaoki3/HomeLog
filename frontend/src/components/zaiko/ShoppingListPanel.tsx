@@ -60,10 +60,11 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
       await onRefresh()
     },
     onNotApplied: async () => { setConfirmLines(null); await onRefresh() },
+    onResolvedElsewhere: async () => { setConfirmLines(null); await onRefresh() },
     onDetached: invalidateScope => { setDrafts({}); setOverrides({}); setCompleted({}); setSelectedId(undefined); setConfirmLines(null); setAddFormOpen(false); setAddItemId(''); setAddPrice(''); if (invalidateScope) onScopeDetached?.() },
   })
   const detached = purchase.status === 'detached' || purchase.isolated
-  const sending = purchase.status === 'sending' || purchase.status === 'refreshing'
+  const sending = purchase.status === 'sending' || purchase.status === 'refreshing' || purchase.status === 'listRefreshing'
   const checking = purchase.status === 'checking'
   const rows = shopping.map(item => overrides[item.id] && overrides[item.id].purchaseRevision > item.purchaseRevision ? { ...item, ...overrides[item.id] } : item).filter(item => completed[item.id] !== item.purchaseRevision)
   const selected = rows.find(item => item.id === selectedId)
@@ -167,7 +168,7 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
       <button type="button" className="btn btn-primary" disabled={sending || detached || checking} onClick={() => void purchase.recover()}>前回の購入結果を確認</button>
     </div>}
     {['blocked', 'detached'].includes(purchase.status) && <button type="button" className="btn btn-secondary" onClick={() => void purchase.recheck()}>本人と世帯を再確認</button>}
-    {['refreshFailed', 'notApplied', 'notAppliedRefreshFailed', 'scopeRefreshFailed'].includes(purchase.status) && <button type="button" className="btn btn-secondary" disabled={refreshing} onClick={() => void (purchase.status === 'scopeRefreshFailed' ? purchase.recheck() : retryRefresh())}>一覧を再取得</button>}
+    {['refreshFailed', 'notApplied', 'notAppliedRefreshFailed', 'scopeRefreshFailed', 'listRefreshing', 'listRefreshFailed'].includes(purchase.status) && <button type="button" className="btn btn-secondary" disabled={refreshing || purchase.status === 'listRefreshing'} onClick={() => void (purchase.status === 'scopeRefreshFailed' ? purchase.recheck() : purchase.status === 'listRefreshFailed' ? purchase.retrySynchronization() : retryRefresh())}>一覧を再取得</button>}
     {!detached && <>
       {addFormOpen && <div className="inline-form shopping-add-form">
         <select aria-label="追加する品目" value={addItemId} disabled={mutation} onChange={e => { setAddItemId(e.target.value); const price = inventoryOf(Number(e.target.value))?.price; setAddPrice(price == null ? '' : String(price)) }}>
