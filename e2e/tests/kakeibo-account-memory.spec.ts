@@ -254,3 +254,44 @@ test.describe('390px 本人情報loading送信境界 #422', () => {
     }
   })
 })
+
+
+test.describe('390px 候補取得失敗と記憶 #422', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+  test('実保存済み口座を候補GET失敗の自動未選択保存で消さず復旧後に復元する', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await setupUserWithHousehold(page, 'ledger_memory_accounts_failure')
+    const fixture = await seed(page, 'accounts_failure')
+    await page.goto('/kakeibo')
+    const modal = await open(page)
+    await expect(modal.getByRole('button', { name: '登録', exact: true })).toBeEnabled()
+    await expenseSelect(modal).selectOption('account:' + fixture.account.id)
+    await save(page, 'expense', '[E2E_TEST] 取得失敗前の成功口座', 100)
+    const expected = [{ kind: 'expense', value: { selection: 'account:' + fixture.account.id } }]
+    expect(await storedSelections(page)).toEqual(expected)
+    consoleGuard.allow({ url: /\/api\/accounts$/, message: 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' })
+    await page.route('**/api/accounts', async route => {
+      if (route.request().method() !== 'GET') { await route.continue(); return }
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '[E2E_TEST] accounts unavailable' }) })
+    })
+    const purpose = '[E2E_TEST] 候補不明の口座なし保存'
+    try {
+      await page.reload()
+      await open(page)
+      await expect(modal.getByRole('button', { name: '登録', exact: true })).toBeEnabled()
+      await expect(expenseSelect(modal)).toHaveValue('')
+      await shot(page, 390, 'accounts-unavailable')
+      const body = await save(page, 'expense', purpose, 40)
+      expect(body).toMatchObject({ purpose, amount: 40, accountId: null, cardId: null })
+      expect(await storedSelections(page)).toEqual(expected)
+    } finally { await page.unroute('**/api/accounts') }
+    await page.reload()
+    await open(page)
+    await expect(expenseSelect(modal)).toHaveValue('account:' + fixture.account.id)
+    await modal.getByRole('button', { name: 'キャンセル', exact: true }).click()
+    expect((await api<Account[]>(page, 'GET', 'accounts')).find(account => account.id === fixture.account.id)?.balance).toBe(9900)
+    const expenses = await api<{ purpose: string; accountId: number | null; cardId: number | null }[]>(page, 'GET', 'expenses')
+    expect(expenses.filter(expense => expense.purpose === purpose)).toEqual([expect.objectContaining({ accountId: null, cardId: null })])
+    expect(await storedSelections(page)).toEqual(expected)
+  })
+})

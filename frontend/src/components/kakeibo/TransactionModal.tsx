@@ -161,6 +161,7 @@ function TransactionForm({
       setError(splitResult.errorMessage || '割り勘の入力内容を確認してください')
       return
     }
+    const shouldRememberAccount = Boolean(editing) || accountsStatus === 'ok' || accountChanged.current || accountSelection !== ''
     setError('')
     setSubmitting(true)
     const save = (path: string, body: object) => editing
@@ -201,7 +202,7 @@ function TransactionForm({
     }
 
     if (!active.current) return
-    writeLastTransactionAccount(userId, kind, accountSelection)
+    if (shouldRememberAccount) writeLastTransactionAccount(userId, kind, accountSelection)
     try {
       await onSaved(kind)
     } catch (err) {

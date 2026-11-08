@@ -315,4 +315,92 @@ describe('#422 前回口座記憶', () => {
     }
   })
 
+  it.each([
+    { status: 'loading' as const, failRefresh: false }, { status: 'loading' as const, failRefresh: true },
+    { status: 'error' as const, failRefresh: false }, { status: 'error' as const, failRefresh: true },
+  ])('候補$statusの自動未選択は保存成功でも旧記憶を維持する: GET失敗=$failRefresh', async ({ status, failRefresh }) => {
+    remember('account:5')
+    const calls: unknown[] = []
+    server.use(http.post('/api/expenses', async ({ request }) => { calls.push(await request.json()); return HttpResponse.json({}, { status: 201 }) }))
+    const p = props()
+    if (failRefresh) p.onSaved.mockRejectedValue(new Error('testuser_GET_failed'))
+    render(<TransactionModal {...p} accounts={[]} accountsStatus={status} />)
+    expect(expenseSelect()).toHaveValue('')
+    await submit()
+    await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ accountId: null, cardId: null })
+    expect(remembered()).toBe('{"selection":"account:5"}')
+  })
+
+  it.each(['status-ready', 'manual-change'] as const)('記憶可否を送信時にcaptureしPOST中の%sで変えない', async change => {
+    remember('account:5')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const request = vi.spyOn(apiClient, 'post')
+    server.use(http.post('/api/expenses', async () => { await gate; return HttpResponse.json({}, { status: 201 }) }))
+    const p = props()
+    const view = render(<TransactionModal {...p} accountsStatus="loading" />)
+    try {
+      await submit()
+      expect(request).toHaveBeenCalledOnce()
+      if (change === 'status-ready') view.rerender(<TransactionModal {...p} accountsStatus="ok" />)
+      else await userEvent.setup().selectOptions(expenseSelect(), 'account:6')
+      await act(async () => { release(); await request.mock.results[0].value })
+      await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+      expect(request.mock.calls[0][1]).toMatchObject({ accountId: null, cardId: null })
+      expect(remembered()).toBe('{"selection":"account:5"}')
+    } finally {
+      release()
+      await act(async () => { await Promise.allSettled(request.mock.results.map(result => result.value)) })
+      request.mockRestore()
+    }
+  })
+
+  it.each(['account:6', ''])('候補取得失敗中でも利用者の明示選択%sは成功時に記憶する', async selection => {
+    remember('account:5')
+    server.use(http.post('/api/expenses', () => HttpResponse.json({}, { status: 201 })))
+    const p = props()
+    render(<TransactionModal {...p} accountsStatus="error" />)
+    const user = userEvent.setup()
+    await user.selectOptions(expenseSelect(), 'account:6')
+    if (selection === '') await user.selectOptions(expenseSelect(), '')
+    await submit()
+    await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+    expect(remembered()).toBe(JSON.stringify({ selection }))
+  })
+
+  it.each(['loading', 'error'] as const)('編集元の未指定は候補%sでも確定した選択としてPUT成功時に記憶する', async status => {
+    remember('card:5')
+    server.use(http.put('/api/expenses/42', () => HttpResponse.json({})))
+    const p = props()
+    render(<TransactionModal {...p} accountsStatus={status} editing={{ kind: 'expense', data: { id: 42, expenseDate: '2030-01-15', amount: 1000, purpose: '[E2E_TEST] 編集元null', categoryId: 1, memo: null, includeInHouseholdTotal: false, accountId: null, cardId: null, eventId: null } }} />)
+    expect(expenseSelect()).toHaveValue('')
+    await userEvent.setup().click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+    expect(remembered()).toBe('{"selection":""}')
+  })
+
+  it('候補取得済みの新規未選択は通常の成功選択として記憶する', async () => {
+    server.use(http.post('/api/expenses', () => HttpResponse.json({}, { status: 201 })))
+    const p = props()
+    render(<TransactionModal {...p} />)
+    await submit()
+    await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+    expect(remembered()).toBe('{"selection":""}')
+  })
+
+  it('取得済みで復元した非空選択は候補失敗へ変わっても成功時に記憶する', async () => {
+    remember('account:5')
+    server.use(http.post('/api/expenses', () => HttpResponse.json({}, { status: 201 })))
+    const p = props()
+    const view = render(<TransactionModal {...p} />)
+    expect(expenseSelect()).toHaveValue('account:5')
+    view.rerender(<TransactionModal {...p} accountsStatus="error" />)
+    remember('account:6')
+    await submit()
+    await waitFor(() => expect(p.onSaved).toHaveBeenCalledOnce())
+    expect(remembered()).toBe('{"selection":"account:5"}')
+  })
+
 })
