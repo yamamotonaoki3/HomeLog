@@ -1,12 +1,14 @@
 import { shoppingEnvironment } from '../shoppingEnvironment'
 shoppingEnvironment()
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { ZaikoPage } from '../../pages/ZaikoPage'
+import { apiClient } from '../../api/client'
+import { clearTokens } from '../../api/tokenStorage'
 import type { InventoryItem, ShoppingListItem } from '../../api/zaikoTypes'
 
 const defaultCategories = [
@@ -158,6 +160,95 @@ async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>, na
 }
 
 describe('ZaikoPage', () => {
+  it('購入の初回未検証では在庫の登録モーダルとカテゴリー入力を維持する', async () => {
+    clearTokens()
+    setupApi()
+    const user = userEvent.setup()
+    renderZaikoPage()
+    await screen.findByRole('button', { name: '本人と世帯を再確認', hidden: true })
+    expect(screen.getByTestId('inventory-panel')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '在庫を登録' }))
+    await user.type(screen.getByLabelText('品名'), 'testuser_初回未検証品目')
+    await user.click(screen.getByRole('button', { name: '＋カテゴリーを登録' }))
+    await user.type(screen.getByLabelText('カテゴリー名'), 'testuser_初回カテゴリー')
+    expect(screen.getByLabelText('品名')).toHaveValue('testuser_初回未検証品目')
+    expect(screen.getByLabelText('カテゴリー名')).toHaveValue('testuser_初回カテゴリー')
+    expect(screen.getByRole('dialog', { name: '在庫を登録' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '購入を反映', hidden: true })).not.toBeInTheDocument()
+  })
+
+  it.each([false, true])('世帯再接続は両一覧の成功まで隔離し、後着した旧世帯GETを破棄する: 初回GET失敗=%s', async (failFirst) => {
+    const oldInventory = { ...egg, name: 'testuser_旧世帯品目' }
+    const oldShopping: ShoppingListItem = { id: 10, inventoryItemId: 2, name: oldInventory.name, isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }
+    setupApi({ inventory: [oldInventory], shopping: [oldShopping] })
+    const user = userEvent.setup()
+    renderZaikoPage()
+    await openInventoryDetails(user, oldInventory.name)
+    const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r }); return { promise, resolve } }
+    const gates = [deferred(), deferred(), deferred()]
+    const arrived = [deferred(), deferred(), deferred()]
+    const counts = [0, 0, 0]
+    let inventoryGets = 0, shoppingGets = 0
+    const freshInventory = { ...oldInventory, id: 31, name: 'testuser_新世帯品目', quantity: 7.5 }
+    const freshShopping = { ...oldShopping, id: 41, inventoryItemId: 31, name: freshInventory.name, plannedQuantity: 6 }
+    const get = vi.spyOn(apiClient, 'get')
+    const waitForReply = async (index: number) => { if (++counts[index] === 2) arrived[index].resolve(); await gates[index].promise }
+    server.use(
+      http.get('/api/inventory-items', async () => {
+        const index = inventoryGets++; await waitForReply(index)
+        if (index === 1 && failFirst) return HttpResponse.json({}, { status: 503 })
+        return HttpResponse.json([index === 0 ? oldInventory : freshInventory])
+      }),
+      http.get('/api/shopping-list-items', async () => {
+        const index = shoppingGets++; await waitForReply(index)
+        return HttpResponse.json([index === 0 ? oldShopping : freshShopping])
+      }),
+    )
+    try {
+      // An inventory mutation starts both old-scope GETs, independently of the shopping panel.
+      await user.click(screen.getByRole('button', { name: oldInventory.name + 'を増やす' }))
+      await act(async () => { await arrived[0].promise })
+      const oldGets = get.mock.results.filter(result => result.type === 'return').map(result => result.value as Promise<unknown>)
+      await openTab(user, '買い物リスト')
+      const check = screen.getByRole('checkbox', { name: oldInventory.name + 'を購入済みにする' })
+      await waitFor(() => expect(check).toBeEnabled()); await user.click(check)
+      server.use(http.get('/api/households/me', () => HttpResponse.json({ id: 20 })))
+      await user.click(screen.getByRole('button', { name: '購入を反映' }))
+      await user.click(screen.getByRole('button', { name: 'この内容で購入を反映' }))
+      await screen.findByRole('button', { name: '本人と世帯を再確認' })
+      const expectIsolated = () => {
+        expect(screen.queryByTestId('inventory-panel')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: oldInventory.name + 'の詳細', hidden: true })).not.toBeInTheDocument()
+        expect(screen.queryByRole('checkbox', { name: oldInventory.name + 'を購入済みにする', hidden: true })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: freshInventory.name + 'の詳細', hidden: true })).not.toBeInTheDocument()
+      }
+      expectIsolated()
+      await user.click(screen.getByRole('button', { name: '本人と世帯を再確認' }))
+      await act(async () => { await arrived[1].promise })
+      expectIsolated(); expect(screen.getByRole('button', { name: '品目を追加' })).toBeDisabled()
+      await act(async () => { gates[1].resolve() })
+      if (failFirst) {
+        const retry = await screen.findByRole('button', { name: '一覧を再取得' })
+        expectIsolated()
+        await user.click(retry)
+        await act(async () => { await arrived[2].promise })
+        expectIsolated()
+        await act(async () => { gates[2].resolve() })
+      }
+      const freshCheck = await screen.findByRole('checkbox', { name: freshInventory.name + 'を購入済みにする' })
+      await waitFor(() => expect(freshCheck).toBeEnabled())
+      expect(freshCheck).not.toBeChecked()
+      // Wait for the actual old client requests, so assertions run after their state handlers.
+      await act(async () => { gates[0].resolve(); await Promise.allSettled(oldGets) })
+      expect(screen.queryByRole('button', { name: oldInventory.name + 'の詳細', hidden: true })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: freshInventory.name + 'の詳細' })).toHaveTextContent('在庫 7.5')
+      await openTab(user, '在庫一覧')
+      await openInventoryDetails(user, freshInventory.name)
+      expect(within(screen.getByRole('dialog', { name: '在庫詳細・編集' })).getByText('7.5')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: oldInventory.name + 'の詳細', hidden: true })).not.toBeInTheDocument()
+    } finally { gates.forEach(gate => gate.resolve()); get.mockRestore() }
+  })
+
   it.each(['登録', '編集'] as const)('在庫の%sで409ならモーダル内にサーバーのエラーを表示し入力を保持する', async (mode) => {
     setupApi({ inventory: [{ ...milk }, { ...egg }] })
     const conflict = () => HttpResponse.json({

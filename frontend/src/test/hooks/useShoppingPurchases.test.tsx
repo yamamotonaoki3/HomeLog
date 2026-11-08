@@ -10,6 +10,45 @@ const scope = { actorUserId: 1, householdId: 10 }
 const lines = [{ id: 11, purchasedQuantity: 2, expectedPurchaseRevision: 3 }]
 const response = (id: string) => ({ requestId: id, updatedInventoryItems: [{ id: 21, quantity: 4 }], removedShoppingListItemIds: [], remainingShoppingListItems: [{ id: 11, plannedQuantity: 1, purchaseRevision: 4 }] })
 const callbacks = () => ({ actorUserId: 1, onSuccess: vi.fn().mockResolvedValue(undefined), onNotApplied: vi.fn().mockResolvedValue(undefined), onDetached: vi.fn() })
+it.each(['missingCredentials', 'invalidIdentity'] as const)('初回未検証の購入は切り離すが確立済み世帯の失効として通知しない: %s', async (failure) => {
+  if (failure === 'missingCredentials') clearTokens()
+  else server.use(http.get('/api/auth/me', () => HttpResponse.json({})))
+  let posts = 0
+  server.use(http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}) }))
+  const options = callbacks(), { result } = renderHook(() => useShoppingPurchases(options))
+  await waitFor(() => expect(result.current.status).toBe('detached'))
+  expect(result.current.isolated).toBe(true)
+  expect(result.current.scope).toBeNull(); expect(result.current.pending).toBeNull()
+  expect(options.onDetached).toHaveBeenCalledWith(false)
+  await act(async () => { await result.current.confirm(lines); await result.current.recover() })
+  expect(posts).toBe(0); expect(options.onSuccess).not.toHaveBeenCalled()
+})
+
+it('actor確定によるscopeリセット後の失敗でも以前の確認済み世帯を失効させる', async () => {
+  const options = callbacks()
+  const { result, rerender } = renderHook(({ actor }) => useShoppingPurchases({ ...options, actorUserId: actor }), { initialProps: { actor: undefined as number | undefined } })
+  await waitFor(() => expect(result.current.status).toBe('ready'))
+  await act(async () => { clearTokens(); rerender({ actor: 1 }) })
+  await waitFor(() => expect(result.current.status).toBe('detached'))
+  expect(result.current.scope).toBeNull(); expect(result.current.isolated).toBe(true)
+  expect(options.onDetached).toHaveBeenCalledOnce(); expect(options.onDetached).toHaveBeenCalledWith(true)
+})
+
+it('未検証のままでも既知actorが変われば新本人の確認完了前に世帯を隔離する', async () => {
+  clearTokens()
+  const options = callbacks(), entered = deferred(), release = deferred()
+  const { result, rerender } = renderHook(({ actor }) => useShoppingPurchases({ ...options, actorUserId: actor }), { initialProps: { actor: 1 } })
+  await waitFor(() => expect(result.current.status).toBe('detached'))
+  options.onDetached.mockClear()
+  server.use(http.get('/api/auth/me', async () => { entered.resolve(); await release.promise; return HttpResponse.json({ id: 2 }) }))
+  try {
+    await act(async () => { setTokens('testuser_b_access', 'testuser_b_refresh'); rerender({ actor: 2 }) })
+    await act(async () => { await entered.promise })
+    expect(options.onDetached).toHaveBeenCalledOnce(); expect(options.onDetached).toHaveBeenCalledWith(true)
+    expect(result.current.isolated).toBe(true); expect(result.current.scope).toBeNull()
+  } finally { await act(async () => { release.resolve() }) }
+})
+
 it('idle中の同session access更新後は新pairで本人と世帯を確認して購入する', async () => {
   const options = callbacks(), requests: { path: string; authorization: string | null }[] = []
   server.use(
@@ -180,6 +219,7 @@ it('購入前のfresh世帯が変わったら古い画面とpending表示を切�
  server.use(http.get('/api/households/me',()=>HttpResponse.json({id:20})))
  await act(async()=>{await result.current.confirm(lines)})
  expect(result.current.status).toBe('detached');expect(options.onDetached).toHaveBeenCalledOnce()
+ expect(result.current.isolated).toBe(true);expect(options.onDetached).toHaveBeenCalledWith(true)
 })
 it('WebLock待機中にtoken組が変わると保存とPOSTを開始しない',async()=>{
  let acquired!:()=>void,release!:()=>void,posts=0;const queued=new Promise<void>(r=>{acquired=r}),gate=new Promise<void>(r=>{release=r})
@@ -315,4 +355,42 @@ it.each([
    expect(loser.result.current.pending).toBeNull(); expect(readPending(scope).kind).toBe('empty')
   }
  } finally { replies[1].resolve(); refresh.resolve(); await act(async () => { await losing }) }
+})
+
+it.each(['newKey', 'corrupt', 'blocked'] as const)('一致pending削除のlock待機中に変わった保存内容はterminal同期で消費しない: %s', async (change) => {
+ const options = callbacks(), entered = deferred(), release = deferred()
+ let locks = 0
+ Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (_name: string, _options: unknown, callback: () => unknown) => {
+  if (++locks === 2) { entered.resolve(); await release.promise }
+  return callback()
+ } } })
+ server.use(http.post('/api/shopping-list-items/purchases', async ({ request }) => {
+  const body = await request.json() as { requestId: string }; return HttpResponse.json(response(body.requestId))
+ }))
+ const { result } = renderHook(() => useShoppingPurchases(options))
+ await waitFor(() => expect(result.current.status).toBe('ready'))
+ let sending!: Promise<void>
+ act(() => { sending = result.current.confirm(lines) })
+ await act(async () => { await entered.promise })
+ const replacement = { requestId: '22345678-1234-4234-8234-123456789abc', items: [{ ...lines[0], expectedPurchaseRevision: 4 }] }
+ let restoreStorage = () => {}
+ try {
+  if (change === 'newKey') {
+   localStorage.removeItem(pendingKey(scope))
+   expect((await savePending(scope, replacement, () => true)).kind).toBe('saved')
+  } else if (change === 'corrupt') localStorage.setItem(pendingKey(scope), '{invalid [E2E_TEST]')
+  else {
+   const read = Storage.prototype.getItem
+   const unreadable = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+    if (key === pendingKey(scope)) throw new Error('storage unavailable')
+    return read.call(this, key)
+   })
+   restoreStorage = () => { unreadable.mockRestore() }
+  }
+  await act(async () => { release.resolve(); await sending })
+  expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+  expect(result.current.status).toBe(change === 'newKey' ? 'unknown' : change)
+  if (change === 'newKey') expect(result.current.pending).toMatchObject(replacement)
+  if (change === 'corrupt') expect(localStorage.getItem(pendingKey(scope))).toBe('{invalid [E2E_TEST]')
+ } finally { release.resolve(); restoreStorage(); await act(async () => { await sending }) }
 })

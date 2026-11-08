@@ -199,15 +199,21 @@ test('native短期Web Locksで2tab同時確認は同keyだけを保存し、通�
   const second = await page.context().newPage()
   consoleGuard.watch(second)
   await second.addInitScript(() => window.addEventListener('storage', event => { if (event.key?.startsWith('homelog.shoppingPending.v1:')) event.stopImmediatePropagation() }, true))
-  const gate = barrier()
+  const gates = [barrier(), barrier()]
   const sent: Purchase[] = []
+  const inFlight: Promise<void>[] = []
   const context = page.context()
   await context.route(purchaseUrl, async route => {
-    sent.push(route.request().postDataJSON())
-    await gate.wait
-    const actual = await route.fetch()
-    expect(actual.status()).toBe(200)
-    await route.fulfill({ response: actual })
+    const task = (async () => {
+      const index = sent.length
+      sent.push(route.request().postDataJSON())
+      await gates[index].wait
+      const actual = await route.fetch()
+      expect(actual.status()).toBe(200)
+      await route.fulfill({ response: actual })
+    })().catch(() => { throw new Error('[E2E_TEST] 購入応答の配送に失敗しました') })
+    inFlight.push(task)
+    await task
   })
   try {
     await second.goto('/zaiko/shopping')
@@ -222,13 +228,28 @@ test('native短期Web Locksで2tab同時確認は同keyだけを保存し、通�
     expect(sent.every(value => value.requestId === pending.requestId && JSON.stringify(value.items) === JSON.stringify(pending.items))).toBe(true)
     const held = await page.evaluate(async () => (await navigator.locks.query()).held?.filter(lock => lock.name?.startsWith('homelog.shoppingPending.v1:')).length ?? 0)
     expect(held).toBe(0)
-    gate.release()
+    // Hold both deliveries: the second tab explicitly recovers the same saved key.
+    await expect.poll(async () => await recoveryButton(page).isEnabled() || await recoveryButton(second).isEnabled()).toBe(true)
+    const waiting = await recoveryButton(page).isEnabled() ? page : second
+    await expect(recoveryButton(waiting)).toBeEnabled()
+    await recoveryButton(waiting).click()
+    await expect.poll(() => sent.length).toBe(2)
+    expect(sent[1]).toEqual(sent[0])
+    gates[0].release()
     await expect.poll(() => stock(page, a.inventoryId)).toBe(6)
     await expect.poll(() => stored(page, a.key)).toBeNull()
+    gates[1].release()
+    for (const tab of [page, second]) {
+      const row = panel(tab).getByRole('button', { name: a.name + 'の詳細', exact: true })
+      await expect(row).toContainText('予定 2')
+      await expect(panel(tab).getByRole('checkbox', { name: a.name + 'を購入済みにする', exact: true })).not.toBeChecked()
+      await expect(recoveryButton(tab)).toHaveCount(0)
+    }
     expect(new Set(sent.map(value => value.requestId)).size).toBe(1)
     expect(await stock(page, a.inventoryId)).toBe(6)
   } finally {
-    gate.release()
+    gates.forEach(gate => gate.release())
+    await Promise.allSettled(inFlight)
     await context.unroute(purchaseUrl)
     await second.close()
   }
@@ -562,4 +583,69 @@ test('未保存の予定5を残し、保存済予定3から実2だけ購入し�
   expect((await savedLatest).status()).toBe(200)
   expect(planWrites).toBe(4)
   expect(sent).toHaveLength(1)
+})
+
+
+test('世帯再確認は両一覧の旧行を隔離しGET失敗後も新一覧成功まで購入を再開しない (#421)', async ({ page, consoleGuard }) => {
+  consoleGuard.watch(page)
+  const a = await fixture(page, 'purchase_household_reconnect')
+  const inventoryResponse = await page.request.get('/api/inventory-items', { headers: a.headers })
+  const shoppingResponse = await page.request.get('/api/shopping-list-items', { headers: a.headers })
+  expect(inventoryResponse.status()).toBe(200); expect(shoppingResponse.status()).toBe(200)
+  const oldInventory = (await inventoryResponse.json()).find((row: { id: number }) => row.id === a.inventoryId)
+  const oldShopping = (await shoppingResponse.json()).find((row: { id: number }) => row.id === a.entryId)
+  const freshName = '[E2E_TEST] 再確認後の新世帯品目'
+  const freshInventory = { ...oldInventory, id: a.inventoryId + 100000, name: freshName, quantity: 9 }
+  const freshShopping = { ...oldShopping, id: a.entryId + 100000, inventoryItemId: freshInventory.id, name: freshName, plannedQuantity: 4, purchaseRevision: 0 }
+  // Identity and list GET fixtures isolate a household transition; purchase POST stays real and must remain zero.
+  const getGate = barrier()
+  let reconnect = false, fresh = false, gets = 0, posts = 0
+  page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/shopping-list-items/purchases')) posts++ })
+  await page.route('**/api/households/me', async route => {
+    if (!reconnect) { await route.continue(); return }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: a.householdId + 100000 }) })
+  })
+  for (const resource of ['inventory-items', 'shopping-list-items']) {
+    consoleGuard.allow({ url: new RegExp('/api/' + resource + '(?:\\?.*)?$'), message: 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' })
+    await page.route('**/api/' + resource + '*', async route => {
+      if (!reconnect || route.request().method() !== 'GET') { await route.continue(); return }
+      gets++
+      if (!fresh) {
+        await getGate.wait
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '[E2E_TEST] reconnect list unavailable' }) })
+      } else await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([resource === 'inventory-items' ? freshInventory : freshShopping]) })
+    })
+  }
+  try {
+    await choose(page, a.name, '0.5')
+    reconnect = true
+    await confirmShoppingPurchase(page)
+    const recheck = page.getByRole('button', { name: '本人と世帯を再確認', exact: true })
+    await expect(recheck).toBeEnabled()
+    await recheck.click()
+    await expect.poll(() => gets).toBeGreaterThanOrEqual(2)
+    await expect(page.getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
+    await page.getByRole('link', { name: '在庫一覧', exact: true }).click()
+    await expect(page.getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
+    await page.getByRole('link', { name: '買い物リスト', exact: true }).click()
+    getGate.release()
+    const retry = page.getByRole('button', { name: '一覧を再取得', exact: true })
+    await expect(retry).toBeEnabled()
+    await expect(page.getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
+    await expect(reflect(page)).toHaveCount(0)
+    await expect(panel(page).getByRole('button', { name: '品目を追加', exact: true })).toBeDisabled()
+    fresh = true
+    await retry.click()
+    const row = panel(page).getByRole('button', { name: freshName + 'の詳細', exact: true })
+    await expect(row).toContainText('予定 4')
+    await expect(panel(page).getByRole('checkbox', { name: freshName + 'を購入済みにする', exact: true })).not.toBeChecked()
+    await page.getByRole('link', { name: '在庫一覧', exact: true }).click()
+    await expect(page.getByRole('button', { name: freshName + 'の詳細', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
+    expect(posts).toBe(0)
+  } finally {
+    getGate.release()
+    await page.unroute('**/api/households/me')
+    for (const resource of ['inventory-items', 'shopping-list-items']) await page.unroute('**/api/' + resource + '*')
+  }
 })

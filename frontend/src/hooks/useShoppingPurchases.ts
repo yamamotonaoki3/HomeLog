@@ -3,8 +3,8 @@ import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { PurchaseIdentityError, boundConfig, captureCredentials, credentialsMatch, purchaseResult, verifyPurchaseScope, type PurchaseCredentials, type PurchaseResult } from '../api/shoppingPurchases'
 import { pendingAvailable, pendingKey, readPending, removePending, sameRequest, savePending, type PurchaseLine, type PurchasePending, type PurchaseScope } from '../lib/shoppingPending'
-interface Options { actorUserId?: number; onSuccess: (body: PurchasePending, result: PurchaseResult) => Promise<void>; onNotApplied: () => Promise<void>; onDetached: () => void }
-export type PurchaseStatus = 'checking' | 'ready' | 'sending' | 'unknown' | 'blocked' | 'corrupt' | 'notApplied' | 'refreshFailed' | 'detached' | 'refreshing' | 'notAppliedRefreshFailed'
+interface Options { actorUserId?: number; onSuccess: (body: PurchasePending, result: PurchaseResult) => Promise<void>; onNotApplied: () => Promise<void>; onDetached: (invalidateScope: boolean) => void; onReconnect?: (valid: () => boolean) => Promise<void> }
+export type PurchaseStatus = 'checking' | 'ready' | 'sending' | 'unknown' | 'blocked' | 'corrupt' | 'notApplied' | 'refreshFailed' | 'detached' | 'refreshing' | 'notAppliedRefreshFailed' | 'scopeRefreshing' | 'scopeRefreshFailed'
 export function useShoppingPurchases(options: Options) {
   const callbacks = useRef(options)
   useLayoutEffect(() => { callbacks.current = options }, [options])
@@ -18,17 +18,21 @@ export function useShoppingPurchases(options: Options) {
   const controller = useRef<AbortController | null>(null)
   const alive = useRef(true)
   const previousActor = useRef(options.actorUserId)
-  const detach = useCallback(() => {
+  const isolated = useRef(false)
+  const [isScopeIsolated, setScopeIsolated] = useState(false)
+  const detach = useCallback((invalidateScope = scope.current !== null) => {
+    isolated.current = true
     generation.current.value++; controller.current?.abort(); running.current = false
     credentials.current = null; scope.current = null
     if (!alive.current) return
+    setScopeIsolated(true)
     setVerifiedScope(null)
     setPending(null); setStatus('detached'); setMessage('ログイン状態が変更されました。本人と世帯を再確認してください')
-    callbacks.current.onDetached()
+    callbacks.current.onDetached(invalidateScope)
   }, [])
-  const invalidate = useCallback((snapshot: PurchaseCredentials) => {
+  const invalidate = useCallback((snapshot: PurchaseCredentials, invalidateScope = scope.current !== null) => {
     const latest = captureCredentials()
-    if (!latest || latest.refreshToken !== snapshot.refreshToken || latest.accessToken === snapshot.accessToken || (scope.current && callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== scope.current.actorUserId)) { detach(); return }
+    if (!latest || latest.refreshToken !== snapshot.refreshToken || latest.accessToken === snapshot.accessToken || (scope.current && callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== scope.current.actorUserId)) { detach(invalidateScope); return }
     generation.current.value++; controller.current?.abort(); running.current = false
     const stored = scope.current ? readPending(scope.current) : null
     setPending(stored?.kind === 'pending' ? stored.pending : null)
@@ -42,7 +46,7 @@ export function useShoppingPurchases(options: Options) {
   }, [])
   const recheck = useCallback(async () => {
     if (running.current) return
-    if (verifiedScope && callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== verifiedScope.actorUserId) callbacks.current.onDetached()
+    if (!isolated.current && verifiedScope && callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== verifiedScope.actorUserId) { isolated.current = true; setScopeIsolated(true); callbacks.current.onDetached(true) }
     const current = ++generation.current.value
     controller.current?.abort(); const abort = new AbortController(); controller.current = abort
     const snapshot = captureCredentials()
@@ -54,9 +58,21 @@ export function useShoppingPurchases(options: Options) {
     try {
       const verified = await verifyPurchaseScope(snapshot, expected, valid, abort.signal)
       if (!valid()) { if (current === generation.current.value && alive.current) invalidate(snapshot); return }
-      if (callbacks.current.actorUserId !== undefined && verified.actorUserId !== callbacks.current.actorUserId) { detach(); return }
+      if (callbacks.current.actorUserId !== undefined && verified.actorUserId !== callbacks.current.actorUserId) { detach(true); return }
       credentials.current = snapshot
-      scope.current = verified; setVerifiedScope(verified); inspect(verified)
+      scope.current = verified; setVerifiedScope(verified)
+      if (isolated.current) {
+        setStatus('scopeRefreshing'); setMessage('世帯の一覧を再取得しています…')
+        try { await callbacks.current.onReconnect?.(valid) }
+        catch {
+          if (!valid()) { if (current === generation.current.value && alive.current) invalidate(snapshot); return }
+          setStatus('scopeRefreshFailed'); setMessage('一覧の再取得に失敗しました。再取得してください'); return
+        }
+        if (!valid()) { if (current === generation.current.value && alive.current) invalidate(snapshot); return }
+        isolated.current = false
+        setScopeIsolated(false)
+      }
+      inspect(verified)
     } catch (error) {
       if (current !== generation.current.value || !alive.current) return
       if (!valid()) { invalidate(snapshot); return }
@@ -68,6 +84,9 @@ export function useShoppingPurchases(options: Options) {
     alive.current = true
     const effectGeneration = generation.current
     const changedActor = previousActor.current !== undefined && previousActor.current !== options.actorUserId
+    // Preserve the invalidation intent before resetting the operation scope.
+    // An initial purchase verification failure alone does not invalidate inventory.
+    const invalidateInitialScope = scope.current !== null || changedActor
     previousActor.current = options.actorUserId
     const current = ++effectGeneration.value
     controller.current?.abort()
@@ -80,6 +99,7 @@ export function useShoppingPurchases(options: Options) {
     // Initial loading already starts in 'checking'. Only external identity results
     // change render state here; explicit user rechecks keep their immediate feedback.
     const loadInitialScope = async () => {
+      if (changedActor) { isolated.current = true; setScopeIsolated(true); callbacks.current.onDetached(true) }
       try {
         const verifyInitialIdentity = async () => {
           if (!snapshot) throw new PurchaseIdentityError('購入の本人確認が必要です')
@@ -87,17 +107,26 @@ export function useShoppingPurchases(options: Options) {
         }
         const verified = await verifyInitialIdentity()
         if (current !== effectGeneration.value || !alive.current) return
-        if (!valid()) { invalidate(snapshot!); return }
-        if (callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== verified.actorUserId) { detach(); return }
-        if (changedActor) callbacks.current.onDetached()
+        if (!valid()) { invalidate(snapshot!, invalidateInitialScope || scope.current !== null); return }
+        if (callbacks.current.actorUserId !== undefined && callbacks.current.actorUserId !== verified.actorUserId) { detach(true); return }
         scope.current = verified
         setVerifiedScope(verified)
+        if (isolated.current) {
+          setStatus('scopeRefreshing'); setMessage('世帯の一覧を再取得しています…')
+          try { await callbacks.current.onReconnect?.(valid) }
+          catch {
+            if (!valid()) { if (current === effectGeneration.value && alive.current) invalidate(snapshot!, invalidateInitialScope || scope.current !== null); return }
+            setStatus('scopeRefreshFailed'); setMessage('一覧の再取得に失敗しました。再取得してください'); return
+          }
+          if (!valid()) { if (current === effectGeneration.value && alive.current) invalidate(snapshot!, invalidateInitialScope || scope.current !== null); return }
+          isolated.current = false
+          setScopeIsolated(false)
+        }
         inspect(verified)
       } catch (error) {
         if (current !== effectGeneration.value || !alive.current) return
-        if (snapshot && !valid()) { invalidate(snapshot); return }
-        if (error instanceof PurchaseIdentityError) { detach(); return }
-        if (changedActor) callbacks.current.onDetached()
+        if (snapshot && !valid()) { invalidate(snapshot, invalidateInitialScope || scope.current !== null); return }
+        if (error instanceof PurchaseIdentityError) { detach(invalidateInitialScope); return }
         setVerifiedScope(null)
         setPending(null)
         setStatus('blocked')
@@ -107,14 +136,14 @@ export function useShoppingPurchases(options: Options) {
     void loadInitialScope()
     const storage = (event: StorageEvent) => {
       if (event.key === null || event.key === 'homelog.accessToken' || event.key === 'homelog.refreshToken') {
-        if (credentials.current && !credentialsMatch(credentials.current)) invalidate(credentials.current)
-      } else if (scope.current && event.key === pendingKey(scope.current) && !running.current) inspect(scope.current)
+        if (credentials.current && !credentialsMatch(credentials.current)) invalidate(credentials.current, invalidateInitialScope || scope.current !== null)
+      } else if (scope.current && event.key === pendingKey(scope.current) && !running.current && !isolated.current) inspect(scope.current)
     }
     window.addEventListener('storage', storage)
     return () => { alive.current = false; effectGeneration.value++; controller.current?.abort(); running.current = false; window.removeEventListener('storage', storage) }
   }, [options.actorUserId, detach, inspect, invalidate])
   const execute = useCallback(async (lines: PurchaseLine[] | null) => {
-    if (running.current || !scope.current || !credentials.current) return
+    if (running.current || isolated.current || !scope.current || !credentials.current) return
     if (lines && !['ready', 'notApplied'].includes(status)) return
     if (!lines && !pending) return
     if (!pendingAvailable()) { setStatus('blocked'); setMessage('購入の安全な保存を利用できません。購入は送信していません'); return }
@@ -158,11 +187,12 @@ export function useShoppingPurchases(options: Options) {
       if (outcome.kind === 'unknown') { setStatus('unknown'); setMessage('購入結果を確認できません。前回と同じ内容で結果を確認してください'); return }
       // Another tab may already have resolved this key and created a different purchase.
       const latest = readPending(expected)
-      if (latest.kind !== 'pending' || !sameRequest(latest.pending, saved)) { inspect(expected); return }
-      const removed = await removePending(saved, valid, abort.signal)
+      if (latest.kind !== 'empty' && (latest.kind !== 'pending' || !sameRequest(latest.pending, saved))) { inspect(expected); return }
+      await removePending(saved, valid, abort.signal)
       if (!valid()) { invalidated(); return }
       const after = readPending(expected)
-      if (after.kind === 'pending' && !sameRequest(after.pending, saved)) { inspect(expected); return }
+      if (after.kind !== 'empty' && (after.kind !== 'pending' || !sameRequest(after.pending, saved))) { inspect(expected); return }
+      const removed = after.kind === 'empty'
       setPending(removed ? null : saved)
       if (outcome.kind === 'success') {
         setStatus('refreshing'); setMessage(removed ? '購入を反映しました' : '購入は反映済みです。保存記録の確認には前回の購入結果を確認してください')
@@ -186,5 +216,5 @@ export function useShoppingPurchases(options: Options) {
   }, [status, pending, detach, inspect, invalidate])
   const acknowledgeRefresh = () => { if (!pending && (status === 'refreshFailed' || status === 'notAppliedRefreshFailed')) { setStatus(status === 'refreshFailed' ? 'ready' : 'notApplied'); setMessage('') } }
   const changedRenderActor = verifiedScope !== null && options.actorUserId !== undefined && verifiedScope.actorUserId !== options.actorUserId
-  return { status: changedRenderActor ? 'detached' as const : status, pending: changedRenderActor ? null : pending, message, acknowledgeRefresh, scope: changedRenderActor ? null : verifiedScope, confirm: (lines: PurchaseLine[]) => execute(lines), recover: () => execute(null), recheck, detach }
+  return { status: changedRenderActor ? 'detached' as const : status, isolated: isScopeIsolated || changedRenderActor, pending: changedRenderActor ? null : pending, message, acknowledgeRefresh, scope: changedRenderActor ? null : verifiedScope, confirm: (lines: PurchaseLine[]) => execute(lines), recover: () => execute(null), recheck, detach }
 }

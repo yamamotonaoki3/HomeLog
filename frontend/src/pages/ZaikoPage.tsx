@@ -13,6 +13,8 @@ export function ZaikoPage() {
   // 上部タブ(AppLayout)の選択はURLで表す。/zaiko=在庫一覧、/zaiko/shopping=買い物リスト
   const auth = useContext(AuthContext)
   const shoppingGeneration = useRef(0), inventoryGeneration = useRef(0)
+  const scopeGeneration = useRef(0), scopeIsolated = useRef(false)
+  const [isolated, setIsolated] = useState(false)
   const currentCredentials = (snapshot: ReturnType<typeof captureCredentials>) => {
     const current = captureCredentials()
     return snapshot ? current?.refreshToken === snapshot.refreshToken : current === null
@@ -33,12 +35,14 @@ export function ZaikoPage() {
   }, [])
 
   const fetchInventory = useCallback(async () => {
+    if (scopeIsolated.current) return
     const generation = ++inventoryGeneration.current, snapshot = captureCredentials()
     const response = await apiClient.get<InventoryItem[]>('/inventory-items')
     if (generation === inventoryGeneration.current && currentCredentials(snapshot)) setInventory(response.data)
   }, [])
 
   const fetchShopping = useCallback(async (sortValue: ShoppingSort) => {
+    if (scopeIsolated.current) return
     const generation = ++shoppingGeneration.current, snapshot = captureCredentials()
     const response = await apiClient.get<ShoppingListItem[]>('/shopping-list-items', {
       params: { sort: sortValue },
@@ -57,7 +61,7 @@ export function ZaikoPage() {
       apiClient.get<ShoppingListItem[]>('/shopping-list-items', { params: { sort: 'store' } }),
     ])
       .then(([categoriesRes, storesRes, inventoryRes, shoppingRes]) => {
-        if (cancelled || !currentCredentials(snapshot)) return
+        if (cancelled || scopeIsolated.current || !currentCredentials(snapshot)) return
         setCategories(categoriesRes.data)
         setStores(storesRes.data)
         if (inventoryRequest === inventoryGeneration.current) setInventory(inventoryRes.data)
@@ -90,6 +94,27 @@ export function ZaikoPage() {
     await Promise.all([fetchInventory(), fetchShopping(sort)])
   }, [fetchInventory, fetchShopping, sort])
 
+  const detachScope = useCallback(() => {
+    scopeGeneration.current++; inventoryGeneration.current++; shoppingGeneration.current++
+    scopeIsolated.current = true; setIsolated(true)
+    setInventory([]); setShopping([]); setCategories([]); setStores([])
+  }, [])
+
+  const reconnectScope = useCallback(async (valid: () => boolean) => {
+    const generation = ++scopeGeneration.current
+    inventoryGeneration.current++; shoppingGeneration.current++
+    const [categoriesRes, storesRes, inventoryRes, shoppingRes] = await Promise.all([
+      apiClient.get<Category[]>('/zaiko-categories'),
+      apiClient.get<Store[]>('/stores'),
+      apiClient.get<InventoryItem[]>('/inventory-items'),
+      apiClient.get<ShoppingListItem[]>('/shopping-list-items', { params: { sort } }),
+    ])
+    if (generation !== scopeGeneration.current || !valid()) throw new Error('世帯の再確認が必要です')
+    setCategories(categoriesRes.data); setStores(storesRes.data)
+    setInventory(inventoryRes.data); setShopping(shoppingRes.data)
+    scopeIsolated.current = false; setIsolated(false)
+  }, [sort])
+
   if (loading) {
     return <p>読み込み中...</p>
   }
@@ -100,7 +125,7 @@ export function ZaikoPage() {
     <div className="page zaiko-page">
       {/* 入力途中の購入個数などパネル内の状態を失わないよう、両パネルとも描画したまま非選択側を隠す */}
       <div hidden={isShoppingTab}>
-        <InventoryPanel
+        {!isolated && <InventoryPanel
           inventory={inventory}
           categories={categories}
           onCategoriesChange={setCategories}
@@ -108,10 +133,12 @@ export function ZaikoPage() {
           onStoresChange={setStores}
           onRefresh={refreshAll}
           onNotify={showToast}
-        />
+        />}
       </div>
       <div hidden={!isShoppingTab}>
         <ShoppingListPanel
+          onScopeDetached={detachScope}
+          onScopeReconnect={reconnectScope}
           actorUserId={auth?.user?.id}
           active={isShoppingTab}
           shopping={shopping}

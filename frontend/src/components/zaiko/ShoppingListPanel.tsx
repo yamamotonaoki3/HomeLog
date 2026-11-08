@@ -12,11 +12,11 @@ import type { Category, InventoryItem, ShoppingListItem, ShoppingSort, Store } f
 interface Props {
   shopping: ShoppingListItem[]; inventory: InventoryItem[]; categories: Category[]; stores: Store[]; sort: ShoppingSort
   onSortChange: (sort: ShoppingSort) => void; onRefresh: () => Promise<void>; onNotify: (message: string) => void
-  actorUserId?: number; active?: boolean
+  actorUserId?: number; active?: boolean; onScopeDetached?: () => void; onScopeReconnect?: (valid: () => boolean) => Promise<void>
 }
 interface RowDraft { checked: boolean; actualText: string; checkedRevision: number; plannedText?: string; plannedDirty?: boolean; error?: string }
 type ConfirmLine = PurchaseLine & { name: string }
-export function ShoppingListPanel({ shopping, inventory, categories, stores, sort, onSortChange, onRefresh, onNotify, actorUserId, active = true }: Props) {
+export function ShoppingListPanel({ shopping, inventory, categories, stores, sort, onSortChange, onRefresh, onNotify, actorUserId, active = true, onScopeDetached, onScopeReconnect }: Props) {
   const [keyword, setKeyword] = useState(''), [addFormOpen, setAddFormOpen] = useState(false), [addItemId, setAddItemId] = useState(''), [addPrice, setAddPrice] = useState('')
   const [drafts, setDrafts] = useState<Record<number, RowDraft>>({})
   const [completed, setCompleted] = useState<Record<number, number>>({})
@@ -31,6 +31,7 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const purchase = useShoppingPurchases({
     actorUserId,
+    onReconnect: valid => onScopeReconnect ? onScopeReconnect(valid) : onRefresh(),
     onSuccess: async (body, result) => {
       // The response contains only the purchased rows' remaining quantity/revision.
       // Preserve row metadata and never rebase a newer GET or planned-save result.
@@ -59,9 +60,9 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
       await onRefresh()
     },
     onNotApplied: async () => { setConfirmLines(null); await onRefresh() },
-    onDetached: () => { setDrafts({}); setOverrides({}); setCompleted({}); setSelectedId(undefined); setConfirmLines(null); setAddFormOpen(false); setAddItemId(''); setAddPrice('') },
+    onDetached: invalidateScope => { setDrafts({}); setOverrides({}); setCompleted({}); setSelectedId(undefined); setConfirmLines(null); setAddFormOpen(false); setAddItemId(''); setAddPrice(''); if (invalidateScope) onScopeDetached?.() },
   })
-  const detached = purchase.status === 'detached'
+  const detached = purchase.status === 'detached' || purchase.isolated
   const sending = purchase.status === 'sending' || purchase.status === 'refreshing'
   const checking = purchase.status === 'checking'
   const rows = shopping.map(item => overrides[item.id] && overrides[item.id].purchaseRevision > item.purchaseRevision ? { ...item, ...overrides[item.id] } : item).filter(item => completed[item.id] !== item.purchaseRevision)
@@ -163,10 +164,10 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
     {checking && <p role="status">本人と世帯を確認中…</p>}
     {purchase.pending && <div className="shopping-recovery">
       <p>未確認の購入は元の内容で確認します。未反映の場合は、この操作で購入を実行します。</p>
-      <button type="button" className="btn btn-primary" disabled={sending} onClick={() => void purchase.recover()}>前回の購入結果を確認</button>
+      <button type="button" className="btn btn-primary" disabled={sending || detached || checking} onClick={() => void purchase.recover()}>前回の購入結果を確認</button>
     </div>}
     {['blocked', 'detached'].includes(purchase.status) && <button type="button" className="btn btn-secondary" onClick={() => void purchase.recheck()}>本人と世帯を再確認</button>}
-    {['refreshFailed', 'notApplied', 'notAppliedRefreshFailed'].includes(purchase.status) && <button type="button" className="btn btn-secondary" disabled={refreshing} onClick={() => void retryRefresh()}>一覧を再取得</button>}
+    {['refreshFailed', 'notApplied', 'notAppliedRefreshFailed', 'scopeRefreshFailed'].includes(purchase.status) && <button type="button" className="btn btn-secondary" disabled={refreshing} onClick={() => void (purchase.status === 'scopeRefreshFailed' ? purchase.recheck() : retryRefresh())}>一覧を再取得</button>}
     {!detached && <>
       {addFormOpen && <div className="inline-form shopping-add-form">
         <select aria-label="追加する品目" value={addItemId} disabled={mutation} onChange={e => { setAddItemId(e.target.value); const price = inventoryOf(Number(e.target.value))?.price; setAddPrice(price == null ? '' : String(price)) }}>
