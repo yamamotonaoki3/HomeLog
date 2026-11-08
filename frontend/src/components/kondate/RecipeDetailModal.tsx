@@ -125,7 +125,7 @@ export function RecipeDetailModal({
           {onDelete && <button type="button" className="btn btn-secondary" onClick={onDelete}>
             削除
           </button>}
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-secondary recipe-detail-bottom-close" onClick={onClose}>
             閉じる
           </button>
         </div>

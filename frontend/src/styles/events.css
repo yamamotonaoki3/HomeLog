@@ -1,5 +1,9 @@
 /* イベント画面とイベントのモーダル。.event-modal と .transaction-modal は同じ要素に付くため、kakeibo.css より前に読み込む */
 
+.event-detail-close {
+  min-height: 44px;
+}
+
 .event-detail-list {
   display: grid;
   grid-template-columns: auto 1fr;
