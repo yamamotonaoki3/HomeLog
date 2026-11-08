@@ -2,6 +2,7 @@ import { isAxiosError } from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
+import { useAuth } from '../context/useAuth'
 import { getCurrentUserId } from '../api/tokenStorage'
 import type { DashboardSummary } from '../api/dashboardTypes'
 import type { Event, SummaryPeriod } from '../api/eventTypes'
@@ -33,6 +34,7 @@ function isInMonth(dateStr: string, year: number, month: number): boolean {
 }
 
 export function KakeiboPage() {
+  const { user, userStatus } = useAuth()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
@@ -62,6 +64,12 @@ export function KakeiboPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const addButton = useRef<HTMLButtonElement>(null)
+  const focusAddButton = useCallback(() => {
+    const trigger = addButton.current
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus({ preventScroll: true })
+    }
+  }, [])
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const closeDetail = useCallback(() => {
     setSelected(null)
@@ -398,10 +406,12 @@ export function KakeiboPage() {
       fetchDashboardSummary().catch(() => undefined)
       fetchEventSummaries(events, eventPeriod).catch(() => undefined)
       setModalOpen(false)
+      focusAddButton()
       showToast('支出を登録しました')
       return
     }
     setModalOpen(false)
+    focusAddButton()
     showToast('収入を登録しました')
     const results = await Promise.allSettled([
       fetchIncomes(incomeCategoryFilter),
@@ -556,6 +566,8 @@ export function KakeiboPage() {
       {deleting && <TransactionDeleteModal transaction={deleting} busy={deleteBusy} error={deleteError} onClose={() => setDeleting(null)} onDelete={handleDelete} />}
       {(modalOpen || editing) && (
         <TransactionModal
+          userId={userStatus === 'ready' ? user?.id ?? null : null}
+          identityLoading={userStatus === 'loading'}
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
@@ -573,7 +585,7 @@ export function KakeiboPage() {
           }))}
           initialSplitInputType={editingSplits[0]?.splitInputType}
           initialKind={initialKind}
-          onClose={() => { setModalOpen(false); setEditing(null) }}
+          onClose={() => { setModalOpen(false); setEditing(null); if (!editing) focusAddButton() }}
           onSaved={editing ? handleEdited : handleSaved}
         />
       )}

@@ -138,7 +138,7 @@ describe('DashboardPage', () => {
       else if (close === 'escape') fireEvent.keyDown(document, { key: 'Escape' })
       else fireEvent.click(dialog)
       expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
-      expect(button).toHaveFocus()
+      await waitFor(() => expect(button).toHaveFocus())
     }
   })
 

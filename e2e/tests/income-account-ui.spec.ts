@@ -61,6 +61,10 @@ for (const width of [1280, 390, 320]) {
       expect(saved).toMatchObject({ accountId: account.id, accountName: name, amount: 2500 })
       await expect(modal).toBeHidden()
       expect(posts).toBe(1)
+      await page.getByRole('button', { name: '収支を登録', exact: true }).click()
+      await modal.getByRole('tab', { name: '収入', exact: true }).click()
+      await expect(select).toHaveValue(String(account.id))
+      await modal.getByRole('button', { name: 'キャンセル', exact: true }).click()
       await expect(page.getByTestId('monthly-summary')).toContainText('今月収入：2500円')
       const getAccounts = async () => (await page.request.get('/api/accounts', { headers })).json()
       expect(await getAccounts()).toEqual(expect.arrayContaining([
@@ -87,6 +91,7 @@ for (const width of [1280, 390, 320]) {
       await page.getByRole('button', { name: '収支を登録', exact: true }).click()
       await modal.getByRole('tab', { name: '収入' }).click()
       await expect(select.getByRole('option', { name, exact: true })).toHaveCount(0)
+      await expect(select).toHaveValue('')
       await modal.getByRole('button', { name: 'キャンセル' }).click()
       const longName = name.slice(0, -1) + '長'
       const longAccount = await post('accounts', { name: longName, type: 'bank', balance: 0 })
