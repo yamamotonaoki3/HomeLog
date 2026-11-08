@@ -108,3 +108,14 @@ export async function openInventoryDetails(page: Page, row: Locator): Promise<Lo
   await expect(dialog).toBeVisible()
   return dialog
 }
+
+/** 買い物の選択済み実購入数を確認し、明示確定する。 */
+export async function confirmShoppingPurchase(page: Page): Promise<void> {
+  const reflect = page.getByTestId('shopping-panel').getByRole('button', { name: '購入を反映', exact: true })
+  await expect(reflect).toBeEnabled()
+  await reflect.click()
+  const confirm = page.getByRole('dialog', { name: '購入内容の確認', exact: true })
+  await expect(confirm).toBeVisible()
+  await confirm.getByRole('button', { name: 'この内容で購入を反映', exact: true }).click()
+  await expect(confirm).toBeHidden()
+}

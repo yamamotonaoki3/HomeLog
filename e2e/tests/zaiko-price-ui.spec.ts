@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
-import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
+import { confirmShoppingPurchase, openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
   test(`値段登録・編集・手動追加と画面幅 ${width}px`, async ({ page, consoleGuard }) => {
@@ -53,11 +53,12 @@ for (const width of [1280, 390, 320]) {
     const shoppingRow = shopping.getByRole('button', { name: `${name}の詳細`, exact: true })
     const shoppingDetail = page.getByRole('dialog', { name: '買い物詳細' })
     const shoppingPrice = shoppingDetail.locator('dd').nth(3)
+    await shopping.getByRole('checkbox', { name: `${name}を購入済みにする`, exact: true }).check()
     await shoppingRow.click()
     await expect(shoppingPrice).toHaveText('1,280円')
-    await shoppingDetail.getByRole('button', { name: `${name}の購入個数を増やす`, exact: true }).click()
-    await shoppingDetail.getByRole('button', { name: '閉じる' }).click()
-    await shopping.getByRole('button', { name: '更新', exact: true }).click()
+    await expect(shoppingDetail.getByLabel(`${name}の実購入数`, { exact: true })).toHaveValue('1')
+    await shoppingDetail.getByRole('button', { name: '閉じる', exact: true }).click()
+    await confirmShoppingPurchase(page)
     await expect(shoppingRow).toHaveCount(0)
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
     await openInventoryDetails(page, row)
@@ -69,7 +70,7 @@ for (const width of [1280, 390, 320]) {
     await expect(shoppingPrice).toHaveText('1,280円')
     await shoppingDetail.getByRole('button', { name: `${name}を削除`, exact: true }).click()
     await expect(shoppingRow).toHaveCount(0)
-    await shopping.getByRole('button', { name: '品目を手動追加' }).click()
+    await shopping.getByRole('button', { name: '品目を追加' }).click()
     await page.getByLabel('追加する品目').selectOption({ label: name })
     await expect(page.getByLabel('値段（円・任意）')).toHaveValue('1280')
     await page.getByLabel('値段（円・任意）').fill('980')
@@ -86,7 +87,7 @@ for (const width of [1280, 390, 320]) {
     await screenshot('shopping')
     await shoppingDetail.getByRole('button', { name: `${name}を削除`, exact: true }).click()
     await expect(shoppingRow).toHaveCount(0)
-    await shopping.getByRole('button', { name: '品目を手動追加' }).click()
+    await shopping.getByRole('button', { name: '品目を追加' }).click()
     await expect(page.getByLabel('追加する品目')).toHaveValue('')
     await page.getByLabel('追加する品目').selectOption({ label: name })
     await expect(page.getByLabel('値段（円・任意）')).toHaveValue('980')
@@ -94,7 +95,7 @@ for (const width of [1280, 390, 320]) {
     await shopping.getByRole('button', { name: '追加', exact: true }).click()
     await shoppingRow.click()
     await expect(shoppingPrice).toHaveText('980円')
-    await shoppingDetail.getByRole('button', { name: '閉じる' }).click()
+    await shoppingDetail.getByRole('button', { name: '閉じる', exact: true }).click()
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
     await openInventoryDetails(page, row)
     await expect(price).toHaveValue('980')

@@ -2,7 +2,7 @@ import { expectActionTargets44 } from './support/list-row'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './console-guard'
-import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
+import { confirmShoppingPurchase, openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 test.describe('F-07/F-08 在庫・買い物リスト', () => {
   test('閾値以下の在庫が買い物リストに載り、購入すると在庫に反映される', async ({ page, consoleGuard }) => {
@@ -29,10 +29,8 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
     const shoppingRow = shopping.getByRole('button', { name: `${name}の詳細`, exact: true })
     await expect(shoppingRow).toBeVisible()
 
-    await shoppingRow.click()
-    await page.getByRole('dialog', { name: '買い物詳細' }).getByRole('button', { name: `${name}の購入個数を増やす` }).click()
-    await page.getByRole('button', { name: '閉じる' }).click()
-    await shopping.getByRole('button', { name: '更新' }).click()
+    await shopping.getByRole('checkbox', { name: `${name}を購入済みにする`, exact: true }).check()
+    await confirmShoppingPurchase(page)
     await expect(shoppingRow).toHaveCount(0)
 
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
