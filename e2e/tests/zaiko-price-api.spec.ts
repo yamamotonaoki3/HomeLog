@@ -63,8 +63,9 @@ for (const width of [1280, 390, 320]) {
         await remove.scrollIntoViewIfNeeded()
         await expect(remove).toBeInViewport()
         await expect(remove).toBeEnabled()
-        await expect(detail.locator('.qty-value')).toHaveText('0')
-        await detail.getByRole('button', { name: '閉じる' }).click()
+        await expect(detail.locator('dd', { hasText: /^0\.0$/ })).toBeVisible()
+        await expect(detail.getByLabel(`${body.name}の実購入数`, { exact: true })).toBeDisabled()
+        await detail.getByRole('button', { name: '閉じる', exact: true }).click()
       }
       await page.screenshot({ path: test.info().outputPath(`${label}-${width}.png`), fullPage: true })
     }

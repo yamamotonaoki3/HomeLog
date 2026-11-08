@@ -296,3 +296,35 @@
 .inventory-filters input, .inventory-filters select, .inventory-delete-button { min-height: 44px; }
 .inventory-row .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .inventory-details-button { max-width: 100%; white-space: normal; }
+
+/* #421: 店舗別の購入下書きとナビ上の反映操作 */
+.shopping-panel { padding-bottom: calc(var(--shopping-bar-height, 80px) + 24px); }
+.shopping-store-group { margin: 16px 0; min-width: 0; }
+.shopping-store-group h3 { margin: 0; padding: 8px 0; font-size: 15px; overflow-wrap: anywhere; border-bottom: 1px solid #cbd5e1; }
+.shopping-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid #e2e8f0; }
+.shopping-checkbox { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.shopping-checkbox input { width: 22px; height: 22px; margin: 0; accent-color: #2563eb; }
+.shopping-row .shopping-item-button { display: flex; flex-direction: column; align-items: stretch; gap: 6px; border: 0; min-width: 0; min-height: 56px; padding: 10px 8px; }
+.shopping-item-name { overflow-wrap: anywhere; }
+.shopping-item-quantities { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: #475569; font-variant-numeric: tabular-nums; }
+.shopping-panel .toolbar .btn, .shopping-panel .toolbar select, .shopping-panel .btn { min-width: 44px; min-height: 44px; }
+.shopping-panel input:not([type=checkbox]), .shopping-panel select { font-size: 16px; min-height: 44px; }
+.shopping-purchase-bar { position: fixed; z-index: 45; bottom: var(--shopping-bar-bottom, 0px); left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; width: min(100%, 1100px); padding: 12px 20px; background: #fff; border-top: 1px solid #cbd5e1; box-shadow: 0 -2px 10px #0f172a18; }
+.shopping-panel[hidden] .shopping-purchase-bar { display: none; }
+.shopping-recovery, .shopping-status { overflow-wrap: anywhere; }
+.shopping-recovery { padding: 12px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; }
+.shopping-detail-modal label { display: block; margin: 12px 0 6px; }
+.shopping-detail-modal input { width: 100%; min-width: 0; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.shopping-planned-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.shopping-planned-controls input { flex: 1 1 120px; }
+.shopping-planned-controls button { flex: 0 0 auto; }
+.shopping-confirm-dialog ul { padding: 0; list-style: none; }
+.shopping-confirm-dialog li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+.shopping-confirm-dialog li span { overflow-wrap: anywhere; }
+.shopping-panel :is(button,input,select):focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+@media (max-width: 480px) { .shopping-purchase-bar { padding: 12px; } .shopping-purchase-bar .btn { flex: 1 1 150px; } }
+
+/* 長い品名でも冒頭に明示closeと初期focusを確保し、末尾closeは保持する。 */
+.shopping-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.shopping-detail-heading h2 { flex: 1; min-width: 0; margin: 0; }
+.shopping-detail-heading .shopping-detail-close { flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 24px; line-height: 1; }

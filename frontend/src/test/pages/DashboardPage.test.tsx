@@ -96,9 +96,9 @@ const inventory: InventoryItem[] = [
 ]
 
 const shoppingList: ShoppingListItem[] = [
-  { id: 1, inventoryItemId: 3, name: '醤油', isManual: false, purchased: false, purchasedQuantity: 0 },
-  { id: 2, inventoryItemId: 9, name: '購入済みの品', isManual: true, purchased: true, purchasedQuantity: 1 },
-  { id: 3, inventoryItemId: 10, name: 'トイレットペーパー', isManual: true, purchased: false, purchasedQuantity: 0 },
+  { id: 1, inventoryItemId: 3, name: '醤油', isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
+  { id: 2, inventoryItemId: 9, name: '購入済みの品', isManual: true, purchased: true, purchasedQuantity: 1, plannedQuantity: 1, purchaseRevision: 0 },
+  { id: 3, inventoryItemId: 10, name: 'トイレットペーパー', isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 },
 ]
 
 describe('DashboardPage', () => {
@@ -246,7 +246,7 @@ describe('DashboardPage', () => {
 
   it('同名の別IDも各行の参考値段を表示し、購入済みを除外する', async () => {
     const prices = [1280, 0, null, undefined, 9999999999]
-    setupApi({ shoppingList: prices.map((price, index) => ({ id: index + 1, inventoryItemId: index + 1, name: '[E2E_TEST] 同名', price, isManual: true, purchased: false, purchasedQuantity: 3 })).concat([{ id: 6, inventoryItemId: 6, name: '[E2E_TEST] 購入済み', price: 100, isManual: true, purchased: true, purchasedQuantity: 1 }]) })
+    setupApi({ shoppingList: prices.map((price, index) => ({ id: index + 1, inventoryItemId: index + 1, name: '[E2E_TEST] 同名', price, isManual: true, purchased: false, purchasedQuantity: 3, plannedQuantity: 1, purchaseRevision: 0 })).concat([{ id: 6, inventoryItemId: 6, name: '[E2E_TEST] 購入済み', price: 100, isManual: true, purchased: true, purchasedQuantity: 1, plannedQuantity: 1, purchaseRevision: 0 }]) })
     renderDashboardPage()
     const list = await screen.findByRole('list', { name: '買い物リスト' })
     expect(within(list).getAllByRole('listitem').map((row) => row.textContent)).toEqual(['[E2E_TEST] 同名1,280円', '[E2E_TEST] 同名0円', '[E2E_TEST] 同名未設定', '[E2E_TEST] 同名未設定', '[E2E_TEST] 同名9,999,999,999円'])
@@ -282,7 +282,7 @@ describe('DashboardPage', () => {
   })
 
   it('買い物リスト・在庫が空のときは空である旨を表示し、多い場合は先頭8件と残件数を表示する', async () => {
-    const many = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, inventoryItemId: index + 1, name: `品目${index + 1}`, isManual: true, purchased: false, purchasedQuantity: 0 }))
+    const many = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, inventoryItemId: index + 1, name: `品目${index + 1}`, isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }))
     setupApi({ inventory: [], shoppingList: many })
     renderDashboardPage()
 
