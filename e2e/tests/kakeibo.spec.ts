@@ -129,7 +129,7 @@ for (const width of [1280, 390, 320]) {
       await expect(modal).toBeHidden()
       await expect(trigger).toBeFocused()
       await trigger.click()
-      await expect(expenseAccount).toHaveValue('')
+      await expect(expenseAccount).toHaveValue('account:' + account.id)
       await modal.getByRole('tab', { name: '収入', exact: true }).click()
       const incomeAccount = modal.getByLabel('入金先口座（必須）')
       await expect(incomeAccount).toHaveValue('')
