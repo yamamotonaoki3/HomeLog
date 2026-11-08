@@ -5,6 +5,7 @@ import { server } from '../mocks/server'
 import { useShoppingPurchases } from '../../hooks/useShoppingPurchases'
 import { setTokens, setAccessToken, clearTokens, getAccessToken } from '../../api/tokenStorage'
 import { pendingKey, readPending, savePending } from '../../lib/shoppingPending'
+const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done }); return { promise, resolve } }
 const scope = { actorUserId: 1, householdId: 10 }
 const lines = [{ id: 11, purchasedQuantity: 2, expectedPurchaseRevision: 3 }]
 const response = (id: string) => ({ requestId: id, updatedInventoryItems: [{ id: 21, quantity: 4 }], removedShoppingListItemIds: [], remainingShoppingListItems: [{ id: 11, plannedQuantity: 1, purchaseRevision: 4 }] })
@@ -256,4 +257,62 @@ it('actor切替の初回確認待ちを明示再確認で置換しても旧draft
  expect(result.current.pending).toBeNull();expect(result.current.status).toBe('detached')
  await act(async()=>{await result.current.recheck();release()})
  expect(result.current.status).toBe('ready');expect(options.onDetached).toHaveBeenCalledOnce();expect(readPending(scope).kind).toBe('pending')
+})
+
+it.each([false, true])('idleの同scope再確認はdraft破棄callbackを呼ばない: access更新=%s', async (rotateAccess) => {
+ const options = callbacks(), { result } = renderHook(() => useShoppingPurchases(options))
+ await waitFor(() => expect(result.current.status).toBe('ready'))
+ if (rotateAccess) setTokens('testuser_a_rotated_access', 'testuser_a_refresh')
+ await act(async () => { await result.current.recheck() })
+ expect(result.current.status).toBe('ready'); expect(result.current.scope).toEqual(scope)
+ expect(options.onDetached).not.toHaveBeenCalled(); expect(options.onSuccess).not.toHaveBeenCalled(); expect(options.onNotApplied).not.toHaveBeenCalled()
+})
+
+it.each([
+ { status: 200, newerPending: false }, { status: 409, newerPending: false },
+ { status: 200, newerPending: true }, { status: 409, newerPending: true },
+])('同じ元keyを回復する2画面は各自の一覧を同期し別keyには干渉しない: $status / 新pending=$newerPending', async ({ status, newerPending }) => {
+ const original = { requestId: '12345678-1234-4234-8234-123456789abc', items: lines }
+ expect((await savePending(scope, original, () => true)).kind).toBe('saved')
+ const arrived = [deferred(), deferred()], replies = [deferred(), deferred()], refresh = deferred(), refreshEntered = deferred()
+ const bodies: unknown[] = []
+ server.use(http.post('/api/shopping-list-items/purchases', async ({ request }) => {
+  const body = await request.json() as { requestId: string }; const index = bodies.length; bodies.push(body)
+  arrived[index].resolve(); await replies[index].promise
+  return HttpResponse.json(status === 200 ? response(body.requestId) : { code: 'RESOURCE_CONFLICT', details: [{ field: 'purchase', reason: 'PURCHASE_NOT_APPLIED' }] }, { status })
+ }))
+ const winnerOptions = callbacks(), loserOptions = callbacks()
+ const synchronize = async () => { refreshEntered.resolve(); await refresh.promise }
+ if (status === 200) loserOptions.onSuccess.mockImplementation(synchronize)
+ else loserOptions.onNotApplied.mockImplementation(synchronize)
+ const winner = renderHook(() => useShoppingPurchases(winnerOptions)), loser = renderHook(() => useShoppingPurchases(loserOptions))
+ await waitFor(() => { expect(winner.result.current.status).toBe('unknown'); expect(loser.result.current.status).toBe('unknown') })
+ let winning!: Promise<void>, losing!: Promise<void>
+ act(() => { winning = winner.result.current.recover() })
+ await act(async () => { await arrived[0].promise })
+ act(() => { losing = loser.result.current.recover() })
+ await act(async () => { await arrived[1].promise })
+ expect(bodies).toEqual([original, original])
+ await act(async () => { replies[0].resolve(); await winning })
+ expect(readPending(scope).kind).toBe('empty')
+ expect(status === 200 ? winnerOptions.onSuccess : winnerOptions.onNotApplied).toHaveBeenCalledOnce()
+ const replacement = { requestId: '22345678-1234-4234-8234-123456789abc', items: [{ ...lines[0], expectedPurchaseRevision: 4 }] }
+ if (newerPending) expect((await savePending(scope, replacement, () => true)).kind).toBe('saved')
+ try {
+  if (newerPending) {
+   await act(async () => { replies[1].resolve(); await losing })
+   expect(loserOptions.onSuccess).not.toHaveBeenCalled(); expect(loserOptions.onNotApplied).not.toHaveBeenCalled()
+   expect(loser.result.current.status).toBe('unknown'); expect(loser.result.current.pending).toMatchObject(replacement)
+   const stored = readPending(scope); expect(stored.kind === 'pending' && stored.pending.requestId).toBe(replacement.requestId)
+  } else {
+   act(() => { replies[1].resolve() })
+   await waitFor(() => expect(status === 200 ? loserOptions.onSuccess : loserOptions.onNotApplied).toHaveBeenCalledOnce())
+   await act(async () => { await refreshEntered.promise })
+   expect(loser.result.current.status).toBe('refreshing')
+   if (status === 200) expect(loserOptions.onSuccess).toHaveBeenCalledWith(expect.objectContaining(original), response(original.requestId))
+   await act(async () => { refresh.resolve(); await losing })
+   expect(loser.result.current.status).toBe(status === 200 ? 'ready' : 'notApplied')
+   expect(loser.result.current.pending).toBeNull(); expect(readPending(scope).kind).toBe('empty')
+  }
+ } finally { replies[1].resolve(); refresh.resolve(); await act(async () => { await losing }) }
 })

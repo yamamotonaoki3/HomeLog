@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -8,6 +8,7 @@ import { setTokens, clearTokens } from '../../api/tokenStorage'
 const inventory = [1,2].map(id => ({ id, name: 'testuser_品目'+id, categoryId: 1, storeId: id === 1 ? 1 : null, quantity: 0.5, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }))
 const shopping = inventory.map(i => ({ id: i.id+10, inventoryItemId: i.id, name: i.name, isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 3, purchaseRevision: 2, price: null }))
 const props = { shopping, inventory, categories: [{ id: 1, name: '食品', isDefault: true }], stores: [{ id: 1, name: '店舗A' }], sort: 'store' as const, onSortChange: vi.fn(), onRefresh: vi.fn().mockResolvedValue(undefined), onNotify: vi.fn(), actorUserId: 1 }
+const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done }); return { promise, resolve } }
 it('予定3を明示保存してcleanになった後の最新GET5を詳細と次PATCHの値とrevisionに使う', async () => {
   const user = userEvent.setup(), bodies: unknown[] = []
   server.use(http.patch('/api/shopping-list-items/11', async ({ request }) => {
@@ -226,4 +227,86 @@ it('成功後GET失敗でも保存済remainingをmetadataを保って表示す�
 it('保存済成功で除外された対象はGET失敗でも消え、未購入行を保持する',async()=>{
  const user=userEvent.setup();server.use(http.post('/api/shopping-list-items/purchases',async({request})=>{const body=await request.json() as {requestId:string};return HttpResponse.json({requestId:body.requestId,updatedInventoryItems:[{id:1,quantity:3.5}],removedShoppingListItemIds:[11],remainingShoppingListItems:[]})}))
  render(<ShoppingListPanel {...props} onRefresh={vi.fn().mockRejectedValue(new Error('GET'))}/>);const check=screen.getByRole('checkbox',{name:'testuser_品目1を購入済みにする'});await waitFor(()=>expect(check).toBeEnabled());await user.click(check);await user.click(screen.getByRole('button',{name:'購入を反映'}));await user.click(screen.getByRole('button',{name:'この内容で購入を反映'}));await screen.findByText('購入は反映済み。一覧を再取得してください');expect(screen.queryByRole('button',{name:'testuser_品目1の詳細'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'testuser_品目2の詳細'})).toBeInTheDocument()
+})
+
+it.each([false, true])('同じ本人/sessionの世帯変更は再確認後も新一覧の完了まで旧行とdraftを隔離する: GET失敗=%s', async (failFirstRefresh) => {
+ const user = userEvent.setup(), gates = [deferred(), deferred()], notify = vi.fn()
+ const freshInventory = [{ ...inventory[0], id: 31, name: 'testuser_新世帯品目', quantity: 7.5 }]
+ const freshShopping = [{ ...shopping[0], id: 41, inventoryItemId: 31, name: freshInventory[0].name, plannedQuantity: 6, purchaseRevision: 0 }]
+ let publish!: () => void, posts = 0, refreshCount = 0
+ const refresh = vi.fn(async () => {
+  const index = refreshCount++; await gates[index].promise
+  if (index === 0 && failFirstRefresh) throw new Error('list GET failed')
+  publish()
+ })
+ server.use(http.get('/api/auth/me', () => HttpResponse.json({ id: 1 })), http.post('/api/shopping-list-items/purchases', () => { posts++; return HttpResponse.json({}) }))
+ const view = render(<ShoppingListPanel {...props} onRefresh={refresh} onNotify={notify} />)
+ publish = () => view.rerender(<ShoppingListPanel {...props} shopping={freshShopping} inventory={freshInventory} onRefresh={refresh} onNotify={notify} />)
+ await waitFor(() => expect(screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする', exact: true })).toBeEnabled())
+ await user.click(screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする', exact: true }))
+ await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細', exact: true }))
+ const planned = screen.getByRole('textbox', { name: 'testuser_品目1の予定数', exact: true })
+ await user.clear(planned); await user.type(planned, '8')
+ await user.click(screen.getByRole('button', { name: '閉じる', exact: true }))
+ server.use(http.get('/api/households/me', () => HttpResponse.json({ id: 20 })))
+ await user.click(screen.getByRole('button', { name: '購入を反映', exact: true }))
+ await user.click(screen.getByRole('button', { name: 'この内容で購入を反映', exact: true }))
+ await screen.findByRole('button', { name: '本人と世帯を再確認', exact: true })
+ const expectOldHidden = () => {
+  for (const item of shopping) {
+   expect(screen.queryByRole('button', { name: item.name + 'の詳細', exact: true })).not.toBeInTheDocument()
+   expect(screen.queryByRole('checkbox', { name: item.name + 'を購入済みにする', exact: true })).not.toBeInTheDocument()
+  }
+  expect(screen.queryByRole('dialog', { name: '買い物詳細', exact: true })).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: '購入内容の確認', exact: true })).not.toBeInTheDocument()
+ }
+ expectOldHidden(); expect(posts).toBe(0)
+ try {
+  await user.click(screen.getByRole('button', { name: '本人と世帯を再確認', exact: true }))
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+  expectOldHidden()
+  expect(screen.getByRole('button', { name: '品目を追加', exact: true })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: 'testuser_新世帯品目の詳細', exact: true })).not.toBeInTheDocument()
+  await act(async () => { gates[0].resolve() })
+  if (failFirstRefresh) {
+   const retry = await screen.findByRole('button', { name: '一覧を再取得', exact: true })
+   expectOldHidden(); expect(screen.getByRole('button', { name: '品目を追加', exact: true })).toBeDisabled()
+   await user.click(retry); await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2))
+   expectOldHidden()
+   await act(async () => { gates[1].resolve() })
+  }
+  const freshCheck = await screen.findByRole('checkbox', { name: 'testuser_新世帯品目を購入済みにする', exact: true })
+  await waitFor(() => expect(freshCheck).toBeEnabled())
+  expectOldHidden(); expect(freshCheck).not.toBeChecked(); expect(posts).toBe(0)
+  await user.click(screen.getByRole('button', { name: 'testuser_新世帯品目の詳細', exact: true }))
+  expect(screen.getByRole('textbox', { name: 'testuser_新世帯品目の予定数', exact: true })).toHaveValue('6')
+  expect(screen.getByRole('textbox', { name: 'testuser_新世帯品目の実購入数', exact: true })).toHaveValue('')
+  expect(screen.getByText('7.5', { selector: 'dd' })).toBeInTheDocument()
+ } finally { gates.forEach(gate => gate.resolve()) }
+})
+
+it.each([false, true])('同じscopeの再確認は予定/実数draftを保持し一覧を取り直さない: access更新=%s', async (rotateAccess) => {
+ const user = userEvent.setup(), refresh = vi.fn().mockResolvedValue(undefined)
+ server.use(http.get('/api/auth/me', () => HttpResponse.json({ id: 1 })))
+ render(<ShoppingListPanel {...props} onRefresh={refresh} />)
+ await waitFor(() => expect(screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする', exact: true })).toBeEnabled())
+ await user.click(screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする', exact: true }))
+ await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細', exact: true }))
+ const planned = screen.getByRole('textbox', { name: 'testuser_品目1の予定数', exact: true }), actual = screen.getByRole('textbox', { name: 'testuser_品目1の実購入数', exact: true })
+ await user.clear(planned); await user.type(planned, '8'); await user.clear(actual); await user.type(actual, '2.5')
+ await user.click(screen.getByRole('button', { name: '閉じる', exact: true }))
+ // A failed verification offers the existing explicit recheck without detaching the draft.
+ server.use(http.get('/api/households/me', () => HttpResponse.json({}, { status: 503 })))
+ await user.click(screen.getByRole('button', { name: '購入を反映', exact: true }))
+ await user.click(screen.getByRole('button', { name: 'この内容で購入を反映', exact: true }))
+ await screen.findByRole('button', { name: '本人と世帯を再確認', exact: true })
+ if (rotateAccess) setTokens('testuser_a_rotated_access', 'testuser_a_refresh')
+ server.use(http.get('/api/households/me', () => HttpResponse.json({ id: 10 })))
+ await user.click(screen.getByRole('button', { name: '本人と世帯を再確認', exact: true }))
+ await waitFor(() => expect(screen.getByRole('button', { name: '購入を反映', exact: true })).toBeEnabled())
+ expect(refresh).not.toHaveBeenCalled()
+ expect(screen.getByRole('checkbox', { name: 'testuser_品目1を購入済みにする', exact: true })).toBeChecked()
+ await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細', exact: true }))
+ expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数', exact: true })).toHaveValue('8')
+ expect(screen.getByRole('textbox', { name: 'testuser_品目1の実購入数', exact: true })).toHaveValue('2.5')
 })
