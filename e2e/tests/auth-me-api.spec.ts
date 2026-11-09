@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
-import { login, createHousehold } from './support/flows'
+import { login, createHousehold, openAccountMenu } from './support/flows'
 import { newUser } from './support/test-data'
 
 for (const width of [1280, 390, 320]) {
@@ -39,7 +39,7 @@ for (const width of [1280, 390, 320]) {
       await createHousehold(page, '[E2E_TEST] me household')
       await expect(page.getByRole('img', { name: '通知アラーム（0件）' })).toBeVisible()
       await expect(page.getByRole('link', { name: '設定を開く' })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible()
+      await expect((await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
       await expect(page.getByText('口座残高合計: 0円', { exact: true })).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       const dir = process.env.AUTH_ME_SCREENSHOT_DIR

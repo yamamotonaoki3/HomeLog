@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Locator, Page } from '@playwright/test'
@@ -395,7 +396,7 @@ for (const width of [1280, 390, 320]) {
     const ownerToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     const privateResponse = await page.request.post('/api/events', { headers: { Authorization: 'Bearer ' + ownerToken }, data: { name: '[E2E_TEST] 他者非公開イベント', eventDate: '2030-01-16', personal: true } })
     expect(privateResponse.status()).toBe(201)
-    await page.getByRole('button', { name: 'ログアウト' }).click()
+    await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
     await register(page, newUser('event_member'))
     await joinHousehold(page, code)
     await page.goto('/events')

@@ -197,3 +197,78 @@
 .day-detail-body .modal-actions button, .day-event-detail button { min-height:44px; min-width:44px; }
 .day-bottom-close { min-height:44px; }
 @media(max-width:400px) { .calendar-panel { padding:12px 8px; } .calendar-grid { gap:2px; } .calendar-day.calendar-day-date { min-height:54px; } .day-detail-header,.day-detail-body { padding-left:12px; padding-right:12px; } }
+
+/* #462: 資料01〜07の見本。既存カードや他画面の共通クラスへは適用しない。 */
+.dashboard-home, .day-detail-modal { font-family:"Noto Sans CJK JP","Noto Sans",system-ui,sans-serif; }
+.dashboard-home { padding:16px; color:#182438; }
+.dashboard-home .dashboard-layout { gap:12px; }
+.dashboard-home .calendar-panel { background:#fff; border:1px solid #e2e9f0; border-radius:17px; padding:15px; box-shadow:0 3px 10px rgba(30,55,85,.035); }
+.dashboard-home .calendar-toolbar { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; }
+.dashboard-home .calendar-month { text-align:center; font-size:15px; font-weight:800; }
+.dashboard-home .calendar-toolbar button { border:0; border-radius:9px; padding:5px 9px; color:#537091; background:#eaf1f9; font:inherit; font-size:12px; cursor:pointer; }
+.dashboard-home .calendar-weekdays { margin-top:16px; color:#8795a7; font-size:12px; font-weight:700; }
+.dashboard-home .calendar-weekdays span:first-child { color:#c85b61; }
+.dashboard-home .calendar-weekdays span:last-child { color:#3b74b4; }
+.dashboard-home .calendar-grid { gap:3px; margin-top:8px; }
+.dashboard-home .calendar-day.calendar-day-date { min-height:49px; border:1px solid #edf1f6; border-radius:8px; padding:6px 1px 3px; justify-content:flex-start; gap:0; }
+.dashboard-home .calendar-day-date strong { font-size:12px; font-weight:400; }
+.dashboard-home .calendar-day-date[aria-current=date] { background:#e9f5ff; border-color:#94c7f6; color:#1d5b99; }
+.dashboard-home .calendar-day-date[aria-current=date] strong { font-weight:800; }
+.dashboard-home .calendar-dots { flex-wrap:nowrap; margin-top:7px; min-height:7px; gap:3px; overflow:visible; }
+.dashboard-home .calendar-dot { width:7px; height:7px; flex-basis:7px; }
+.dashboard-home .calendar-dot-events { background:#a855a5; }
+.dashboard-home .calendar-dot-income { background:#359b69; }
+.dashboard-home .calendar-dot-expense { background:#4278b6; }
+.dashboard-home .calendar-dot-fixed { background:#c68c38; }
+.dashboard-home .calendar-legend { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 9px; margin:12px 0 0; padding:10px; border-radius:11px; background:#f5f7fa; color:#64758a; font-size:12px; }
+.dashboard-home .calendar-help { margin:10px 0 0; font-size:12px; line-height:1.7; color:#6d7d91; }
+.dashboard-home .card { border:1px solid #e2e9f0; border-radius:17px; box-shadow:0 3px 10px rgba(30,55,85,.035); }
+.dashboard-home .dashboard-today-card { padding:15px; }
+.dashboard-today-card h2 { font-size:18px; font-weight:850; padding-bottom:11px; margin-bottom:11px; border-bottom:1px solid #edf1f5; }
+.dashboard-today-row { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:44px; padding:0; border:0; background:transparent; color:#182438; text-align:left; font:inherit; cursor:pointer; }
+.dashboard-today-row + .dashboard-today-row { margin-top:9px; }
+.dashboard-today-count { padding:3px 7px; border-radius:9px; background:#edf3fb; color:#385a83; font-size:12px; font-weight:700; flex-shrink:0; }
+.dashboard-home button:focus-visible, .day-detail-modal button:focus-visible, .day-detail-modal a:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
+.day-detail-overlay { background:transparent; padding:calc(var(--day-header-height,0px) + 12px) 12px 12px; }
+.day-detail-overlay::before { content:''; position:absolute; inset:var(--day-header-height,0px) 0 0; background:rgba(27,41,66,.4); pointer-events:none; }
+.day-detail-modal { position:relative; width:min(600px,100%); max-width:calc(100vw - 24px); max-height:min(85dvh,calc(100dvh - var(--day-header-height,0px) - 24px)); border-radius:22px; color:#182438; box-shadow:0 8px 30px rgba(26,43,62,.12); }
+.day-detail-header { padding:16px 16px 6px; border:0; }
+.day-detail-header h2 { font-size:18px; font-weight:700; }
+.day-detail-header p { margin:4px 0 0; font-size:12px; color:#738198; }
+.day-close-icon { display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:#edf1f6; color:#48617e; font:inherit; cursor:pointer; }
+.day-detail-body { padding:0 16px max(16px,env(safe-area-inset-bottom)); font-size:14px; }
+.day-detail-body .day-detail-group { margin:12px 0 9px; font-size:12px; font-weight:800; letter-spacing:.08em; color:#6b7790; }
+.day-detail-section + .day-detail-group { margin-top:19px; }
+.day-detail-section { border:1px solid #e0e6ef; border-radius:12px; margin-bottom:8px; }
+.day-detail-section h3 { margin:0; }
+.day-section-toggle { min-height:49px; padding:12px; gap:9px; border:0; border-radius:12px; color:#182438; background:#fff; cursor:pointer; font-size:13px; font-weight:800; }
+.day-section-toggle::after { content:none; }
+.day-section-toggle[aria-expanded=true]::after { content:none; }
+.day-section-icon { width:19px; height:19px; flex:0 0 19px; color:#4278b6; }
+.day-section-icon-fixed { color:#c68c38; }
+.day-section-title { flex:1; min-width:0; }
+.day-section-count { color:#6f7e90; font-size:12px; font-weight:700; text-align:right; }
+.day-section-chevron { width:14px; height:14px; flex:0 0 14px; color:#738198; }
+.day-section-toggle[aria-expanded=true] .day-section-chevron { transform:rotate(180deg); }
+.day-section-content { border-top:1px solid #edf1f5; padding:10px 12px 12px; }
+.day-detail-list { list-style:none; padding:0; margin:0; }
+.day-detail-body li { margin:9px 0; }
+.day-detail-body a, .day-item-button { color:#3772af; font-weight:700; }
+.day-detail-value-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:10px; align-items:center; }
+.day-detail-value-row > * { min-width:0; overflow-wrap:anywhere; }
+.day-detail-value-row > :last-child { text-align:right; font-variant-numeric:tabular-nums; }
+.day-detail-value-row p { margin:0; }
+/* 収入と支出の明細は同じ並びになるため、色だけに頼らず文字のラベルで区別する。 */
+.day-detail-kind { display:inline-block; margin-right:4px; padding:2px 6px; border-radius:8px; background:#edf3fb; color:#385a83; font-size:12px; font-weight:700; white-space:nowrap; }
+.day-detail-kind-income { background:#e7f6ee; color:#277548; }
+.day-detail-value-row .day-fixed-meta { margin-top:3px; font-size:12px; color:#738198; }
+.day-finance-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; background:#f6f9fc; border-radius:11px; padding:10px; margin-bottom:10px; }
+.day-finance-summary p { margin:0; text-align:center; min-width:0; overflow-wrap:anywhere; }
+.day-finance-summary span { display:block; color:#738198; font-size:12px; }
+.day-finance-summary strong { display:block; font-size:14px; margin-top:4px; }
+.day-posting-status { display:inline-block; padding:3px 7px; border-radius:9px; margin:8px 0 0; background:#f1f4f8; color:#607086; font-size:12px; font-weight:700; }
+.day-posting-status-posted { background:#e7f6ee; color:#277548; }
+.day-detail-note { background:#f4f8fc; border:1px solid #e3edf6; border-radius:10px; padding:10px; margin:0 0 10px; font-size:12px; line-height:1.55; color:#647d98; }
+.day-bottom-close { width:100%; margin-top:11px; padding:11px 12px; border-radius:10px; background:#eef3f9; color:#365475; font-weight:800; font-size:14px; }
+@media (max-width:400px) { .dashboard-home { padding:16px 14px; } .dashboard-home .calendar-panel { padding:15px; } }
+@media (max-width:340px) { .dashboard-home .calendar-day.calendar-day-date { padding-inline:0; } .dashboard-home .calendar-dots { gap:1px; } }

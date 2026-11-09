@@ -1,22 +1,25 @@
-import { expect, test } from '@playwright/test'
+import { openAccountMenu } from './support/flows'
+import { expect, test } from './console-guard'
 import { createHousehold, login, register } from './support/flows'
 import { newUser } from './support/test-data'
 
 test.describe('F-01 認証', () => {
-  test('新規登録 → ログアウト → ログインできる', async ({ page }) => {
+  test('新規登録 → ログアウト → ログインできる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     const user = newUser('auth')
     await register(page, user)
     await createHousehold(page, 'e2euser_household_auth')
 
-    await page.getByRole('button', { name: 'ログアウト' }).click()
+    await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
     await expect(page).toHaveURL(/\/login/)
 
     await login(page, user)
     await expect(page).toHaveURL(/\/$/)
-    await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible()
+    await expect((await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
   })
 
-  test('確認用パスワードが一致しないと登録できない', async ({ page }) => {
+  test('確認用パスワードが一致しないと登録できない', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     const user = newUser('mismatch')
     await page.goto('/register')
     await page.getByLabel('メールアドレス').fill(user.email)
@@ -29,18 +32,21 @@ test.describe('F-01 認証', () => {
     await expect(page).toHaveURL(/\/register$/)
   })
 
-  test('誤ったパスワードではログインできない', async ({ page }) => {
+  test('誤ったパスワードではログインできない', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     const user = newUser('wrongpw')
     await register(page, user)
     await page.context().clearCookies()
     await page.evaluate(() => localStorage.clear())
 
+    consoleGuard.allow({ url: /\/api\/auth\/login$/, message: /401 \(Unauthorized\)/ })
     await login(page, { ...user, password: 'WrongPass999!' })
     await expect(page).toHaveURL(/\/login/)
     await expect(page.locator('.error')).not.toBeEmpty()
   })
 
-  test('未ログインで保護ページを開くとログイン画面へリダイレクトされる', async ({ page }) => {
+  test('未ログインで保護ページを開くとログイン画面へリダイレクトされる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
     await page.goto('/kakeibo')
     await expect(page).toHaveURL(/\/login/)
   })

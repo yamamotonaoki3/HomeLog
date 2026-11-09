@@ -133,7 +133,7 @@ export function DisplaySettingsPage() {
                 </label>
               </legend>
               <div className={settings.cards[card] ? 'display-settings-items' : 'display-settings-items is-disabled'}>
-                {(Object.entries(ITEM_LABELS[card]) as [keyof DisplaySettings['items'][typeof card], string][]).map(([key, label]) => (
+                {(Object.entries(ITEM_LABELS[card]) as [keyof DisplaySettings['items'][typeof card], string][]).filter(([key]) => card !== 'today' || key !== 'balance').map(([key, label]) => (
                   <label key={String(key)}>
                     <input
                       type="checkbox"
@@ -145,6 +145,7 @@ export function DisplaySettingsPage() {
                   </label>
                 ))}
               </div>
+              {card === 'today' && <p className="display-settings-hint">今日の収支はカレンダーの日付詳細で確認できます</p>}
             </fieldset>
           ) : (
             <div key={card} className="display-settings-group">

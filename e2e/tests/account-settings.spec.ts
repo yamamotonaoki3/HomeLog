@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -51,7 +52,7 @@ for (const width of [1280, 390, 320]) {
       await expectNoOverflow(page)
       if (dir) await page.screenshot({ path: join(dir, `account-done-${width}.png`), fullPage: true })
 
-      await page.getByRole('button', { name: 'ログアウト', exact: true }).click()
+      await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
       await page.getByLabel('メールアドレス').fill(newEmail)
       await page.locator('#login-password').fill('NewPass456')
       await page.getByRole('button', { name: 'ログイン', exact: true }).click()

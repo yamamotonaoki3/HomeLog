@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import type { Page } from '@playwright/test'
 import { expect, test } from './console-guard'
 import { confirmShoppingPurchase, login, setupUserWithHousehold } from './support/flows'
@@ -78,7 +79,7 @@ test('実commit後503のpendingはreloadと再loginで残り、明示回復だ�
   await expect(recoveryButton(page)).toBeEnabled()
   await expect(panel(page).getByRole('button', { name: a.name + 'の詳細', exact: true })).toHaveCount(0)
   expect(sent).toHaveLength(1)
-  await page.getByRole('button', { name: 'ログアウト', exact: true }).click()
+  await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
   await expect(page).toHaveURL(/\/login$/)
   await login(page, a.user)
   await expect(page).toHaveURL(/\/zaiko\/shopping$/)
@@ -310,7 +311,7 @@ for (const lateStatus of [401, 200]) {
       await expect.poll(() => !!original && (lateStatus === 401 || committed)).toBe(true)
       const pendingA = await stored(page, a.key)
       await tabB.goto('/')
-      await tabB.getByRole('button', { name: 'ログアウト', exact: true }).click()
+      await (await openAccountMenu(tabB)).getByRole('button', { name: 'ログアウト', exact: true }).click()
       await expect(tabB).toHaveURL(/\/login$/)
       await login(tabB, userB)
       await expect(tabB).toHaveURL(/\/$/)
@@ -331,7 +332,7 @@ for (const lateStatus of [401, 200]) {
       expect(await stock(tabB, bItemId)).toBe(5)
       await expect(tabB.getByRole('status').filter({ hasText: '購入を反映しました' })).toHaveCount(0)
       await page.unroute(purchaseUrl)
-      await tabB.getByRole('button', { name: 'ログアウト', exact: true }).click()
+      await (await openAccountMenu(tabB)).getByRole('button', { name: 'ログアウト', exact: true }).click()
       await expect(tabB).toHaveURL(/\/login$/)
       await login(tabB, a.user)
       await expect(tabB).toHaveURL(/\/zaiko\/shopping$/)

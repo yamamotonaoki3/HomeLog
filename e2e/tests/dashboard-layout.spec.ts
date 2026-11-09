@@ -10,7 +10,7 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   const summaryCards = page.locator('.dashboard-summary-grid')
   const cards = summaryCards.locator('.card')
 
-  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
+  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeAttached()
   await expect(cards).toHaveCount(5)
   await expect(cards.nth(0).getByRole('heading', { name: '今日の状況' })).toBeVisible()
   await expect(cards.nth(1).getByRole('heading', { name: '買い物・在庫' })).toBeVisible()
@@ -37,26 +37,30 @@ test('モバイルではカレンダーを先頭にしてサマリーカード�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
   const primaryNavigation = page.getByRole('navigation', { name: '主要機能' })
-  const notificationAlarm = page.getByRole('img', { name: '通知アラーム（0件）' })
   const settings = page.getByRole('link', { name: '設定を開く' })
-  const logout = page.getByRole('button', { name: 'ログアウト' })
-  await expect(notificationAlarm).toBeVisible()
+  await expect(settings).toBeVisible()
+  await expect(primaryNavigation.getByRole('link')).toHaveText(['ホーム', '献立', '在庫', '家計簿'])
+  await expect(primaryNavigation.getByRole('button', { name: 'その他', exact: true })).toBeVisible()
   await cards.nth(4).getByRole('link', { name: 'イベント一覧を見る' }).scrollIntoViewIfNeeded()
-  const [lastLinkBox, navBox, alarmBox, settingsBox, logoutBox] = await Promise.all([
+  const [lastLinkBox, navBox] = await Promise.all([
     cards.nth(4).getByRole('link', { name: 'イベント一覧を見る' }).boundingBox(),
     primaryNavigation.boundingBox(),
-    notificationAlarm.boundingBox(),
-    settings.boundingBox(),
-    logout.boundingBox(),
   ])
   expect(lastLinkBox).not.toBeNull()
   expect(navBox).not.toBeNull()
-  expect(alarmBox).not.toBeNull()
-  expect(settingsBox).not.toBeNull()
-  expect(logoutBox).not.toBeNull()
   expect(lastLinkBox!.y + lastLinkBox!.height).toBeLessThanOrEqual(navBox!.y)
-  expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
-  expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(logoutBox!.x)
+  const header = page.getByRole('banner')
+  await expect(header.getByRole('img', { name: '通知アラーム（0件）' })).toBeVisible()
+  await expect(header.locator('.header-account-name')).toBeVisible()
+  await expect(header.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
+  await expect(header.getByRole('button')).toHaveAttribute('aria-haspopup', 'dialog')
+  await page.getByRole('button', { name: 'その他', exact: true }).click()
+  const menu = page.getByRole('dialog', { name: 'その他の設定・管理' })
+  await expect(menu.getByRole('link')).toHaveCount(9)
+  await expect(menu.getByRole('img', { name: /通知アラーム/ })).toHaveCount(0)
+  await expect(menu.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'その他', exact: true })).toBeFocused()
 })
 
 test('PCではカレンダーの下にサマリーカードを複数列で表示する', async ({ page, consoleGuard }) => {
@@ -66,34 +70,159 @@ test('PCではカレンダーの下にサマリーカードを複数列で表示
 
   const calendar = page.locator('.calendar-panel')
   const cards = page.locator('.dashboard-summary-grid .card')
-  const notificationAlarm = page.getByRole('img', { name: '通知アラーム（0件）' })
   const settings = page.getByRole('link', { name: '設定を開く' })
-  const logout = page.getByRole('button', { name: 'ログアウト' })
-  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
+  await expect(calendar.getByRole('heading', { name: '月間カレンダー' })).toBeAttached()
   await expect(cards).toHaveCount(5)
-  await expect(notificationAlarm).toBeVisible()
+  await expect(settings).toBeVisible()
 
-  const [calendarBox, firstCardBox, secondCardBox, alarmBox, settingsBox, logoutBox] = await Promise.all([
+  const [calendarBox, firstCardBox, secondCardBox] = await Promise.all([
     calendar.boundingBox(),
     cards.nth(0).boundingBox(),
     cards.nth(1).boundingBox(),
-    notificationAlarm.boundingBox(),
-    settings.boundingBox(),
-    logout.boundingBox(),
   ])
   expect(calendarBox).not.toBeNull()
   expect(firstCardBox).not.toBeNull()
   expect(secondCardBox).not.toBeNull()
-  expect(alarmBox).not.toBeNull()
-  expect(settingsBox).not.toBeNull()
-  expect(logoutBox).not.toBeNull()
   expect(calendarBox!.y).toBeLessThan(firstCardBox!.y)
   expect(secondCardBox!.y).toBe(firstCardBox!.y)
-  expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
-  expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(logoutBox!.x)
+  await page.getByRole('button', { name: 'その他', exact: true }).click()
+  const menu = page.getByRole('dialog', { name: 'その他の設定・管理' })
+  await expect(menu.getByRole('link')).toHaveCount(9)
+  await expect(menu.getByRole('img', { name: /通知アラーム/ })).toHaveCount(0)
+  await expect(menu.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
+  await menu.getByRole('button', { name: 'メニューを閉じる' }).click()
+  await expect(page.getByRole('button', { name: 'その他', exact: true })).toBeFocused()
+  const header = page.getByRole('banner')
+  await expect(header.getByRole('img', { name: '通知アラーム（0件）' })).toBeVisible()
+  await expect(header.locator('.header-account-name')).toBeVisible()
+  await expect(header.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
+  await expect(header.getByRole('button')).toHaveAttribute('aria-haspopup', 'dialog')
 })
 
 for (const width of [1280, 390, 320]) {
+  test(width + 'pxで長い本人名からアカウントモーダルを操作できる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })
+    await setupUserWithHousehold(page, 'header-account-' + width)
+    let name = 'testuser_' + '長い本人名'.repeat(16)
+    await page.route('**/api/auth/me', async route => {
+      const response = await route.fetch()
+      await route.fulfill({ response, json: { ...await response.json(), displayName: name } })
+    })
+    await page.reload()
+    const header = page.getByRole('banner')
+    const nameLabel = header.locator('.header-account-name')
+    const account = header.getByRole('button', { name, exact: true })
+    const alarm = header.getByRole('img', { name: '通知アラーム（0件）' })
+    const settings = header.getByRole('link', { name: '設定を開く' })
+    const personIcon = account.locator('svg')
+    await expect(nameLabel).toHaveText(name)
+    await expect(nameLabel).toHaveAttribute('title', name)
+    await expect(account).toHaveAttribute('aria-haspopup', 'dialog')
+    await expect(account).toHaveAttribute('aria-expanded', 'false')
+    await expect(header.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
+    await expect(alarm).toBeVisible()
+    await expect(settings).toBeVisible()
+    await expect(personIcon).toBeVisible()
+    await expect(page.getByRole('button', { name: 'メニューを開く' })).toHaveCount(0)
+    const [brandBox, alarmBox, settingsBox, accountBox] = await Promise.all([
+      header.locator('.nav-logo').boundingBox(), alarm.boundingBox(), settings.boundingBox(), account.boundingBox(),
+    ])
+    for (const box of [alarmBox, settingsBox, accountBox]) {
+      expect(box).not.toBeNull()
+      expect(box!.height).toBeGreaterThanOrEqual(44)
+      expect(box!.width).toBeGreaterThanOrEqual(44)
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+    }
+    expect(alarmBox!.x + alarmBox!.width).toBeLessThanOrEqual(settingsBox!.x)
+    expect(accountBox!.width).toBeLessThanOrEqual(144)
+    expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(accountBox!.x)
+    expect(accountBox!.y).toBe(settingsBox!.y)
+    expect(alarmBox!.y).toBe(settingsBox!.y)
+    expect(Math.abs(brandBox!.y + brandBox!.height / 2 - accountBox!.y - accountBox!.height / 2)).toBeLessThan(1)
+    const [iconBox, nameBox] = await Promise.all([personIcon.boundingBox(), nameLabel.boundingBox()])
+    expect(iconBox!.width).toBe(16)
+    expect(iconBox!.x + iconBox!.width).toBeLessThanOrEqual(nameBox!.x)
+    expect(nameBox!.width).toBeGreaterThan(14)
+    expect(await nameLabel.evaluate(element => getComputedStyle(element).fontSize)).toBe('13px')
+    expect(await nameLabel.evaluate(element => getComputedStyle(element).textOverflow)).toBe('ellipsis')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+    await account.focus()
+    await page.keyboard.press('Enter')
+    const dialog = page.getByRole('dialog', { name: 'アカウント', exact: true })
+    const close = dialog.getByRole('button', { name: 'アカウントメニューを閉じる', exact: true })
+    await expect(dialog).toBeVisible()
+    await expect(close).toBeFocused()
+    await expect(account).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByRole('dialog', { name: 'その他の設定・管理' })).toHaveCount(0)
+    const accountSettings = dialog.getByRole('link', { name: 'アカウント設定', exact: true })
+    await expect(accountSettings).toHaveAttribute('href', '/settings/account')
+    for (const control of [close, accountSettings, dialog.getByRole('button', { name: 'ログアウト', exact: true })]) {
+      const box = await control.boundingBox()
+      expect(box!.height).toBeGreaterThanOrEqual(44)
+    }
+    for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key)
+      expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true)
+    }
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(account).toBeFocused()
+    await account.press('Space')
+    await expect(dialog).toBeVisible()
+    await close.click()
+    await expect(account).toBeFocused()
+    await account.click()
+    await dialog.click({ position: { x: 1, y: 1 } })
+    await expect(dialog).toBeHidden()
+    await expect(account).toBeFocused()
+    await account.click()
+    await accountSettings.click()
+    await expect(page).toHaveURL(/\/settings\/account$/)
+    await expect(dialog).toBeHidden()
+    name = 'テスト'
+    await page.reload()
+    await expect(nameLabel).toHaveText(name)
+    await expect(nameLabel).toHaveAttribute('title', name)
+    const shortAccount = header.getByRole('button', { name, exact: true })
+    const shortBox = await shortAccount.boundingBox()
+    expect(shortBox!.width).toBeGreaterThanOrEqual(44)
+    expect(shortBox!.height).toBeGreaterThanOrEqual(44)
+    expect(shortBox!.width).toBeLessThan(accountBox!.width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  })
+
+  test(width + 'pxで最新5項目ナビから献立表と在庫に移動できる', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })
+    await setupUserWithHousehold(page, 'primary-nav-five-' + width)
+    const nav = page.getByRole('navigation', { name: '主要機能' })
+    await expect(nav.getByRole('link')).toHaveText(['ホーム', '献立', '在庫', '家計簿'])
+    const controls = nav.locator(':scope > a, :scope > button')
+    await expect(controls).toHaveCount(5)
+    const boxes = await controls.evaluateAll(elements => elements.map(element => {
+      const box = element.getBoundingClientRect()
+      return { width: box.width, height: box.height }
+    }))
+    for (const box of boxes) {
+      expect(box.width).toBeGreaterThanOrEqual(44)
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(Math.abs(box.width - boxes[0].width)).toBeLessThan(1)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+    const menu = nav.getByRole('link', { name: '献立表', exact: true })
+    await expect(menu).toHaveAttribute('title', '献立表を開く')
+    await expect(menu.locator('svg')).toBeVisible()
+    await menu.click()
+    await expect(page).toHaveURL(/\/menu$/)
+    await expect(menu).toHaveAttribute('aria-current', 'page')
+    await nav.getByRole('link', { name: '在庫', exact: true }).click()
+    await expect(page).toHaveURL(/\/zaiko$/)
+    await expect(nav.getByRole('link', { name: '在庫', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(nav.getByRole('button', { name: 'その他', exact: true })).not.toHaveClass(/is-active/)
+  })
+
   test(width + 'pxで口座管理リンクを残高の下に表示し管理画面へ移動できる', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })

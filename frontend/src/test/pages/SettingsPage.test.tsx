@@ -54,7 +54,8 @@ describe('DisplaySettingsPage', () => {
   it('再設計後の全表示項目をチェックリストで表示し、よく使う品目は表示しない', async () => {
     renderPage()
     const today = await screen.findByRole('group', { name: '今日の状況' })
-    expect(within(today).getByLabelText('収支')).toBeChecked()
+    expect(within(today).queryByLabelText('収支')).not.toBeInTheDocument()
+    expect(within(today).getByText('今日の収支はカレンダーの日付詳細で確認できます')).toBeVisible()
     expect(within(today).getByLabelText('今週の献立')).toBeChecked()
     expect(within(today).getByLabelText('イベント')).toBeChecked()
     const stock = screen.getByRole('group', { name: '買い物・在庫' })
@@ -69,6 +70,18 @@ describe('DisplaySettingsPage', () => {
     expect(within(calendar).getByLabelText('支出')).toBeChecked()
     expect(within(calendar).getByLabelText('イベント')).toBeChecked()
     expect(screen.queryByText('よく使う品目')).not.toBeInTheDocument()
+  })
+
+  it.each([true, false])('旧収支設定%sは操作を表示せず保存値を保持する', async balance => {
+    const settings = makeSettings()
+    settings.items.today.balance = balance
+    const { user, saved } = renderPage(settings)
+    const today = await screen.findByRole('group', { name: '今日の状況' })
+    expect(within(today).queryByRole('checkbox', { name: '収支' })).not.toBeInTheDocument()
+    await user.click(within(today).getByRole('checkbox', { name: 'イベント' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('ダッシュボード画面')
+    expect(saved[0].items.today).toEqual({ balance, menu: true, events: false })
   })
 
   it('編集グリッドには表示ONの確認系カードだけを保存順に並べ、カレンダーは含めない', async () => {

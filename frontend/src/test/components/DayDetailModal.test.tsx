@@ -42,13 +42,22 @@ async function expand(name: string) {
   return button
 }
 describe('#431 日次詳細', () => {
+  it('日本語の日付と年を表示し、生活・予定とお金の管理にまとめる', async () => {
+    setup(); renderDay()
+    expect(screen.getByRole('heading', { name: '11月7日（土）の詳細' })).toBeVisible()
+    expect(screen.getByText('2026年・日付詳細')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '生活・予定' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'お金の管理' })).toBeVisible()
+    await screen.findByRole('button', { name: '今週の献立 1件' })
+  })
   it('新APIの4セクションは指定順に全閉で、独立に複数展開できる', async () => {
     setup()
     renderDay()
     const buttons = await screen.findAllByRole('button', { name: /^(今週の献立|イベント|収支|固定費).*件/ })
     expect(buttons.map(b => b.textContent)).toEqual(['今週の献立 1件', 'イベント 1件', '収支 3件', '固定費 1件'])
     for (const b of buttons) expect(b).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText('収支: -81,000円')).not.toBeVisible()
+    expect(screen.getByText('収支', { selector: '.day-finance-summary span' }).closest('p')).toHaveTextContent('-81,000円')
+    expect(screen.getByText('収支', { selector: '.day-finance-summary span' }).closest('p')).not.toBeVisible()
     expect(screen.queryByRole('region', { name: '収支' })).not.toBeInTheDocument()
     await expand('今週の献立')
     await expand('収支')
@@ -57,14 +66,27 @@ describe('#431 日次詳細', () => {
     expect(screen.getByRole('link', { name: 'この週の献立を編集' })).toHaveAttribute('href', '/menu?week=2026-11-02')
     expect(screen.getByRole('link', { name: '支出を登録' })).toHaveAttribute('href', '/kakeibo')
   })
+  it('収支の明細は行ごとに収入・支出のラベルで区別できる', async () => {
+    setup(); renderDay()
+    await expand('収支')
+    const incomeRows = within(screen.getByRole('list', { name: '収入明細' })).getAllByRole('listitem')
+    expect(incomeRows).toHaveLength(1)
+    expect(within(incomeRows[0]).getByText('収入', { selector: '.day-detail-kind' })).toBeVisible()
+    expect(incomeRows[0]).toHaveTextContent('[E2E_TEST] 収入')
+    const expenseRows = within(screen.getByRole('list', { name: '支出明細' })).getAllByRole('listitem')
+    expect(expenseRows).toHaveLength(2)
+    for (const row of expenseRows) expect(within(row).getByText('支出', { selector: '.day-detail-kind' })).toBeVisible()
+  })
   it('実績82000と予定90000/計上記録80000を区別し予定を合計に再加算しない', async () => {
     setup(); renderDay()
     await expand('収支')
-    expect(screen.getByText('支出: 82,000円')).toBeVisible()
+    expect(screen.getByText('支出', { selector: '.day-finance-summary span' }).closest('p')).toHaveTextContent('82,000円')
+    expect(screen.getByText('支出', { selector: '.day-finance-summary span' }).closest('p')).toBeVisible()
     expect(screen.queryByText(/支出: 172,000/)).not.toBeInTheDocument()
     await expand('固定費')
     const fixed = screen.getByRole('region', { name: '固定費' })
-    expect(fixed).toHaveTextContent('予定額: 90,000円')
+    expect(fixed).toHaveTextContent('予定額')
+    expect(fixed).toHaveTextContent('90,000円')
     expect(fixed).toHaveTextContent('計上記録: 80,000円')
     expect(fixed).toHaveTextContent('支出に計上済み')
     expect(fixed).toHaveTextContent('銀行引き落とし')
@@ -102,8 +124,14 @@ describe('#431 日次詳細', () => {
     await waitFor(() => expect(release).toBeDefined())
     expect(screen.queryByText(/0件/)).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('読み込み中')
+    for (const title of ['今週の献立', 'イベント', '収支', '固定費']) {
+      expect(screen.getByRole('button', { name: title + ' 読み込み中' })).toHaveAttribute('aria-expanded', 'false')
+    }
     release()
     expect(await screen.findByRole('alert')).toHaveTextContent('日付詳細を取得できませんでした')
+    for (const title of ['今週の献立', 'イベント', '収支', '固定費']) {
+      expect(screen.getByRole('button', { name: title + ' 取得失敗' })).toHaveAttribute('aria-expanded', 'false')
+    }
     expect(screen.queryByText(/0件/)).not.toBeInTheDocument()
     fail = false
     await userEvent.setup().click(screen.getByRole('button', { name: '再試行' }))
@@ -156,7 +184,7 @@ describe('#431 日次詳細', () => {
     const onClose = vi.fn()
     renderDay(date, onClose)
     await screen.findByRole('button', { name: /^収支 3件/ })
-    await userEvent.setup().click(screen.getByRole('heading', { name: date + ' の詳細' }))
+    await userEvent.setup().click(screen.getByRole('heading', { name: '11月7日（土）の詳細' }))
     expect(onClose).not.toHaveBeenCalled()
     if (action === '背景') fireEvent.click(screen.getByRole('dialog', { name: '日次詳細' }))
     else await userEvent.setup().click(screen.getByRole('button', { name: action }))
@@ -191,7 +219,8 @@ describe('#431 日次詳細', () => {
     data.fixedCosts[0].postedExpense = { id: 777, amount: 987654, expenseDate: '2025-01-02' }
     setup(data); renderDay(); await expand('固定費')
     const fixed = screen.getByRole('region', { name: '固定費' })
-    expect(fixed).toHaveTextContent('予定額: 90,000円')
+    expect(fixed).toHaveTextContent('予定額')
+    expect(fixed).toHaveTextContent('90,000円')
     expect(fixed).toHaveTextContent('確認できません')
     expect(fixed).not.toHaveTextContent('987,654')
     expect(fixed).not.toHaveTextContent('2025-01-02')

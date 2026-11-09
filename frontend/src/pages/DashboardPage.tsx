@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { DashboardSummary } from '../api/dashboardTypes'
-import type { Recipe } from '../api/kondateTypes'
-import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import type { Account } from '../api/kakeiboTypes'
 import type { InventoryItem, ShoppingListItem } from '../api/zaikoTypes'
 import { formatPrice } from '../components/zaiko/price'
@@ -55,43 +53,6 @@ export function DashboardPage() {
   const dayTrigger = useRef<HTMLElement | null>(null)
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings | null>(null)
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
-  const [recipeLoading, setRecipeLoading] = useState(false)
-  const recipeRequest = useRef<AbortController | null>(null)
-  const recipeTrigger = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => () => {
-    recipeRequest.current?.abort()
-    recipeRequest.current = null
-  }, [])
-
-  const openRecipe = async (recipeId: number, trigger: HTMLButtonElement) => {
-    if (recipeRequest.current) return
-    const controller = new AbortController()
-    recipeRequest.current = controller
-    recipeTrigger.current = trigger
-    setRecipeLoading(true)
-    try {
-      const response = await apiClient.get<Recipe[]>('/recipes', { signal: controller.signal })
-      if (controller.signal.aborted) return
-      const recipe = response.data.find((item) => item.id === recipeId)
-      if (recipe) setSelectedRecipe(recipe)
-      else setToast((prev) => ({ message: 'レシピが見つかりませんでした', showKey: prev.showKey + 1 }))
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        setToast((prev) => ({ message: getApiErrorMessage(error, 'レシピの取得に失敗しました。時間をおいて再度お試しください'), showKey: prev.showKey + 1 }))
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        recipeRequest.current = null
-        setRecipeLoading(false)
-      }
-    }
-  }
-
-  const closeRecipe = () => {
-    setSelectedRecipe(null)
-    recipeTrigger.current?.focus()
-  }
   useEffect(() => { apiClient.get<DisplaySettings>('/user-settings').then((response) => setDisplaySettings(response.data)).catch(() => undefined) }, [])
 
   useEffect(() => {
@@ -168,36 +129,19 @@ export function DashboardPage() {
   const items = displaySettings?.items
   const summaryData = summary.status === 'ok' ? summary.data : null
   const summaryFallback = summary.status === 'loading' ? <p>読み込み中...</p> : <p className="error">集計を取得できませんでした</p>
+  const openToday = (trigger: HTMLButtonElement) => {
+    dayTrigger.current = trigger
+    setSelectedDay({ date: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date()), events: [], fixedCosts: [], income: 0, expense: 0, balance: 0 })
+  }
 
   const cardContents: Record<OrderableCard, ReactNode> = {
     today: (
-      <div className="card" key="today">
+      <div className="card dashboard-today-card" key="today">
         <h2>今日の状況</h2>
         {summaryData ? (
           <>
-            {items?.today.balance !== false && <p>収支: {summaryData.todayBalance}円</p>}
-            {items?.today.menu !== false &&
-              (summaryData.weeklyMenuEntries.length ? (
-                <>
-                  <p>今週の献立</p>
-                  <ul className="dashboard-list" aria-label="今週の献立">
-                    {summaryData.weeklyMenuEntries.map((entry, index) => (
-                      <li key={index}>
-                        {entry.recipeId !== null && entry.recipeTitle ? (
-                          <button type="button" className="dashboard-recipe-button" disabled={recipeLoading}
-                            onClick={(event) => void openRecipe(entry.recipeId!, event.currentTarget)}>
-                            {entry.recipeTitle}
-                          </button>
-                        ) : entry.recipeTitle ?? entry.freeTextMemo ?? '削除されたレシピ'}
-                      </li>
-                    ))}
-                  </ul>
-                  {recipeLoading && <p role="status">レシピを読み込み中...</p>}
-                </>
-              ) : (
-                <p>今週の献立: なし</p>
-              ))}
-            {items?.today.events !== false && <p>イベント: {summaryData.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}
+            {items?.today.menu !== false && <button type="button" className="dashboard-today-row" onClick={event => openToday(event.currentTarget)}><span>今週の献立</span>{' '}<span className="dashboard-today-count">{summaryData.weeklyMenuEntries.length}件</span></button>}
+            {items?.today.events !== false && <button type="button" className="dashboard-today-row" onClick={event => openToday(event.currentTarget)}><span>イベント</span>{' '}<span className="dashboard-today-count">{summaryData.todayEvents.length}件</span></button>}
           </>
         ) : summaryFallback}
       </div>
@@ -293,10 +237,10 @@ export function DashboardPage() {
     ),
   }
 
-  const visibleCards = cardOrder.filter(showCard)
+  const visibleCards = cardOrder.filter(card => showCard(card) && (card !== 'today' || items?.today.menu !== false || items?.today.events !== false))
 
   return (
-    <div className="page">
+    <div className="page dashboard-home">
       <div className="dashboard-layout">
         {showCard('calendar') && (
           <CalendarPanel
@@ -317,7 +261,6 @@ export function DashboardPage() {
         )}
       </div>
       {selectedDay && <DayDetailModal day={selectedDay} onClose={() => { setSelectedDay(null); dayTrigger.current?.focus({ preventScroll: true }) }} />}
-      {selectedRecipe && <RecipeDetailModal recipe={selectedRecipe} onClose={closeRecipe} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )

@@ -29,6 +29,7 @@ function addMonths(month: string, amount: number) {
   return String(date.getFullYear()) + '-' + String(date.getMonth() + 1).padStart(2, '0')
 }
 function MonthGrid({ month, onSelectDate, showEvents = true, showIncome = true, showExpense = true }: Props & { month: string }) {
+  const [today] = useState(() => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date()))
   const [state, setState] = useState<CalendarState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -49,6 +50,7 @@ function MonthGrid({ month, onSelectDate, showEvents = true, showIncome = true, 
         const visible: Record<Category, boolean> = { events: showEvents && day.events.length > 0, income: showIncome && day.income > 0, expense: showExpense && day.expense > 0, fixed: day.fixedCosts.length > 0 }
         const categories = CATEGORIES.filter(category => visible[category.key])
         return <button type="button" className="calendar-day calendar-day-date" key={day.date}
+          aria-current={day.date === today ? 'date' : undefined}
           aria-label={day.date + (categories.length ? '、' + categories.map(category => category.label + 'あり').join('、') : '')}
           onClick={() => onSelectDate(day)}>
           <strong>{Number(day.date.slice(-2))}</strong>
@@ -60,15 +62,18 @@ function MonthGrid({ month, onSelectDate, showEvents = true, showIncome = true, 
 }
 export function CalendarPanel(props: Props) {
   const [month, setMonth] = useState(currentMonth)
-  return <section className="calendar-panel">
+  const [year, monthNumber] = month.split('-').map(Number)
+  return <section className="calendar-panel" aria-label="月間カレンダー">
+    <h2 className="visually-hidden">月間カレンダー</h2>
     <div className="calendar-toolbar">
-      <button type="button" aria-label="前月" onClick={() => setMonth(value => addMonths(value, -1))}>◀</button>
-      <h2>月間カレンダー</h2><span>{month.replace('-', '年')}月</span>
-      <button type="button" aria-label="次月" onClick={() => setMonth(value => addMonths(value, 1))}>▶</button>
+      <button type="button" aria-label="前月" onClick={() => setMonth(value => addMonths(value, -1))}>‹ 前月</button>
+      <span className="calendar-month">{year}年{monthNumber}月</span>
+      <button type="button" aria-label="翌月" onClick={() => setMonth(value => addMonths(value, 1))}>翌月 ›</button>
     </div>
     <MonthGrid key={month} month={month} {...props} />
     <ul className="calendar-legend" aria-label="カレンダーの凡例">{CATEGORIES.map(category => <li key={category.key}>
       <span className={'calendar-dot calendar-dot-' + category.key} aria-hidden="true" />{category.label}
     </li>)}</ul>
+    <p className="calendar-help">日付を選ぶと詳細を確認できます。マークは各種類につき最大1つ。</p>
   </section>
 }
