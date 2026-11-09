@@ -71,6 +71,14 @@ function setupApi(options: {
     ),
     http.get('/api/dashboard/calendar', () => HttpResponse.json(options.calendar ?? { days: [] })),
     http.get('/api/dashboard/notifications/today', () => HttpResponse.json({ notificationCount: 0 })),
+    http.get('/api/dashboard/day-detail', ({ request }) => {
+      const date = new URL(request.url).searchParams.get('date')!
+      return HttpResponse.json({ date, weekStartDate: date,
+        menuEntries: (options.summary?.weeklyMenuEntries ?? []).map((entry, index) => ({ ...entry, id: index + 1, weekStartDate: date })),
+        events: (options.summary?.todayEvents ?? []).map((entry, index) => ({ ...entry, id: index + 1, eventDate: date, isRecurring: false })),
+        finance: { income: 0, expense: 0, balance: options.summary?.todayBalance ?? 0, incomes: [], expenses: [] }, fixedCosts: [],
+      })
+    }),
     http.get('/api/accounts', () => {
       if (options.accountsError) {
         return HttpResponse.json({ code: 'INTERNAL_ERROR', message: '口座情報の取得に失敗しました' }, { status: 500 })
@@ -102,6 +110,45 @@ const shoppingList: ShoppingListItem[] = [
 ]
 
 describe('DashboardPage', () => {
+  async function openTodayMenu() {
+    fireEvent.click(await screen.findByRole('button', { name: /^今週の献立 \d+件$/ }))
+    const day = await screen.findByRole('dialog', { name: '日次詳細' })
+    const toggle = await within(day).findByRole('button', { name: /^今週の献立 \d+件$/ })
+    fireEvent.click(toggle)
+    return within(day)
+  }
+
+  it('今日の状況は実データ件数の2行で、選択した日付詳細から内容を確認できる', async () => {
+    setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0, todayBalance: -500,
+      weeklyMenuEntries: [{ recipeId: null, recipeTitle: null, freeTextMemo: '[E2E_TEST] 夕食メモ' }],
+      todayEvents: [{ name: '[E2E_TEST] 予定', recurrenceType: 'none' }],
+    } })
+    renderDashboardPage()
+    const menuRow = await screen.findByRole('button', { name: '今週の献立 1件' })
+    expect(screen.getByRole('button', { name: 'イベント 1件' })).toBeVisible()
+    expect(screen.queryByText('収支: -500円')).not.toBeInTheDocument()
+    expect(screen.queryByText('[E2E_TEST] 夕食メモ')).not.toBeInTheDocument()
+    fireEvent.click(menuRow)
+    const day = await screen.findByRole('dialog', { name: '日次詳細' })
+    const finance = await within(day).findByRole('button', { name: '収支 0件' })
+    expect(finance).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(finance)
+    expect(within(day).getByText('収支', { selector: '.day-finance-summary span' }).closest('p')).toHaveTextContent('-500円')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(menuRow).toHaveFocus())
+  })
+
+  it('献立とイベントが両方OFFなら旧収支設定だけで空の今日カードを表示しない', async () => {
+    setupApi({ settings: {
+      cards: { today: true, stock: true, finance: true, money: true, eventExpenses: true, calendar: true },
+      cardOrder: ['money', 'today', 'stock', 'finance', 'eventExpenses'],
+      items: { today: { balance: true, menu: false, events: false }, stock: { shoppingList: true, inventoryList: true }, money: { personal: true, householdTotal: true, unsettled: true }, calendar: { income: true, expense: true, events: true } },
+    } })
+    const view = renderDashboardPage()
+    await screen.findByText('口座残高合計: 0円')
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '今日の状況' })).not.toBeInTheDocument())
+    expect(Array.from(view.container.querySelectorAll('.dashboard-summary-grid .card h2')).map(h => h.textContent)).toEqual(['今月のお金', '買い物・在庫', '個人の財政', 'イベント別支出'])
+  })
   function setupMenu() {
     setupApi({ summary: { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0,
       weeklyMenuEntries: [
@@ -120,10 +167,11 @@ describe('DashboardPage', () => {
     })))))
     if (strict) render(<StrictMode><MemoryRouter><DashboardPage /></MemoryRouter></StrictMode>)
     else renderDashboardPage()
-    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
-    const list = screen.getByRole('list', { name: '今週の献立' })
+    const day = await openTodayMenu()
+    const button = day.getByRole('button', { name: 'レシピ「[E2E_TEST] 同名」の詳細' })
+    const list = day.getByRole('region', { name: '今週の献立' }).querySelector('ul')!
     expect(within(list).getAllByRole('button')).toHaveLength(1)
-    expect(within(list).getByText('削除されたレシピ')).toBeInTheDocument()
+    expect(within(list).getByText('(削除されたレシピ)')).toBeInTheDocument()
     for (let opening = 0; opening < 2; opening++) {
       fireEvent.click(button)
       const dialog = await screen.findByRole('dialog', { name: 'レシピ詳細' })
@@ -147,9 +195,9 @@ describe('DashboardPage', () => {
     server.use(http.get('/api/recipes', () => state === 'error'
       ? HttpResponse.json({ message: 'レシピ取得失敗' }, { status: 500 }) : HttpResponse.json([])))
     renderDashboardPage()
-    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
+    const button = (await openTodayMenu()).getByRole('button', { name: 'レシピ「[E2E_TEST] 同名」の詳細' })
     fireEvent.click(button)
-    expect(await screen.findByText(state === 'error' ? 'レシピ取得失敗' : 'レシピが見つかりませんでした')).toBeInTheDocument()
+    expect(await screen.findByText(state === 'error' ? 'レシピを取得できませんでした' : 'レシピが見つかりませんでした')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'レシピ詳細' })).not.toBeInTheDocument()
     expect(button).toBeEnabled()
   })
@@ -161,7 +209,7 @@ describe('DashboardPage', () => {
       url: 'https://recipe.example.com/test', thumbnailUrl: null, memo: '[E2E_TEST] メモ', isFavorite: false,
     }])))
     renderDashboardPage()
-    fireEvent.click(await screen.findByRole('button', { name: '[E2E_TEST] 同名' }))
+    fireEvent.click((await openTodayMenu()).getByRole('button', { name: 'レシピ「[E2E_TEST] 同名」の詳細' }))
     const dialog = await screen.findByRole('dialog', { name: 'レシピ詳細' })
     if (sourceType === 'web') {
       expect(within(dialog).getByRole('link', { name: '元ページを開く' })).toHaveAttribute('href', 'https://recipe.example.com/test')
@@ -185,7 +233,7 @@ describe('DashboardPage', () => {
       return HttpResponse.json([])
     }))
     const view = renderDashboardPage()
-    const button = await screen.findByRole('button', { name: '[E2E_TEST] 同名' })
+    const button = (await openTodayMenu()).getByRole('button', { name: 'レシピ「[E2E_TEST] 同名」の詳細' })
     fireEvent.click(button)
     fireEvent.click(button)
     await waitFor(() => expect(requests).toBe(1))
@@ -394,9 +442,8 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
-    expect(screen.getByText(/収支: -500円/)).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: '今週の献立' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['カレー', '外食'])
-    expect(screen.getByText(/イベント: 学習/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '今週の献立 2件' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'イベント 1件' })).toBeVisible()
     expect(screen.getByText(/個人支出: 32000円/)).toBeInTheDocument()
     expect(screen.getByText(/世帯合計対象額: 45300円/)).toBeInTheDocument()
     expect(screen.getByText(/受取予定: 1件・4000円/)).toBeInTheDocument()
@@ -411,8 +458,8 @@ describe('DashboardPage', () => {
     renderDashboardPage()
 
     await waitFor(() => expect(screen.getByText('今日の状況')).toBeInTheDocument())
-    expect(screen.getByText(/今週の献立: なし/)).toBeInTheDocument()
-    expect(screen.getByText(/イベント: なし/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '今週の献立 0件' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'イベント 0件' })).toBeVisible()
     expect(await screen.findByText('イベント別支出: なし')).toBeInTheDocument()
   })
 

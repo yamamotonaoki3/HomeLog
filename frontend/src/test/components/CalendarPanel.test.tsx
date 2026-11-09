@@ -14,6 +14,15 @@ function setup(days: CalendarDay[], props: Partial<Parameters<typeof CalendarPan
   return { onSelectDate, user: userEvent.setup() }
 }
 describe('#431 CalendarPanel', () => {
+  it('年月を日本語で表示し、今日だけを現在の日付として伝える', async () => {
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date())
+    const [year, month] = today.split('-').map(Number)
+    setup([day({ date: today }), day({ date: '2000-01-01' })])
+    expect(screen.getByText(`${year}年${month}月`)).toBeVisible()
+    expect(await screen.findByRole('button', { name: today })).toHaveAttribute('aria-current', 'date')
+    expect(screen.getByRole('button', { name: '2000-01-01' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByText('日付を選ぶと詳細を確認できます。マークは各種類につき最大1つ。')).toBeVisible()
+  })
   it('複数件でもカテゴリごと1ドットと4種類のdot凡例だけを表示する', async () => {
     setup([day({ events: [event, { ...event, id: 12 }], fixedCosts: ['家賃', '光熱費'], income: 5000, expense: 1500 })])
     const cell = await screen.findByRole('button', { name: /2026-09-25.*イベントあり.*収入あり.*支出あり.*固定費あり/ })
@@ -55,7 +64,7 @@ describe('#431 CalendarPanel', () => {
       return HttpResponse.json({ days: [day({ date: '2026-10-25' })] })
     }))
     render(<CalendarPanel onSelectDate={vi.fn()} />)
-    await userEvent.setup().click(screen.getByRole('button', { name: '次月' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: '翌月' }))
     await screen.findByRole('button', { name: '2026-10-25' })
     await waitFor(() => expect(screen.queryByRole('button', { name: '2026-09-25' })).not.toBeInTheDocument())
   })

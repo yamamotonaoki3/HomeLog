@@ -45,7 +45,7 @@ for (const width of [1280, 390, 320]) {
       await expect(page).toHaveURL(new RegExp(`${nextPath}$`))
       await expect(next).toHaveAttribute('aria-current', 'page')
       await expect(next).toHaveCSS('border-bottom-color', 'rgb(29, 78, 216)')
-      await expect(page.getByRole('navigation', { name: '主要機能' })).toHaveCSS('background-color', 'rgb(30, 41, 59)')
+      await expect(page.getByRole('navigation', { name: '主要機能' })).toHaveCSS('background-color', 'rgb(255, 255, 255)')
     }
   })
 }

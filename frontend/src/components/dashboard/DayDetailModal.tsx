@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../api/client'
 import type { DashboardDayDetail, FixedCostPostingStatus } from '../../api/dashboardTypes'
@@ -16,11 +16,19 @@ const STATUS_LABELS: Record<FixedCostPostingStatus, string> = {
   suppressed: '再計上しない', not_applicable: '計上対象外', unknown: '確認できません',
 }
 const yen = (value: number) => value.toLocaleString('ja-JP') + '円'
-function DetailSection({ title, count, open, onToggle, children }: { title: string; count: number | null; open: boolean; onToggle: () => void; children: ReactNode }) {
+function SectionIcon({ kind }: { kind: SectionKey }) {
+  return <svg className={'day-section-icon day-section-icon-' + kind} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    {kind === 'menu' && <><rect x="4" y="3" width="16" height="18" /><path d="M4 8h16M4 13h16M4 18h16" /></>}
+    {kind === 'events' && <><rect x="4" y="4" width="16" height="16" /><path d="M8 8h8v8H8z" /></>}
+    {kind === 'finance' && <path d="m7 3 5 8 5-8M6 11h12M6 15h12M12 11v10" />}
+    {kind === 'fixed' && <path d="m12 2 10 10-10 10L2 12Z" />}
+  </svg>
+}
+function DetailSection({ title, kind, count, status, open, onToggle, children }: { title: string; kind: SectionKey; count: number | null; status: Loadable['status']; open: boolean; onToggle: () => void; children: ReactNode }) {
   const id = useId()
   return <section className="day-detail-section">
-    <h3><button type="button" className="day-section-toggle" aria-expanded={open} aria-controls={id} onClick={onToggle}>{title}{count === null ? '' : ' ' + count + '件'}</button></h3>
-    <div id={id} role="region" aria-label={title} hidden={!open}>{children}</div>
+    <h3><button type="button" className="day-section-toggle" aria-expanded={open} aria-controls={id} onClick={onToggle}><SectionIcon kind={kind} /><span className="day-section-title">{title}</span>{' '}<span className="day-section-count">{count === null ? status === 'error' ? '取得失敗' : '読み込み中' : count + '件'}</span><svg className="day-section-chevron" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 6 4 4 4-4" /></svg></button></h3>
+    <div className="day-section-content" id={id} role="region" aria-label={title} hidden={!open}>{children}</div>
   </section>
 }
 
@@ -34,6 +42,17 @@ function DayDetailContent({ day, onClose }: { day: CalendarDay; onClose: () => v
   const recipeRequest = useRef<AbortController | null>(null)
   const childTrigger = useRef<HTMLButtonElement | null>(null)
   const parentOrigin = useRef<HTMLElement | null>(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useLayoutEffect(() => {
+    const header = document.querySelector('.app-top-navigation')
+    if (!header) return
+    const measure = () => setHeaderHeight(Math.max(0, header.getBoundingClientRect().bottom))
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(header)
+    window.addEventListener('resize', measure)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure) }
+  }, [])
   useLayoutEffect(() => {
     if (!parentOrigin.current && document.activeElement instanceof HTMLElement) parentOrigin.current = document.activeElement
   }, [])
@@ -78,15 +97,18 @@ function DayDetailContent({ day, onClose }: { day: CalendarDay; onClose: () => v
   }
   const toggle = (key: SectionKey) => setOpen(previous => previous.includes(key) ? previous.filter(value => value !== key) : [...previous, key])
   const data = state.status === 'ok' ? state.data : null
+  const [year, month, date] = day.date.split('-').map(Number)
+  const weekday = ['日', '月', '火', '水', '木', '金', '土'][new Date(day.date + 'T12:00:00Z').getUTCDay()]
   return <>
-    <div className="modal-overlay day-detail-overlay" role="dialog" aria-modal="true" aria-label="日次詳細" inert={child ? true : undefined}
+    <div className="modal-overlay day-detail-overlay" role="dialog" aria-modal="true" aria-label="日次詳細" inert={child ? true : undefined} style={{ '--day-header-height': headerHeight + 'px' } as CSSProperties}
       onClick={event => { if (!child && event.target === event.currentTarget) close() }}>
       <div ref={ref} className="modal day-detail-modal">
-        <header className="day-detail-header"><h2>{day.date} の詳細</h2><button type="button" data-day-close className="day-close-icon" aria-label="日付詳細を閉じる" onClick={close}>×</button></header>
+        <header className="day-detail-header"><div><h2>{month}月{date}日（{weekday}）の詳細</h2><p>{year}年・日付詳細</p></div><button type="button" data-day-close className="day-close-icon" aria-label="日付詳細を閉じる" onClick={close}>×</button></header>
         <div className="day-detail-body">
           {state.status === 'loading' && <p role="status">日付詳細を読み込み中...</p>}
           {state.status === 'error' && <div><p role="alert">日付詳細を取得できませんでした</p><button type="button" className="btn btn-secondary" onClick={() => { setState({ status: 'loading' }); setAttempt(value => value + 1) }}>再試行</button></div>}
-          <DetailSection title="今週の献立" count={data ? data.menuEntries.length : null} open={open.includes('menu')} onToggle={() => toggle('menu')}>
+          <h3 className="day-detail-group">生活・予定</h3>
+          <DetailSection title="今週の献立" kind="menu" status={state.status} count={data ? data.menuEntries.length : null} open={open.includes('menu')} onToggle={() => toggle('menu')}>
             {data && <>
               {data.menuEntries.length ? <ul className="day-detail-list">{data.menuEntries.map(entry => <li key={entry.id}>
                 {entry.recipeId !== null && entry.recipeTitle !== null
@@ -99,7 +121,7 @@ function DayDetailContent({ day, onClose }: { day: CalendarDay; onClose: () => v
               <Link to={'/menu?week=' + data.weekStartDate}>この週の献立を編集</Link>
             </>}
           </DetailSection>
-          <DetailSection title="イベント" count={data ? data.events.length : null} open={open.includes('events')} onToggle={() => toggle('events')}>
+          <DetailSection title="イベント" kind="events" status={state.status} count={data ? data.events.length : null} open={open.includes('events')} onToggle={() => toggle('events')}>
             {data && <>{data.events.length ? <ul className="day-detail-list">{data.events.map(item => <li key={item.id}><button type="button" className="day-item-button"
               aria-label={'イベント「' + item.name + '」の詳細'} onClick={event => {
                 recipeRequest.current?.abort()
@@ -111,23 +133,24 @@ function DayDetailContent({ day, onClose }: { day: CalendarDay; onClose: () => v
               }}>{item.name}</button></li>)}</ul> : <p>この日の予定はありません</p>}
               <Link to="/events">イベントを追加</Link></>}
           </DetailSection>
-          <DetailSection title="収支" count={data ? data.finance.incomes.length + data.finance.expenses.length : null} open={open.includes('finance')} onToggle={() => toggle('finance')}>
+          <h3 className="day-detail-group">お金の管理</h3>
+          <DetailSection title="収支" kind="finance" status={state.status} count={data ? data.finance.incomes.length + data.finance.expenses.length : null} open={open.includes('finance')} onToggle={() => toggle('finance')}>
             {data && <>
-              <div className="day-finance-summary"><p>収入: {yen(data.finance.income)}</p><p>支出: {yen(data.finance.expense)}</p><p>収支: {yen(data.finance.balance)}</p></div>
+              <div className="day-finance-summary"><p><span>収入</span><strong>{yen(data.finance.income)}</strong></p><p><span>支出</span><strong>{yen(data.finance.expense)}</strong></p><p><span>収支</span><strong>{yen(data.finance.balance)}</strong></p></div>
               {data.finance.incomes.length + data.finance.expenses.length ? <>
-                <ul className="day-detail-list" aria-label="収入明細">{data.finance.incomes.map(item => <li key={item.id}>収入 {item.content}: {yen(item.amount)}</li>)}</ul>
-                <ul className="day-detail-list" aria-label="支出明細">{data.finance.expenses.map(item => <li key={item.id}>支出 {item.purpose || '内容なし'}: {yen(item.amount)}</li>)}</ul>
+                <ul className="day-detail-list" aria-label="収入明細">{data.finance.incomes.map(item => <li className="day-detail-value-row" key={item.id}><span><span className="day-detail-kind day-detail-kind-income">収入</span>{' '}{item.content}</span><strong>{yen(item.amount)}</strong></li>)}</ul>
+                <ul className="day-detail-list" aria-label="支出明細">{data.finance.expenses.map(item => <li className="day-detail-value-row" key={item.id}><span><span className="day-detail-kind">支出</span>{' '}{item.purpose || '内容なし'}</span><strong>{yen(item.amount)}</strong></li>)}</ul>
               </> : <p>この日の収支明細はありません</p>}
               <Link to="/kakeibo">支出を登録</Link>
             </>}
           </DetailSection>
-          <DetailSection title="固定費" count={data ? data.fixedCosts.length : null} open={open.includes('fixed')} onToggle={() => toggle('fixed')}>
+          <DetailSection title="固定費" kind="fixed" status={state.status} count={data ? data.fixedCosts.length : null} open={open.includes('fixed')} onToggle={() => toggle('fixed')}>
             {data && <>
-              {data.fixedCosts.length ? <><p className="day-detail-note">「支出に計上済み」は支出記録の作成済みを表し、銀行引き落とし・カード決済・精算の完了ではありません。</p>
+              {data.fixedCosts.length ? <>
                 <ul className="day-detail-list">{data.fixedCosts.map(cost => <li key={cost.id}>
-                  <strong>{cost.name}</strong><p>予定額: {yen(cost.amount)}</p><p className="day-posting-status">{STATUS_LABELS[cost.postingStatus]}</p>
+                  <div className="day-detail-value-row"><div><strong>{cost.name}</strong><p className="day-fixed-meta">予定額</p></div><strong>{yen(cost.amount)}</strong></div><p className={'day-posting-status day-posting-status-' + cost.postingStatus}>{STATUS_LABELS[cost.postingStatus]}</p>
                   {cost.postingStatus === 'posted' && cost.postedExpense && <p>計上記録: {yen(cost.postedExpense.amount)}（{cost.postedExpense.expenseDate}）</p>}
-                </li>)}</ul></> : <p>この日の固定費はありません</p>}
+                </li>)}</ul><p className="day-detail-note">「支出に計上済み」は支出記録の作成済みを表し、銀行引き落とし・カード決済・精算の完了ではありません。</p></> : <p>この日の固定費はありません</p>}
               <Link to="/fixed-costs">固定費管理を見る</Link>
             </>}
           </DetailSection>

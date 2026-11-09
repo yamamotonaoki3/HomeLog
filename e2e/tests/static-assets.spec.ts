@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
@@ -103,7 +104,7 @@ for (const width of [1280, 390, 320]) {
       const user = await setupUserWithHousehold(page, `static${width}`)
       await page.goto('/')
       await page.reload()
-      await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible()
+      await expect((await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
       await expect(page.getByText('口座残高合計: 0円', { exact: true })).toBeVisible()
       await shot('dashboard')
       const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))

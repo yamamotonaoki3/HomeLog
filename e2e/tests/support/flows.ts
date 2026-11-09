@@ -119,3 +119,19 @@ export async function confirmShoppingPurchase(page: Page): Promise<void> {
   await confirm.getByRole('button', { name: 'この内容で購入を反映', exact: true }).click()
   await expect(confirm).toBeHidden()
 }
+
+/** 資料01の共通補助メニューから既存機能へ到達する。 */
+export async function openAuxiliaryMenu(page: Page): Promise<Locator> {
+  const menu = page.getByRole('dialog', { name: 'その他の設定・管理', exact: true })
+  if (!(await menu.isVisible())) await page.getByRole('navigation', { name: '主要機能', exact: true }).getByRole('button', { name: 'その他', exact: true }).click()
+  await expect(menu).toBeVisible()
+  return menu
+}
+
+/** 常時表示の本人名buttonから既存アカウント操作を開く。 */
+export async function openAccountMenu(page: Page): Promise<Locator> {
+  const dialog = page.getByRole('dialog', {name:'アカウント',exact:true})
+  if(!(await dialog.isVisible())) await page.getByRole('banner').getByRole('button').filter({has:page.locator('.header-account-name')}).click()
+  await expect(dialog).toBeVisible()
+  return dialog
+}

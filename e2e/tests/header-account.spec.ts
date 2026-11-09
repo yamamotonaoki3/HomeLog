@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, expect } from './console-guard'
@@ -12,28 +13,31 @@ for (const width of [1280, 390, 320]) {
       ['japanese', 'e2euser_' + '名'.repeat(42)],
       ['latin', 'e2euser_' + 'A'.repeat(42)],
     ]) {
-      test(`${kind}の本人識別・省略・操作・再読込・切替`, async ({ page, consoleGuard }) => {
+      test(`${kind}の常時本人識別・省略・操作・再読込・切替`, async ({ page, consoleGuard }) => {
         consoleGuard.watch(page)
         consoleGuard.allow({ url: /\/api\/households\/me$/, message: 'Failed to load resource: the server responded with a status of 404 (Not Found)' })
         const user = { ...newUser(`header_${kind}_${width}`), displayName }
         await register(page, user)
         await createHousehold(page, '[E2E_TEST] header household')
         const name = page.locator('.header-account-name')
-        const logout = page.getByRole('button', { name: 'ログアウト', exact: true })
+        const accountDialog = page.getByRole('dialog', {name:'アカウント',exact:true})
+        const logout = accountDialog.getByRole('button', { name: 'ログアウト', exact: true })
+        const nameButton = page.getByRole('banner').getByRole('button').filter({has:page.locator('.header-account-name')})
         const settings = page.getByRole('link', { name: '設定を開く' })
         const alarm = page.getByRole('img', { name: '通知アラーム（0件）' })
         await expect(name).toHaveText(displayName)
         await expect(alarm).toBeVisible()
         await expect(page.getByText('口座残高合計: 0円', { exact: true })).toBeVisible()
-        const boxes = await Promise.all([alarm.boundingBox(), settings.boundingBox(), name.boundingBox(), logout.boundingBox()])
+        const boxes = await Promise.all([alarm.boundingBox(), settings.boundingBox(), nameButton.boundingBox()])
         for (const box of boxes) {
           expect(box).not.toBeNull()
           expect(box!.x).toBeGreaterThanOrEqual(0)
           expect(box!.x + box!.width).toBeLessThanOrEqual(width)
         }
-        expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x)
-        expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[3]!.x)
-        expect(boxes[2]!.y + boxes[2]!.height).toBeLessThanOrEqual(boxes[3]!.y)
+        for (let i=0;i<boxes.length;i++) for(let j=i+1;j<boxes.length;j++) {
+          const a=boxes[i]!, b=boxes[j]!
+          expect(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y).toBe(true)
+        }
         const metrics = await name.evaluate((el) => ({
           overflow: getComputedStyle(el).overflow, whiteSpace: getComputedStyle(el).whiteSpace,
           textOverflow: getComputedStyle(el).textOverflow, scroll: el.scrollWidth, client: el.clientWidth,
@@ -53,17 +57,26 @@ for (const width of [1280, 390, 320]) {
         await settings.focus()
         await expect(settings).toBeFocused()
         await page.keyboard.press('Tab')
+        await expect(nameButton).toBeFocused()
+        await page.keyboard.press('Enter')
+        await expect(accountDialog.getByRole('button',{name:'アカウントメニューを閉じる',exact:true})).toBeFocused()
+        await accountDialog.getByRole('link',{name:'アカウント設定',exact:true}).focus()
+        await page.keyboard.press('Tab')
         await expect(logout).toBeFocused()
+        await accountDialog.getByRole('button',{name:'アカウントメニューを閉じる',exact:true}).click()
+        await expect(nameButton).toBeFocused()
         if (width < 1280) await settings.tap()
         else await settings.click()
         await expect(page).toHaveURL(/\/settings$/)
         await expect(name).toHaveText(displayName)
+        await openAccountMenu(page)
         await logout.click()
         await expect(page).toHaveURL(/\/login$/)
         const other = newUser('header_other')
         await register(page, other)
         await createHousehold(page, '[E2E_TEST] other household')
         await expect(name).toHaveText(other.displayName)
+        await openAccountMenu(page)
         await logout.click()
         await login(page, user)
         await expect(name).toHaveText(displayName)
@@ -86,7 +99,8 @@ for (const width of [1280, 390, 320]) {
           await route.fulfill({ response })
         })
         try {
-          await logout.click()
+          await openAccountMenu(page)
+        await logout.click()
           await expect(page).toHaveURL(/\/login$/)
           await page.getByLabel('メールアドレス').fill(user.email)
           await page.locator('#login-password').fill(user.password)

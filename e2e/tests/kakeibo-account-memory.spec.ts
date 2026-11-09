@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import type { Locator, Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -132,7 +133,7 @@ test.describe('390px 同browser利用者分離 #422', () => {
     const modal = await open(page)
     await expenseSelect(modal).selectOption('account:' + aFixture.account.id)
     await save(page, 'expense', '[E2E_TEST] A成功記憶', 10)
-    await page.getByRole('button', { name: 'ログアウト', exact: true }).click()
+    await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
     await expect(page).toHaveURL(/\/login$/)
     const b = await setupUserWithHousehold(page, 'ledger_memory_actor_b')
     const bFixture = await seed(page, 'actor_b')
@@ -142,7 +143,7 @@ test.describe('390px 同browser利用者分離 #422', () => {
     await expect(expenseSelect(modal).getByRole('option', { name: aFixture.account.name, exact: true })).toHaveCount(0)
     await expenseSelect(modal).selectOption('account:' + bFixture.account.id)
     await save(page, 'expense', '[E2E_TEST] B成功記憶', 20)
-    await page.getByRole('button', { name: 'ログアウト', exact: true }).click()
+    await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
     await expect(page).toHaveURL(/\/login$/)
     await page.goto('/kakeibo')
     await expect(page).toHaveURL(/\/login$/)
