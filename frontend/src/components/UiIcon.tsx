@@ -6,6 +6,12 @@ const shapes = {
   display: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
   account: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21v-2a7 7 0 0 1 14 0v2" /></>,
   ticket: <><path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4Z" /><path d="M10 7v2.5M10 14.5V17" /></>,
+  calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01" /></>,
+  today: <><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /><circle cx="12" cy="15.2" r="1.7" fill="currentColor" stroke="none" /></>,
+  event: <><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4m-7 8.5 2 2 4-4" /></>,
+  cart: <><path d="M3 4h2.5l2.2 10.5h10.2L20 7H6.4" /><circle cx="9" cy="18.7" r="1.5" /><circle cx="17" cy="18.7" r="1.5" /></>,
+  coins: <><ellipse cx="12" cy="7" rx="7" ry="3" /><path d="M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5" /></>,
+  yen: <path d="m6 4 6 8 6-8M12 12v8M7.5 12h9M7.5 16h9" />,
   exit: <><path d="M10 4H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h4" /><path d="m15 8 4 4-4 4M19 12H9.5" /></>,
 } satisfies Record<string, ReactNode>
 
