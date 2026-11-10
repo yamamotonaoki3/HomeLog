@@ -229,12 +229,12 @@ export function EventModal({ event, onClose, onSaved, onDeleted }: Props) {
             </div>
           </section>}
           </div>
-          <div className="modal-actions event-editor-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || confirmDelete}>
-              {isEdit ? '更新' : '登録'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={close} disabled={submitting}>
+          <div className="modal-actions ui-form-actions event-editor-actions">
+            <button type="button" className="ui-form-cancel" onClick={close} disabled={submitting}>
               キャンセル
+            </button>
+            <button type="submit" className="ui-action" disabled={submitting || confirmDelete}>
+              {isEdit ? '更新' : '登録'}
             </button>
           </div>
         </form>
