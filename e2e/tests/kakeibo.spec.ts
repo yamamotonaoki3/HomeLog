@@ -86,6 +86,29 @@ for (const width of [1280, 390, 320]) {
       await trigger.click()
       const modal = page.getByTestId('transaction-modal')
       await checkForm(page, modal)
+      // #487: 関連する設定への入口は、一覧ではなくモーダルの中(使う場所の横)に置く。
+      await expect(panel.getByRole('link', { name: '固定費', exact: true })).toHaveCount(0)
+      await expect(panel.getByRole('link', { name: 'カテゴリー管理', exact: true })).toHaveCount(0)
+      const categoryLink = modal.getByRole('link', { name: 'カテゴリー管理', exact: true })
+      const fixedLink = modal.getByRole('link', { name: '固定費で登録', exact: true })
+      await expect(categoryLink).toHaveAttribute('href', '/categories')
+      await expect(fixedLink).toHaveAttribute('href', '/fixed-costs')
+      const categoryBox = (await modal.getByLabel('カテゴリー', { exact: true }).boundingBox())!
+      for (const link of [categoryLink, fixedLink]) {
+        const box = (await link.boundingBox())!
+        expect(box.height).toBeGreaterThanOrEqual(44)
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width).toBeLessThanOrEqual(width)
+      }
+      // 「カテゴリー管理」はカテゴリー欄のすぐ上、右寄せに置く。
+      const categoryLinkBox = (await categoryLink.boundingBox())!
+      expect(categoryLinkBox.y + categoryLinkBox.height).toBeLessThanOrEqual(categoryBox.y + 1)
+      expect(Math.abs(categoryLinkBox.x + categoryLinkBox.width - (categoryBox.x + categoryBox.width))).toBeLessThanOrEqual(4)
+      await shot(page, width, 'ledger-form-links')
+      await modal.getByRole('tab', { name: '収入', exact: true }).click()
+      await expect(categoryLink).toBeVisible()
+      await expect(fixedLink).toHaveCount(0)
+      await modal.getByRole('tab', { name: '支出', exact: true }).click()
       const expenseAccount = modal.getByLabel('口座/カード（任意）')
       await expect(expenseAccount).toHaveValue('')
       await expenseAccount.selectOption('card:' + card.id)

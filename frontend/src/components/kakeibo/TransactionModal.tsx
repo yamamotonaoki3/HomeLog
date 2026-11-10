@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { useDialog } from '../../hooks/useDialog'
 import { availableTransactionAccount, readLastTransactionAccount, writeLastTransactionAccount } from '../../lib/lastTransactionAccount'
@@ -28,6 +28,8 @@ interface Props {
   membersLoaded?: boolean
   onClose: () => void
   onSaved: (kind: Kind) => Promise<void>
+  // 関連する設定(カテゴリー管理・固定費)へ、画面の再読み込みなしで移動する処理。渡さないときは通常のリンクとして動く。
+  onNavigate?: (path: string) => void
 }
 
 function today() {
@@ -63,6 +65,7 @@ function TransactionForm({
   membersLoaded = true,
   onClose,
   onSaved,
+  onNavigate,
 }: Props) {
   const expense = editing?.kind === 'expense' ? editing.data : undefined
   const income = editing?.kind === 'income' ? editing.data : undefined
@@ -108,6 +111,14 @@ function TransactionForm({
   const dialogRef = useDialog(() => { if (!submitting) onClose() }, '#tx-date')
 
   const categories = kind === 'expense' ? expenseCategories : incomeCategories
+  // 関連する設定への移動(#487)。入力途中の内容は保存しない。保存の送信中は移動しない。
+  const goTo = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (submitting) { event.preventDefault(); return }
+    // 新しいタブで開く操作(Ctrl+クリックなど)はブラウザに任せる。
+    if (!onNavigate || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    onNavigate(path)
+  }
   const incomeAccountUnavailable = accountsStatus !== 'ok' || (accounts.length === 0 && income?.accountId == null)
 
   const handleKindChange = (nextKind: Kind) => {
@@ -277,7 +288,10 @@ function TransactionForm({
               />
             </>
           )}
-          <label htmlFor="tx-category">カテゴリー</label>
+          <div className="transaction-label-row">
+            <label htmlFor="tx-category">カテゴリー</label>
+            <a href="/categories" className="transaction-inline-link" onClick={goTo('/categories')}>カテゴリー管理<span aria-hidden="true">›</span></a>
+          </div>
           <select id="tx-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -347,6 +361,7 @@ function TransactionForm({
           <label htmlFor="tx-memo">メモ</label>
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
+          {kind === 'expense' && !editing && <p className="transaction-fixed-hint">毎月の支払いは<a href="/fixed-costs" className="transaction-inline-link" onClick={goTo('/fixed-costs')}>固定費で登録<span aria-hidden="true">›</span></a></p>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions ui-form-actions">
             <button type="button" className="ui-form-cancel" disabled={submitting} onClick={onClose}>
