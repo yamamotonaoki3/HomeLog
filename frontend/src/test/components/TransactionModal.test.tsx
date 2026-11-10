@@ -201,3 +201,22 @@ describe('TransactionModal 割り勘', () => {
     expect(screen.getAllByText(/整数\(円\)で入力してください/).length).toBeGreaterThan(0)
   })
 })
+
+describe('TransactionModal の見た目に関わる構成 (#473)', () => {
+  it('新規登録の見出しは「収支を登録」で、操作はキャンセル・登録の順に並ぶ', () => {
+    setup()
+    const dialog = screen.getByRole('dialog', { name: '収支を登録' })
+    const cancel = screen.getByRole('button', { name: 'キャンセル' })
+    const submit = screen.getByRole('button', { name: '登録' })
+    expect(dialog).toContainElement(submit)
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('「その他の設定」は名前を変えず、含まれる内容を補足として表示する', () => {
+    setup()
+    const toggle = screen.getByRole('button', { name: 'その他の設定' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent('世帯合計・イベント・割り勘・メモ')
+  })
+})

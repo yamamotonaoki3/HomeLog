@@ -7,7 +7,7 @@ import { setupUserWithHousehold } from './support/flows'
 
 async function fits(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  for (const selector of ['.kakeibo-page .panel', '.kakeibo-page .toolbar > *', '.transaction-list', '.transaction-list .list-row-button', '.transaction-detail-modal', '.transaction-detail-modal dd']) {
+  for (const selector of ['.kakeibo-page .ui-card', '.kakeibo-page .transaction-filters > *', '.transaction-list', '.transaction-list .list-row-button', '.transaction-detail-modal', '.transaction-detail-modal dd']) {
     for (const element of await page.locator(selector).all()) {
       const rect = await element.boundingBox()
       if (rect) { expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(page.viewportSize()!.width) }

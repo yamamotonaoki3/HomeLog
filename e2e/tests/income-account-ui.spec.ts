@@ -65,7 +65,7 @@ for (const width of [1280, 390, 320]) {
       await modal.getByRole('tab', { name: '収入', exact: true }).click()
       await expect(select).toHaveValue(String(account.id))
       await modal.getByRole('button', { name: 'キャンセル', exact: true }).click()
-      await expect(page.getByTestId('monthly-summary')).toContainText('今月収入：2500円')
+      await expect(page.getByTestId('monthly-summary')).toContainText('今月収入：2,500円')
       const getAccounts = async () => (await page.request.get('/api/accounts', { headers })).json()
       expect(await getAccounts()).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: account.id, balance: 12500, cards: [expect.objectContaining({ id: card.id, balance: 0 })] }),
