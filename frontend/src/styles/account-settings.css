@@ -1,13 +1,69 @@
-/* アカウント設定・退会 */
+/* アカウント設定・退会(S-26、#505)。4区画を説明付きのカードにそろえ、退会は赤系で区別する。 */
 
-.account-settings-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 640px;
+/* 上部のページ内リンク。 */
+.account-jump {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
 }
-.account-settings-section h2 {
-  margin-top: 0;
+.account-jump a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  color: var(--ui-primary-strong);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.account-jump a:hover {
+  background: #f4f8fd;
+}
+.account-jump a:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.account-settings-section {
+  margin-bottom: 12px;
+  /* ページ内リンクで移動したとき、上に固定されたヘッダーの下へ隠れないようにする。 */
+  scroll-margin-top: 84px;
+}
+.account-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.account-section-head > div {
+  min-width: 0;
+}
+.account-section-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.account-section-head h3:focus {
+  outline: none;
+}
+.account-section-head h3:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.account-section-head p {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .account-settings-section form {
   display: flex;
@@ -16,34 +72,92 @@
 }
 .account-settings-section label {
   display: block;
-  margin-top: 12px;
-  margin-bottom: 4px;
+  margin: 12px 0 6px;
+  color: #42536a;
   font-size: 13px;
-  color: #555;
+  font-weight: 700;
 }
 .account-settings-section input {
   width: 100%;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
   font-size: 16px;
 }
-.account-settings-section .btn {
-  align-self: flex-start;
-  margin-top: 16px;
-  min-height: 44px;
+.account-settings-section input:disabled {
+  background: #f2f6fa;
 }
-.account-settings-current span {
-  overflow-wrap: anywhere;
+/* 表示切り替えの目のボタンは、この画面では44pxの押せる範囲を取る。 */
+.account-settings-section .password-field input {
+  padding-right: 52px;
+}
+.account-settings-section .password-toggle {
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: #5f6f85;
+}
+.account-settings-section .password-toggle:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+.account-settings-section .ui-action {
+  margin-top: 16px;
+}
+.account-settings-section > .error,
+.account-settings-success {
+  margin: 12px 0 0;
 }
 .account-settings-success {
   color: #15803d;
+  font-weight: 700;
+}
+.account-settings-current {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--ui-soft);
+}
+.account-settings-current dt {
+  color: var(--ui-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.account-settings-current dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* 退会。枠と見出しを赤系にして、ほかの区画の保存と取り違えないようにする。 */
+.account-settings-section.is-danger {
+  border-color: #f1c7c2;
+  background: #fffafa;
+}
+.account-settings-section.is-danger .account-section-head h3 {
+  color: #a12a1f;
+}
+.account-deletion-text {
+  margin: 10px 0 0;
+  color: #42536a;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .account-deletion-blockers {
+  margin-top: 12px;
   padding: 12px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fef2f2;
+  border: 1px solid #f1b5ae;
+  border-radius: 12px;
+  background: #fdecea;
+  color: #7a1f17;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .account-deletion-blockers p,
 .account-deletion-blockers ul {
@@ -52,4 +166,14 @@
 .account-deletion-blockers ul {
   margin-top: 8px;
   padding-left: 20px;
+}
+.account-deletion-modal .ui-form-actions {
+  margin-top: 18px;
+}
+
+/* 狭い画面では、ページ内リンクを2列にする。 */
+@media (max-width: 380px) {
+  .account-jump {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

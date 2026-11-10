@@ -145,6 +145,15 @@
   cursor: not-allowed;
 }
 
+/* 確認ダイアログの説明文。影響の説明なので、補足の小さな灰色の文字ではなく本文として読める濃さと大きさにする。 */
+.ui-confirm-text {
+  margin: 0;
+  color: #42536a;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
 /* 記号だけの四角いボタン(閉じる など)。読み上げ名は aria-label で付ける。 */
 .ui-icon-button {
   display: inline-grid;

@@ -156,7 +156,7 @@ function LeaveConfirmDialog({ submitting, onConfirm, onCancel }: { submitting: b
     <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) cancel() }}>
       <div ref={ref} className="modal household-leave-modal" role="dialog" aria-modal="true" aria-labelledby="household-leave-heading">
         <h2 id="household-leave-heading">本当に退出しますか？</h2>
-        <p className="hint">
+        <p className="ui-confirm-text">
           退出すると世帯グループの共有データにアクセスできなくなります。あなたが最後のメンバーの場合、世帯グループと共有データ（在庫・買い物リスト等）はすべて削除されます。
         </p>
         <div className="ui-form-actions">
