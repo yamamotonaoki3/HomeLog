@@ -159,10 +159,16 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     catch { setSubmitting(false); setError('保存しました。一覧の再取得に失敗しました。閉じて再読み込みしてください') }
   }
 
+  // 登録では在庫個数の右、編集では数量操作の下に置く。
+  const priceField = <div>
+    <label htmlFor="inv-price">値段（円・任意）</label>
+    <input id="inv-price" type="text" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
+  </div>
+
   return (
     <div className="modal-overlay inventory-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) close() }}>
-      <div ref={dialogRef} className="modal inventory-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
-        <h2 id="inventory-modal-title">{item ? '在庫詳細・編集' : '在庫を登録'}</h2>
+      <div ref={dialogRef} className="modal inventory-modal inventory-form-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
+        <h2 id="inventory-modal-title">{item ? '在庫の詳細編集' : '在庫を登録'}</h2>
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="inv-name">品名</label>
           <input id="inv-name" type="text" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
@@ -192,12 +198,12 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
                 onClick={() => { setCategoryFormOpen(false); setCategoryError(''); requestAnimationFrame(() => categoryToggle.current?.focus()) }}>追加をやめる</button>
             </div>
           </div>}
-          <label htmlFor="inv-store">
-            買う店（任意）{' '}
-            <button type="button" className="btn btn-tiny" disabled={locked} onClick={() => setStoreFormOpen((open) => !open)}>
+          <div className="inventory-category-heading">
+            <label htmlFor="inv-store">買う店（任意）</label>
+            <button type="button" className="btn btn-tiny" disabled={locked} aria-expanded={storeFormOpen} onClick={() => setStoreFormOpen((open) => !open)}>
               ＋店を登録
             </button>
-          </label>
+          </div>
           <select id="inv-store" value={storeId} onChange={(e) => setStoreId(e.target.value)}>
             <option value="">なし</option>
             {stores.map((s) => (
@@ -207,7 +213,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             ))}
           </select>
           {storeFormOpen && (
-            <div>
+            <div className="inventory-category-form">
               <label htmlFor="store-name">店名</label>
               <input
                 id="store-name"
@@ -222,7 +228,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             </div>
           )}
           {item ? <>
-            <p>在庫個数（＋/－で即時反映）</p>
+            <p className="inventory-quantity-caption">在庫個数（＋/－で即時反映）</p>
             <div className="inventory-quantity-row">
               <div className="inventory-quantity-controls inventory-quantity-inline">
                 <span className="qty-value" aria-live="polite">{item.quantity.toFixed(1)}</span>
@@ -238,12 +244,14 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             </div>
             <p className="hint">個数の変更はキャンセルしても元に戻りません</p>
             {quantityNotice && <p className="error" role="alert">{quantityNotice}</p>}
-          </> : <>
-            <label htmlFor="inv-quantity">在庫個数</label>
-            <input id="inv-quantity" type="number" step="0.1" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          </>}
-          <label htmlFor="inv-price">値段（円・任意）</label>
-          <input id="inv-price" type="text" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
+            {priceField}
+          </> : <div className="inventory-form-pair">
+            <div>
+              <label htmlFor="inv-quantity">在庫個数</label>
+              <input id="inv-quantity" type="number" step="0.1" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            </div>
+            {priceField}
+          </div>}
           <label htmlFor="inv-threshold">買い物リスト追加閾値</label>
           <input
             id="inv-threshold"
@@ -254,29 +262,38 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             onChange={(e) => setThreshold(e.target.value)}
           />
           <p className="hint">在庫個数がこの数以下になると、買い物リストに自動追加されます</p>
-          <button type="button" role="switch" aria-label="自動消費" aria-checked={autoConsumptionEnabled}
-            aria-controls="inventory-consumption-fields" className="btn inventory-consumption-switch" disabled={locked}
-            onClick={() => { setConsumptionCorrectionOpen(false); setAutoConsumptionEnabled(enabled => !enabled) }}>
-            自動消費：{autoConsumptionEnabled ? 'オン' : 'オフ'}
-          </button>
-          {(autoConsumptionEnabled || consumptionCorrectionOpen) && <div id="inventory-consumption-fields">
-            <label htmlFor="inv-consumption">1日の消費量（任意）</label>
-            <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
-              disabled={locked} value={dailyConsumption}
-              aria-invalid={error === CONSUMPTION_ERROR || undefined}
-              aria-describedby={error === CONSUMPTION_ERROR ? 'inv-consumption-hint inv-consumption-error' : 'inv-consumption-hint'}
-              onChange={event => setDailyConsumption(event.target.value)} />
-            <p id="inv-consumption-hint" className="hint">オンで保存するには消費量を入力してください。オフにしても入力した量は保持します。</p>
-            {error === CONSUMPTION_ERROR && <p id="inv-consumption-error" className="error" role="alert">{error}</p>}
-          </div>}
-          <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
+          <div className="ui-card inventory-consumption-card">
+            <div className="inventory-consumption-head">
+              <div>
+                <p id="inv-consumption-title" className="inventory-consumption-title">毎日の自動消費</p>
+                <p className="hint">オンのときだけ1日の消費量を入力します</p>
+              </div>
+              <button type="button" role="switch" aria-labelledby="inv-consumption-title" aria-checked={autoConsumptionEnabled}
+                aria-controls="inventory-consumption-fields" className="ui-switch" disabled={locked}
+                onClick={() => { setConsumptionCorrectionOpen(false); setAutoConsumptionEnabled(enabled => !enabled) }}>
+                <span className="ui-switch-track" aria-hidden="true" />
+                <span className="ui-switch-state" aria-hidden="true">{autoConsumptionEnabled ? 'オン' : 'オフ'}</span>
+              </button>
+            </div>
+            {(autoConsumptionEnabled || consumptionCorrectionOpen) && <div id="inventory-consumption-fields">
+              <label htmlFor="inv-consumption">1日の消費量（任意）</label>
+              <input id="inv-consumption" type="number" step="0.1" min="0.1" max="99999.9"
+                disabled={locked} value={dailyConsumption}
+                aria-invalid={error === CONSUMPTION_ERROR || undefined}
+                aria-describedby={error === CONSUMPTION_ERROR ? 'inv-consumption-hint inv-consumption-error' : 'inv-consumption-hint'}
+                onChange={event => setDailyConsumption(event.target.value)} />
+              <p id="inv-consumption-hint" className="hint">オンで保存するには消費量を入力してください。オフにしても入力した量は保持します。</p>
+              {error === CONSUMPTION_ERROR && <p id="inv-consumption-error" className="error" role="alert">{error}</p>}
+            </div>}
+            <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
+          </div>
           {error && error !== CONSUMPTION_ERROR && <p className="error" role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={locked}>
-              保存
-            </button>
-            <button type="button" className="btn btn-secondary" disabled={submitting || busy || categorySubmitting} onClick={close}>
+          <div className="modal-actions ui-form-actions">
+            <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting} onClick={close}>
               キャンセル
+            </button>
+            <button type="submit" className="ui-action" disabled={locked}>
+              保存
             </button>
           </div>
         </form>

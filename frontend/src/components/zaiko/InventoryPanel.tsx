@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
@@ -30,6 +30,8 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   const [busy, setBusy] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const searchId = useId()
+  const filterName = useId()
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem>()
   const deleteOrigin = useRef<HTMLButtonElement | null>(null)
   const pending = useRef(false)
@@ -111,53 +113,82 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
     void adjustQuantity(item, delta, true)
   }
 
-  return <div className="panel" data-testid="inventory-panel">
-    <div className="toolbar"><h2>在庫一覧</h2><button ref={register} type="button" className="btn btn-primary" onClick={() => { origin.current = register.current; setFormOpen(true) }}>在庫を登録</button></div>
-    <div className="inventory-filters">
-      <input type="search" className="zaiko-search" aria-label="キーワード検索" placeholder="キーワードで絞り込み" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-      <label className="inventory-category-filter" htmlFor="inventory-filter-category">カテゴリーで絞り込み
-        <select id="inventory-filter-category" value={categoryId} onChange={event => setCategoryId(event.target.value)}>
-          <option value="">すべて</option>
-          {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
-      </label>
+  return <div className="ui-narrow" data-testid="inventory-panel">
+    <header className="ui-page-head">
+      <div>
+        <h2>在庫一覧</h2>
+        <p className="ui-page-sub">行を押すと数量を変更できます</p>
+      </div>
+    </header>
+    <label className="ui-field-label inventory-search-label" htmlFor={searchId}>商品を探す</label>
+    <input id={searchId} type="search" className="ui-search" placeholder="商品名で検索" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
+    <fieldset className="ui-chips inventory-category-filter">
+      <legend className="visually-hidden">カテゴリーで絞り込み</legend>
+      {/* 横に流す枠は fieldset の内側に置く(fieldset 自体をスクロール枠にしない)。 */}
+      <div className="ui-chips-row">
+        <label><input type="radio" name={filterName} value="" checked={categoryId === ''} onChange={() => setCategoryId('')} /><span>すべて</span></label>
+        {categories.map(category => <label key={category.id}>
+          <input type="radio" name={filterName} value={category.id} checked={categoryId === String(category.id)} onChange={() => setCategoryId(String(category.id))} /><span>{category.name}</span>
+        </label>)}
+      </div>
+    </fieldset>
+    <button ref={register} type="button" className="ui-action" onClick={() => { origin.current = register.current; setFormOpen(true) }}><span aria-hidden="true">＋</span>在庫を登録</button>
+    <div className="inventory-list-head">
+      <h3 className="ui-section-label">商品一覧</h3>
+      {/* 行の「！」の意味を示す凡例。読み上げでは各行の説明(在庫が閾値以下)で伝える。 */}
+      <p className="inventory-low-legend" aria-hidden="true"><span className="inventory-low-stock is-low">！</span>補充対象</p>
     </div>
-    <div className="inventory-list" aria-label="在庫一覧">
-      <div className="inventory-row inventory-list-heading list-row-heading"><div className="inventory-list-grid"><span>品名</span><span>在庫数</span><span aria-hidden="true" /></div><span className="inventory-delete-spacer" aria-hidden="true" /></div>
-      {inventory.length === 0 ? <p>在庫がありません</p> : visible.length === 0 ? <p>該当する品目がありません</p> : visible.map((item) => {
+    {inventory.length === 0 ? <p className="ui-empty">在庫がありません</p> : visible.length === 0 ? <p className="ui-empty">該当する品目がありません</p> : null}
+    {visible.length > 0 && <ul className="inventory-list" aria-label="在庫一覧">
+      {visible.map((item) => {
         const low = item.quantity <= item.threshold
         const stopped = uncertainIds.has(item.id)
         const expanded = expandedId === item.id
-        return <Fragment key={item.id}>
+        const categoryName = categories.find(category => category.id === item.categoryId)?.name
+        return <li key={item.id} className={expanded ? 'ui-card inventory-card is-open' : 'ui-card inventory-card'}>
           <div className="inventory-row">
-            <button type="button" className="list-row-button inventory-list-grid" aria-label={`${item.name}の詳細`} aria-describedby={`inventory-summary-${item.id}`}
+            <button type="button" className="inventory-row-button" aria-label={`${item.name}の詳細`} aria-describedby={`inventory-summary-${item.id}`}
               aria-expanded={expanded} aria-controls={`inventory-quantity-${item.id}`} disabled={busy}
               onClick={() => setExpandedId(expanded ? undefined : item.id)}>
-              <span>{item.name}</span><span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span><span className="inventory-low-stock" aria-hidden="true">{low ? '！' : ''}</span>
+              <span className={low ? 'inventory-low-stock is-low' : 'inventory-low-stock'} aria-hidden="true">{low ? '！' : ''}</span>
+              <span className="inventory-row-main">
+                <span className="inventory-row-name">{item.name}</span>
+                {categoryName && <span className="inventory-row-category">{categoryName}</span>}
+              </span>
+              <span className="inventory-list-quantity">{item.quantity.toFixed(1)}</span>
+              <span className="inventory-chevron" aria-hidden="true" />
             </button>
             <span id={`inventory-summary-${item.id}`} className="sr-only">在庫数 {item.quantity.toFixed(1)}{low ? ' 在庫が閾値以下' : ''}</span>
             <button type="button" className="inventory-delete-button" disabled={busy} aria-label={`${item.name}を削除`} onClick={(event) => { deleteOrigin.current = event.currentTarget; setDeleteTarget(item) }}>×</button>
           </div>
           {expanded && <section id={`inventory-quantity-${item.id}`} className="inventory-expanded" role="region" aria-label={`${item.name}の数量変更`} hidden={formOpen}>
-            <div className="inventory-inline-actions">
-              <button type="button" className="btn btn-secondary" disabled={busy || stopped} aria-label={`${item.name}を増やす`} onClick={() => adjustStep(item, 1)}>＋</button>
-              <button type="button" className="btn btn-secondary" disabled={busy || stopped} aria-label={`${item.name}を減らす`} onClick={() => adjustStep(item, -1)}>－</button>
-              <div className="inventory-step-options" role="group" aria-label="増減幅"><span>増減幅</span>{[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary" aria-pressed={(steps[item.id] ?? 1) === value} disabled={busy || stopped} onClick={() => setSteps(previous => ({ ...previous, [item.id]: value }))}>{value}</button>)}</div>
+            <p className="inventory-expanded-title">在庫を変更</p>
+            <p className="inventory-expanded-caption">現在の数量</p>
+            <div className="inventory-stepper">
+              <button type="button" className="inventory-stepper-button" disabled={busy || stopped} aria-label={`${item.name}を減らす`} onClick={() => adjustStep(item, -1)}>－</button>
+              <span className="inventory-current-quantity" aria-live="polite">{item.quantity.toFixed(1)}</span>
+              <button type="button" className="inventory-stepper-button" disabled={busy || stopped} aria-label={`${item.name}を増やす`} onClick={() => adjustStep(item, 1)}>＋</button>
             </div>
+            <div className="inventory-step-options" role="group" aria-label="増減幅"><span>増減幅</span>{[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary" aria-pressed={(steps[item.id] ?? 1) === value} disabled={busy || stopped} onClick={() => setSteps(previous => ({ ...previous, [item.id]: value }))}>{value}</button>)}</div>
             <form className="inventory-delta-form" noValidate onSubmit={event => { event.preventDefault(); applyDraft(item) }}>
-              <label htmlFor={`inventory-delta-${item.id}`}>増減量</label>
-              <div><input id={`inventory-delta-${item.id}`} type="text" inputMode="text" value={drafts[item.id] ?? ''} disabled={busy || stopped}
-                aria-describedby={`inventory-delta-hint-${item.id}`} aria-invalid={Boolean(quantityErrors[item.id])}
-                onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} />
-                <button type="submit" className="btn btn-primary" disabled={busy || stopped}>適用</button></div>
+              <div className="inventory-delta-row">
+                <label className="ui-tag" htmlFor={`inventory-delta-${item.id}`}>増減量</label>
+                <input id={`inventory-delta-${item.id}`} type="text" inputMode="text" placeholder="例：1、-0.5" value={drafts[item.id] ?? ''} disabled={busy || stopped}
+                  aria-describedby={`inventory-delta-hint-${item.id}`} aria-invalid={Boolean(quantityErrors[item.id])}
+                  onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} />
+              </div>
               <p id={`inventory-delta-hint-${item.id}`} className="hint">正の数は加算、負の数は減算します。適用後は取り消せません。</p>
+              <button type="submit" className="ui-action" disabled={busy || stopped}>数量を適用</button>
             </form>
             {stopped ? <p className="error" role="alert">{uncertainMessage}</p> : quantityErrors[item.id] && <p className="error" role="alert">{quantityErrors[item.id]}</p>}
-            <button type="button" className="btn btn-secondary inventory-details-button" disabled={busy} aria-label={`${item.name}の詳細設定`} onClick={event => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>詳細設定</button>
+            <div className="inventory-expanded-footer">
+              <span>補充基準：{item.threshold.toFixed(1)}</span>
+              <button type="button" className="inventory-details-button" disabled={busy} aria-label={`${item.name}の詳細を編集`} onClick={event => { origin.current = event.currentTarget; setSelectedId(item.id); setFormOpen(true) }}>詳細を編集<span aria-hidden="true">›</span></button>
+            </div>
           </section>}
-        </Fragment>
+        </li>
       })}
-    </div>
+    </ul>}
     {deleteTarget && <InventoryDeleteDialog item={deleteTarget} onClose={closeDelete} onDeleted={async () => {
       // 削除は確定済み。再取得のcommit前に残る旧行へフォーカスを戻さない。
       deleteOrigin.current = null

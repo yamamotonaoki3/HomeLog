@@ -41,7 +41,7 @@ function setup(edit = false) {
 
 async function open(user: ReturnType<typeof userEvent.setup>, edit = false) {
   await user.click(await screen.findByRole('button', { name: edit ? '[E2E_TEST] testuser_牛乳の詳細' : '在庫を登録' }))
-  if (edit) await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細設定' }))
+  if (edit) await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細を編集' }))
   await user.click(screen.getByRole('button', { name: '＋カテゴリーを登録' }))
 }
 
@@ -131,7 +131,7 @@ describe('在庫モーダル内のカテゴリー追加', () => {
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     if (screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細' }).getAttribute('aria-expanded') !== 'true') await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細' }))
-    await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細設定' }))
+    await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細を編集' }))
     expect(within(screen.getByLabelText('カテゴリー')).getByRole('option', { name: 'testuser_乳製品' })).toBeInTheDocument()
   })
 

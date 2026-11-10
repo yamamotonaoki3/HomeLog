@@ -6,7 +6,7 @@ import { setupUserWithHousehold } from './support/flows'
 
 async function expectFits(page: Page, width: number) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  for (const box of await Promise.all((await page.getByRole('searchbox', { name: 'キーワード検索' }).all()).map((el) => el.boundingBox()))) {
+  for (const box of await Promise.all((await page.getByRole('searchbox').all()).map((el) => el.boundingBox()))) {
     if (box) { expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width) }
   }
 }
@@ -25,7 +25,7 @@ for (const width of [1280, 390, 320]) {
     }
     await page.goto('/zaiko')
     const inventory = page.getByTestId('inventory-panel')
-    const search = inventory.getByRole('searchbox', { name: 'キーワード検索' })
+    const search = inventory.getByRole('searchbox', { name: '商品を探す' })
     await search.fill('ｂｕｔｔｅｒ')
     await expect(inventory.getByRole('button', { name: '[E2E_TEST] Butterの詳細' })).toBeVisible()
     await expect(inventory.getByRole('button', { name: '[E2E_TEST] お米の詳細' })).toHaveCount(0)

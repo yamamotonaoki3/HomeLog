@@ -17,7 +17,7 @@ it('初回入力・Space操作・オフの消費量を送信する', async () =>
   expect(input).toHaveAttribute('step', '0.1')
   expect(input).toHaveAttribute('min', '0.1')
   expect(input).toHaveAttribute('max', '99999.9')
-  const toggle = screen.getByRole('switch', { name: '自動消費' })
+  const toggle = screen.getByRole('switch', { name: '毎日の自動消費' })
   expect(toggle).toHaveAttribute('aria-checked', 'true')
   await user.type(input, '0.2')
   expect(toggle).toHaveAttribute('aria-checked', 'true')
