@@ -258,3 +258,43 @@
 
 /* #422 削除確認の操作は操作高を確保する。 */
 .kakeibo-page [aria-labelledby="transaction-delete-title"] button { min-height:44px; }
+
+/* #423・#475: 固定費の一覧(1件1カード・登録額合計)とフォーム。
+ * fixed-cost.css は .modal の幅を保つため components.css より前に読み込むので、上書きが必要な指定はここに置く。 */
+.fixed-cost-page .kakeibo-links a.btn { flex: 0 1 auto; padding: 0 16px; }
+.fixed-cost-cards { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fixed-cost-card { min-width: 0; padding: 0; }
+.fixed-cost-card:has(.list-row-button:hover) { border-color: #b7cbe4; }
+/* 行ボタンは四角のままにして四隅も押せるようにし、丸みはカードとフォーカス枠で付ける(#469)。 */
+.fixed-cost-card .list-row-button { position: relative; min-height: 64px; padding: 12px 34px 12px 14px; border: 0; border-radius: 0; background: none; }
+.fixed-cost-card .list-row-button:hover { background: none; }
+.fixed-cost-card .list-row-button:focus-visible { outline: none; background: none; }
+.fixed-cost-card .list-row-button:focus-visible::after { content: ''; position: absolute; inset: 2px; border: 2px solid var(--ui-focus); border-radius: 13px; pointer-events: none; }
+.fixed-cost-card .list-row-button::before { content: '›'; position: absolute; top: 50%; right: 14px; color: #6c7c92; font-size: 18px; line-height: 1; transform: translateY(-50%); }
+/* 1行目に固定費名と金額、2行目に支払日と引き落とし元を置く。 */
+.fixed-cost-card .fixed-cost-grid { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "name name amount" "day source source"; gap: 2px 10px; }
+.fixed-cost-card .fixed-cost-grid > span { min-width: 0; overflow-wrap: anywhere; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(1) { grid-area: name; font-size: 15px; font-weight: 800; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(2) { grid-area: amount; font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(3) { grid-area: day; color: var(--ui-muted); font-size: 13px; white-space: nowrap; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(3)::before { content: '毎月'; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(4) { grid-area: source; color: var(--ui-muted); font-size: 13px; }
+.fixed-cost-card .fixed-cost-grid > span:nth-child(4)::before { content: '・ '; }
+.fixed-cost-total { margin-top: 10px; background: #f2f6fa; box-shadow: none; }
+.fixed-cost-total-main { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin: 0; font-size: 15px; font-weight: 800; }
+.fixed-cost-total-main strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.fixed-cost-total-note { margin: 6px 0 0; color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
+.fixed-cost-page .fixed-cost-empty { max-width: none; padding: 16px; }
+.fixed-cost-page .fixed-cost-empty .btn { min-height: 44px; }
+.modal.fixed-cost-modal { border-radius: 18px; color: var(--ui-text); }
+.fixed-cost-modal h2 { font-size: 22px; font-weight: 800; line-height: 1.35; }
+.fixed-cost-modal form h3 { margin: 14px 0 0; color: var(--ui-muted); font-size: 13px; }
+.fixed-cost-modal form label { margin-top: 14px; color: #42536a; font-weight: 700; }
+.fixed-cost-modal form input:not([type="checkbox"]):not([type="radio"]),
+.fixed-cost-modal form select { min-height: 48px; margin-top: 5px; padding: 10px 12px; border-color: var(--ui-control-border); border-radius: 12px; background-color: var(--ui-surface); color: var(--ui-text); }
+.fixed-cost-modal .fixed-cost-posting-note { border-radius: 13px; background: #e8f2fd; color: #2b4a6f; font-size: 13px; }
+.fixed-cost-modal .fixed-cost-settings-toggle { display: grid; gap: 2px; width: 100%; min-height: 44px; margin-top: 16px; padding: 12px 40px 12px 14px; position: relative; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font: inherit; font-size: 15px; font-weight: 800; text-align: left; }
+.fixed-cost-modal .fixed-cost-settings-toggle::after { content: ''; float: none; position: absolute; top: 50%; right: 16px; width: 8px; height: 8px; margin-top: -7px; border-right: 2px solid #6c7c92; border-bottom: 2px solid #6c7c92; transform: rotate(45deg); }
+.fixed-cost-modal .fixed-cost-settings-toggle[aria-expanded="true"]::after { content: ''; margin-top: -2px; transform: rotate(-135deg); }
+.fixed-cost-modal fieldset { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--ui-border); border-radius: 12px; }
+.fixed-cost-modal fieldset label { margin-top: 0; }
