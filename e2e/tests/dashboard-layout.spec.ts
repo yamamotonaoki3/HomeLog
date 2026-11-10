@@ -122,6 +122,8 @@ for (const width of [1280, 390, 320]) {
     await expect(account).toHaveAttribute('aria-expanded', 'false')
     await expect(header.getByRole('button', { name: 'ログアウト' })).toHaveCount(0)
     await expect(alarm).toBeVisible()
+    // #483: 通知が0件のときは数字のバッジを出さない(ベルの位置と大きさは下の検証で変わらないことを確かめる)。
+    await expect(alarm.locator('.notification-alarm-count')).toHaveCount(0)
     await expect(settings).toBeVisible()
     await expect(personIcon).toBeVisible()
     await expect(page.getByRole('button', { name: 'メニューを開く' })).toHaveCount(0)

@@ -35,6 +35,8 @@ export function NotificationAlarm() {
     : state === 'error'
       ? '通知アラーム（通知を取得できません）'
       : `通知アラーム（${notificationCount}件）`
+  // 通知が0件のときは数字のバッジを出さない(#483)。取得中・取得失敗は0件と区別するため表示を残す。
+  const badge = state === 'error' ? '—' : state === 'loading' ? '…' : notificationCount > 0 ? notificationCount : null
 
   return (
     <span className={`notification-alarm notification-alarm-${state}`} role="img" aria-label={label} title={label}>
@@ -42,7 +44,7 @@ export function NotificationAlarm() {
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
         <path d="M10 21h4" />
       </svg>
-      <span aria-hidden="true" className="notification-alarm-count">{state === 'error' ? '—' : state === 'loading' ? '…' : notificationCount}</span>
+      {badge !== null && <span aria-hidden="true" className="notification-alarm-count">{badge}</span>}
     </span>
   )
 }
