@@ -149,8 +149,8 @@ for (const width of [1280, 390, 320]) {
       await expect(modal).toBeHidden()
       const summary = page.getByTestId('monthly-summary')
       const summaryUnchanged = async () => {
-        for (const text of ['今月支出：1200円', '今月収入：5000円', '今月差額：3800円']) await expect(summary.getByText(text, { exact: true })).toBeVisible()
-        await expect(summary.getByText('当月サマリー（' + year + '年' + monthNumber + '月）', { exact: true })).toBeVisible()
+        for (const text of ['今月支出：1,200円', '今月収入：5,000円', '今月差額：3,800円']) await expect(summary.getByText(text, { exact: true })).toBeVisible()
+        await expect(summary.getByText(year + '年' + monthNumber + '月の集計', { exact: true })).toBeVisible()
       }
       await summaryUnchanged()
       await expect(rows).toHaveCount(5)
@@ -168,7 +168,8 @@ for (const width of [1280, 390, 320]) {
       await expect(rows).toHaveCount(2)
       await expect(panel.getByText('履歴: ' + previousMonth.slice(0, 4) + '年' + Number(previousMonth.slice(5)) + '月', { exact: true })).toBeVisible()
       const typeBox = (await type.boundingBox())!
-      await type.click({ position: { x: typeBox.width - 2, y: typeBox.height - 2 } })
+      // 選択欄は角を丸めたため(#473)、丸みの内側に入る右下の端を押して、端まで操作できることを確かめる。
+      await type.click({ position: { x: typeBox.width - 6, y: typeBox.height - 6 } })
       await page.keyboard.press('Escape')
       await expect(type).toBeFocused()
       await type.press('ArrowDown')

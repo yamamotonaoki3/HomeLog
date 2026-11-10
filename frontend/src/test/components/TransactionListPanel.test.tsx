@@ -71,3 +71,33 @@ describe('TransactionListPanelの共通行操作', () => {
   })
 
 })
+
+describe('TransactionListPanelの見た目に関わる構成 (#473)', () => {
+  function renderPanel() {
+    render(<MemoryRouter><TransactionListPanel
+      expenses={[{ id: 1, expenseDate: '2030-01-01', purpose: '[E2E_TEST] 支出', amount: 1200 } as Expense]}
+      incomes={[{ id: 1, incomeDate: '2030-01-02', content: '[E2E_TEST] 収入', amount: 1000 } as Income]}
+      typeFilter="all" onSelectTransaction={() => {}} onTypeFilterChange={() => {}}
+      activeCategoryFilter="" activeCategoryOptions={[]} onActiveCategoryFilterChange={() => {}}
+      onAddClick={() => {}} addDisabled={false}
+    /></MemoryRouter>)
+  }
+
+  it('登録・絞り込み・関連画面への操作の名前を変えない', () => {
+    renderPanel()
+    expect(screen.getByRole('button', { name: '収支を登録' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '種別絞り込み' })).toHaveValue('all')
+    expect(screen.getByRole('searchbox', { name: '収支を検索' })).toBeInTheDocument()
+    expect(screen.getByLabelText('履歴の対象月')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '固定費' })).toHaveAttribute('href', '/fixed-costs')
+    expect(screen.getByRole('link', { name: 'カテゴリー管理' })).toHaveAttribute('href', '/categories')
+  })
+
+  it('履歴は1件を1つのリスト項目にし、行ボタンの中は日付・内容・金額の順にする', () => {
+    renderPanel()
+    const items = within(screen.getByRole('list', { name: '収支の履歴' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    const row = within(items[0]).getByRole('button', { name: '収入：[E2E_TEST] 収入の詳細' })
+    expect([...row.querySelectorAll(':scope > span')].map(cell => cell.textContent)).toEqual(['2030-01-02', '[E2E_TEST] 収入', '+1,000円'])
+  })
+})

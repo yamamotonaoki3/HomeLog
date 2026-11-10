@@ -69,9 +69,20 @@ export function TransactionListPanel({
   }, [expenses, incomes, typeFilter, keyword, month])
 
   return (
-    <div className="panel" data-testid="transaction-panel">
-      <div className="toolbar">
-        <h2>家計簿</h2>
+    <div className="transaction-panel" data-testid="transaction-panel">
+      <button ref={addButtonRef} type="button" className="ui-action" onClick={onAddClick} disabled={addDisabled}>
+        <span aria-hidden="true">＋</span>収支を登録
+      </button>
+      <div className="kakeibo-links">
+        <Link to="/fixed-costs" className="btn btn-secondary">
+          固定費
+        </Link>
+        <Link to="/categories" className="btn btn-secondary">
+          カテゴリー管理
+        </Link>
+      </div>
+      <p className="ui-section-label transaction-period">履歴: {month ? month.slice(0, 4) + '年' + Number(month.slice(5, 7)) + '月' : '全期間'}</p>
+      <div className="ui-card transaction-filters">
         <select
           aria-label="種別絞り込み"
           value={typeFilter}
@@ -95,34 +106,23 @@ export function TransactionListPanel({
             ))}
           </select>
         )}
-        <button ref={addButtonRef} type="button" className="btn btn-primary" onClick={onAddClick} disabled={addDisabled}>
-          収支を登録
-        </button>
-        <Link to="/fixed-costs" className="btn btn-secondary">
-          固定費
-        </Link>
-        <Link to="/categories" className="btn btn-secondary">
-          カテゴリー管理
-        </Link>
-      </div>
-      <div className="transaction-filters">
         <label htmlFor="transaction-keyword">収支を検索<input id="transaction-keyword" type="search" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
         <label htmlFor="transaction-month">履歴の対象月<input id="transaction-month" type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>
         <button type="button" className="btn btn-secondary" disabled={keyword === '' && month === ''} onClick={() => { setKeyword(''); setMonth('') }}>検索・月を解除</button>
       </div>
-      <p className="transaction-period">履歴: {month ? month.slice(0, 4) + '年' + Number(month.slice(5, 7)) + '月' : '全期間'}</p>
       <div className="transaction-list">
-        <div className="list-row-heading transaction-grid"><span>日付</span><span>内容</span><span>金額</span></div>
-        {rows.length === 0 ? <p>{keyword.trim() || month ? '条件に一致する収支はありません' : emptyMessage(typeFilter)}</p> : rows.map((row) => (
-          <button key={`${row.kind}-${row.id}`} type="button" className="list-row-button transaction-grid"
+        {/* 行の3つの並びの意味。見た目には出さず、読み上げ用に残す。 */}
+        <div className="list-row-heading transaction-grid visually-hidden"><span>日付</span><span>内容</span><span>金額</span></div>
+        {rows.length === 0 ? <p className="ui-empty">{keyword.trim() || month ? '条件に一致する収支はありません' : emptyMessage(typeFilter)}</p> : <ul className="transaction-cards" aria-label="収支の履歴">{rows.map((row) => (
+          <li key={`${row.kind}-${row.id}`} className="ui-card transaction-card"><button type="button" className="list-row-button transaction-grid"
             aria-describedby={'transaction-date-' + row.kind + '-' + row.id + ' transaction-amount-' + row.kind + '-' + row.id}
             aria-label={`${row.kind === 'income' ? '収入' : '支出'}：${row.description || '内容なし'}の詳細`}
             onClick={(event) => onSelectTransaction(row.kind, row.id, event.currentTarget)}>
             <span id={'transaction-date-' + row.kind + '-' + row.id}>{row.date}</span>
             <span>{row.description || '内容なし'}</span>
             <span id={'transaction-amount-' + row.kind + '-' + row.id} className={row.kind === 'income' ? 'calendar-income' : 'calendar-expense'}>{row.kind === 'income' ? '+' : '-'}{row.amount.toLocaleString('ja-JP')}円</span>
-          </button>
-        ))}
+          </button></li>
+        ))}</ul>}
       </div>
     </div>
   )

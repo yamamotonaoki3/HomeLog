@@ -213,8 +213,8 @@ function TransactionForm({
   return (
     <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget && !submitting) onClose() }}>
       <div ref={dialogRef} className="modal event-modal transaction-modal" data-testid="transaction-modal" role="dialog" aria-modal="true" aria-labelledby="transaction-modal-title">
-        <h2 id="transaction-modal-title">{editing ? `${kind === 'expense' ? '支出' : '収入'}を編集` : '登録'}</h2>
-        {!editing && <div className="tabs" role="tablist">
+        <h2 id="transaction-modal-title">{editing ? `${kind === 'expense' ? '支出' : '収入'}を編集` : '収支を登録'}</h2>
+        {!editing && <div className="tabs transaction-kind-tabs" role="tablist">
           <button
             type="button"
             role="tab"
@@ -237,17 +237,23 @@ function TransactionForm({
           </button>
         </div>}
         <form onSubmit={handleSubmit} noValidate>
-          <label htmlFor="tx-date">日時</label>
-          <input id="tx-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <label htmlFor="tx-amount">金額</label>
-          <input
-            id="tx-amount"
-            type="number"
-            step="1"
-            min="1"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+          <div className="transaction-pair">
+            <div>
+              <label htmlFor="tx-date">日時</label>
+              <input id="tx-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="tx-amount">金額</label>
+              <input
+                id="tx-amount"
+                type="number"
+                step="1"
+                min="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+          </div>
           {kind === 'expense' ? (
             <>
               <label htmlFor="tx-purpose">使用用途（任意）</label>
@@ -312,7 +318,10 @@ function TransactionForm({
               </select>
             </>
           )}
-          <button type="button" className="btn btn-secondary transaction-split-toggle" aria-expanded={splitSettingsOpen} aria-controls="transaction-split-settings" onClick={() => setSplitSettingsOpen(open => !open)}>その他の設定</button>
+          <button type="button" className="btn btn-secondary transaction-split-toggle" aria-expanded={splitSettingsOpen} aria-controls="transaction-split-settings" onClick={() => setSplitSettingsOpen(open => !open)}>
+            <span>その他の設定</span>
+            <span className="transaction-split-sub" aria-hidden="true">{kind === 'expense' ? '世帯合計・イベント・割り勘・メモ' : 'メモ'}</span>
+          </button>
           <div id="transaction-split-settings" role="region" aria-label="その他の設定" hidden={!splitSettingsOpen}>
             {kind === 'expense' && <>
               <label htmlFor="tx-household-total">
@@ -339,12 +348,12 @@ function TransactionForm({
           <textarea id="tx-memo" maxLength={255} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
           {error && <p className="error" role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting || identityLoading || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>
-              {editing ? '保存' : '登録'}
-            </button>
-            <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onClose}>
+          <div className="modal-actions ui-form-actions">
+            <button type="button" className="ui-form-cancel" disabled={submitting} onClick={onClose}>
               キャンセル
+            </button>
+            <button type="submit" className="ui-action" disabled={submitting || identityLoading || categories.length === 0 || (kind === 'income' && incomeAccountUnavailable)}>
+              {editing ? '保存' : '登録'}
             </button>
           </div>
         </form>
