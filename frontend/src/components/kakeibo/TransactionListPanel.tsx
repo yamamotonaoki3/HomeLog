@@ -1,5 +1,4 @@
 import { useMemo, useState, type Ref } from 'react'
-import { Link } from 'react-router-dom'
 import type { Expense, Income, IncomeCategory, KakeiboCategory } from '../../api/kakeiboTypes'
 
 type TypeFilter = 'all' | 'expense' | 'income'
@@ -73,14 +72,6 @@ export function TransactionListPanel({
       <button ref={addButtonRef} type="button" className="ui-action" onClick={onAddClick} disabled={addDisabled}>
         <span aria-hidden="true">＋</span>収支を登録
       </button>
-      <div className="kakeibo-links">
-        <Link to="/fixed-costs" className="btn btn-secondary">
-          固定費
-        </Link>
-        <Link to="/categories" className="btn btn-secondary">
-          カテゴリー管理
-        </Link>
-      </div>
       <p className="ui-section-label transaction-period">履歴: {month ? month.slice(0, 4) + '年' + Number(month.slice(5, 7)) + '月' : '全期間'}</p>
       <div className="ui-card transaction-filters">
         <select

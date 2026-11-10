@@ -89,8 +89,9 @@ describe('TransactionListPanelの見た目に関わる構成 (#473)', () => {
     expect(screen.getByRole('combobox', { name: '種別絞り込み' })).toHaveValue('all')
     expect(screen.getByRole('searchbox', { name: '収支を検索' })).toBeInTheDocument()
     expect(screen.getByLabelText('履歴の対象月')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '固定費' })).toHaveAttribute('href', '/fixed-costs')
-    expect(screen.getByRole('link', { name: 'カテゴリー管理' })).toHaveAttribute('href', '/categories')
+    // 固定費・カテゴリー管理への入口は収支登録モーダルへ移した(#487)。
+    expect(screen.queryByRole('link', { name: '固定費' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'カテゴリー管理' })).not.toBeInTheDocument()
   })
 
   it('履歴は1件を1つのリスト項目にし、行ボタンの中は日付・内容・金額の順にする', () => {

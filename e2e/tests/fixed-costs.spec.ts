@@ -6,8 +6,13 @@ test.describe('F-05 固定費', () => {
     consoleGuard.watch(page)
     await setupUserWithHousehold(page, 'fixedcost')
     await page.goto('/kakeibo')
-    await page.getByRole('link', { name: '固定費', exact: true }).click()
+    // 固定費への入口は収支登録モーダルの中にある(#487)。画面を再読み込みせずに移動する。
+    await page.getByRole('button', { name: '収支を登録', exact: true }).click()
+    await page.evaluate(() => { (window as unknown as { __e2eNoReload?: boolean }).__e2eNoReload = true })
+    await page.getByTestId('transaction-modal').getByRole('link', { name: '固定費で登録', exact: true }).click()
     await expect(page).toHaveURL(/\/fixed-costs$/)
+    expect(await page.evaluate(() => (window as unknown as { __e2eNoReload?: boolean }).__e2eNoReload)).toBe(true)
+    await expect(page.getByTestId('transaction-modal')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '登録を始める', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '固定費を登録', exact: true })).toHaveCount(1)
 

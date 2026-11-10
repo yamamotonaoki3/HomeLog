@@ -1,6 +1,6 @@
 import { isAxiosError } from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { useAuth } from '../context/useAuth'
 import { getCurrentUserId } from '../api/tokenStorage'
@@ -35,6 +35,7 @@ function isInMonth(dateStr: string, year: number, month: number): boolean {
 
 export function KakeiboPage() {
   const { user, userStatus } = useAuth()
+  const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
@@ -593,6 +594,7 @@ export function KakeiboPage() {
           events={events}
           members={members}
           membersLoaded={membersLoaded}
+          onNavigate={navigate}
           editing={editing ?? undefined}
           initialSplits={editingSplits.map((split) => ({
             debtorUserId: split.debtorUserId,
