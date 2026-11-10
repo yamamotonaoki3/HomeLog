@@ -395,6 +395,37 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* チェックボックスをスイッチの見た目にする場合(保存ボタンで確定する設定など)。
+ * position: relative の <label> の中に、input.ui-switch-input・状態の文字(.ui-switch-state)・.ui-switch-track の順で置く。
+ * input はラベル全体に重ねて見えなくし、押せる範囲とフォーカスを保つ。 */
+.ui-switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ui-switch-state {
+  flex-shrink: 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ui-switch-input:checked ~ .ui-switch-state {
+  color: var(--ui-primary-strong);
+}
+.ui-switch-input:checked ~ .ui-switch-track {
+  background: var(--ui-primary);
+}
+.ui-switch-input:checked ~ .ui-switch-track::after {
+  transform: translateX(20px);
+}
+.ui-switch-input:focus-visible ~ .ui-switch-track {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
 @media (prefers-reduced-motion: reduce) {
   .ui-switch-track,
   .ui-switch-track::after {
