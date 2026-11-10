@@ -7,7 +7,9 @@ import { defineConfig, firefox } from '@playwright/test'
 // Workers AI等のリモートバインディングも無効化し、Cloudflare認証なしで起動する。
 const E2E_PERSIST_DIR = '.wrangler/e2e-state'
 const BACKEND_PORT = 8787
-const FRONTEND_PORT = 5173
+// 画面側のポートは scripts/run-e2e.mjs が空きを確かめて E2E_FRONTEND_PORT で渡す（既定は5173番）。
+// 5173番が別の作業で使用中のときに、そのサーバーを止めずに別のポートで並行して実行するため。
+const FRONTEND_PORT = Number(process.env.E2E_FRONTEND_PORT || 5173)
 const BOOKMARKLET_FIREFOX = process.env.RECIPE_BOOKMARKLET_FIREFOX_EXECUTABLE ?? firefox.executablePath()
 
 export default defineConfig({
