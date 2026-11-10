@@ -19,8 +19,9 @@ npm test
 
 1. `scripts/cleanup.mjs` で E2E 専用ローカルDB（`backend-workers/.wrangler/e2e-state`）を削除
 2. backend-workers をそのDBへマイグレーション適用して `wrangler dev`（8787）で起動
-3. frontend を `VITE_API_PROXY_TARGET=http://localhost:8787` で起動（5173）
-4. Playwright の成否にかかわらず、テスト実行後に再び E2E 専用DBを削除（残数0を確認）
+3. frontend を `VITE_API_PROXY_TARGET=http://localhost:8787` で起動（既定は 5173。使用中なら 5174 以降の空きポートを自動で選ぶ）
+4. テスト終了後、今回起動したサーバーのポートが閉じたことを確認（開いたままなら失敗として知らせる）
+5. Playwright の成否にかかわらず、テスト実行後に再び E2E 専用DBを削除（残数0を確認）
 
 Playwright の引数はそのまま渡せる。
 
@@ -29,7 +30,10 @@ npm test -- tests/zaiko.spec.ts
 ```
 
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
-- 8787 / 5173 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
+- 8787 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
+- 5173 が別の作業（他プロジェクトの開発サーバーなど）で使用中のときは、そのサーバーを止めずに別のポートで並行して実行する。選んだポートは実行開始時に表示する。ポートを指定したいときは `E2E_FRONTEND_PORT` を設定する
+- 空きポートの自動選択は `npm test`（`scripts/run-e2e.mjs`）経由のときだけ働く。`npx playwright test` を直接実行した場合は 5173（または `E2E_FRONTEND_PORT`）固定になる
+- ポート判定（`scripts/ports.mjs`）の単体テストは `npm run test:scripts` で実行する
 
 ## アプリ名称変更（#386）
 

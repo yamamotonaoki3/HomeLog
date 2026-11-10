@@ -98,8 +98,10 @@ docs: 要件定義書を追加
 | --- | --- |
 | `backend-workers/` | `npm run lint` / `npm run typecheck` / `npm test` |
 | `frontend/` | `npm run lint` / `npm test` / `npm run build`（`tsc -b` を含む） |
-| `e2e/` | `npm test`（実行後に後始末スクリプトも走る。単発実行は `npx playwright test <spec>`） |
+| `e2e/` | `npm test`（実行後に後始末スクリプトも走る。spec を絞るときは `npm test -- tests/<spec>`） |
 
+- E2E の画面側ポートは既定で 5173 番を使う。別の作業（他プロジェクトの開発サーバーなど）が使用中のときは、そのサーバーを止めず、`npm test` が自動で選ぶ空きポートで並行して実行する。API 側の 8787 番は固定なので空けておく。
+- テストや画面確認のために自分で起動したサーバーは、作業が終わったら停止し、使っていたポートが閉じたことを確認する。ユーザーの確認用に残す場合は、URL と残している旨を報告し、確認が済んだら停止する。自分が起動していないサーバーは止めない。
 - `backend-workers/` のテストとローカル実行には `JWT_SECRET` を記載した `.dev.vars` が必要。`.dev.vars.example` を参考に各自作成し、値はコミット・出力しない。
 - テストが通ったことと、そのテストが今回の変更を検証していることは別である。今回の変更（新しいエンドポイント、画面のラベル等）を検証するテスト・E2Eが実在するかを中身で確認し、無ければ追加する。追加できない場合は理由と代替の担保を報告する。
 - バックエンドだけを先に実装する場合は、実行中のWorkers APIを直接呼ぶAPI層のE2E（例: `e2e/tests/user-settings-api.spec.ts`、`e2e/tests/dashboard-summary-api.spec.ts`）で契約の要点を検証する。境界値や認可の網羅は `backend-workers/` のテストが担当する。
