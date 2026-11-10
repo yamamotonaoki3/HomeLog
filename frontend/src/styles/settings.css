@@ -352,12 +352,6 @@
 .household-danger .ui-danger-outline {
   margin-top: 12px;
 }
-/* 影響の説明は、補足の小さな灰色の文字ではなく本文として読める濃さと大きさにする。 */
-.household-leave-modal .hint {
-  color: #42536a;
-  font-size: 14px;
-  line-height: 1.7;
-}
 .household-leave-modal .ui-form-actions {
   margin-top: 18px;
 }

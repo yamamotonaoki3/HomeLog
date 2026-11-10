@@ -12,6 +12,8 @@ const shapes = {
   cart: <><path d="M3 4h2.5l2.2 10.5h10.2L20 7H6.4" /><circle cx="9" cy="18.7" r="1.5" /><circle cx="17" cy="18.7" r="1.5" /></>,
   coins: <><ellipse cx="12" cy="7" rx="7" ry="3" /><path d="M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5" /></>,
   yen: <path d="m6 4 6 8 6-8M12 12v8M7.5 12h9M7.5 16h9" />,
+  lock: <><rect x="5" y="10.5" width="14" height="10" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5M12 14.5v2" /></>,
+  mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 8 7.5 5.5L19.5 8" /></>,
   exit: <><path d="M10 4H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h4" /><path d="m15 8 4 4-4 4M19 12H9.5" /></>,
 } satisfies Record<string, ReactNode>
 
