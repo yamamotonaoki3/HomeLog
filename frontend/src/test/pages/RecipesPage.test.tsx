@@ -422,3 +422,74 @@ describe('レシピ一覧の見た目に関わる構成 (#489)', () => {
     expect(within(iphone).getByRole('link', { name: 'ショートカットを追加する' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
   })
 })
+
+describe('レシピ一覧の「すべて／お気に入り」の切り替え (#495)', () => {
+  const recipe = (id: number, title: string, isFavorite = false): Recipe => ({ id, title, ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite })
+  const titles = () => within(screen.getByRole('list', { name: 'レシピ' })).getAllByRole('listitem').map((item) => within(item).getAllByRole('button')[0].textContent)
+
+  it('最初は「すべて」が選ばれ、「お気に入り」で星を付けたレシピだけを件数つきの見出しで表示する', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] カレー'), recipe(3, '[E2E_TEST] 親子丼', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const filter = within(panel).getByRole('group', { name: '表示するレシピ' })
+    const all = within(filter).getByRole('radio', { name: 'すべて' })
+    const favorites = within(filter).getByRole('radio', { name: 'お気に入り' })
+    expect(all).toBeChecked()
+    expect(favorites).not.toBeChecked()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] カレー', '[E2E_TEST] 親子丼'])
+    await user.click(favorites)
+    expect(favorites).toBeChecked()
+    expect(screen.getByRole('heading', { level: 3, name: 'お気に入りのレシピ（2件）' })).toBeInTheDocument()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] 親子丼'])
+    await user.click(all)
+    expect(screen.getByRole('heading', { level: 3, name: '登録済みのレシピ（3件）' })).toBeInTheDocument()
+    expect(titles()).toHaveLength(3)
+  })
+
+  it('お気に入りが0件のときは、案内と星の付け方を表示する', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが')] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await user.click(await screen.findByRole('radio', { name: 'お気に入り' }))
+    expect(screen.getByText('お気に入りのレシピはありません')).toBeInTheDocument()
+    expect(screen.getByText(/「すべて」で星（☆）を押すと/)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'レシピ' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 3, name: /のレシピ（/ })).not.toBeInTheDocument()
+  })
+
+  it('「お気に入り」を表示中に星を外すと一覧から消え、フォーカスを切り替えへ移す', async () => {
+    const { calls } = setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] 親子丼', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const favorites = await screen.findByRole('radio', { name: 'お気に入り' })
+    await user.click(favorites)
+    const first = within(screen.getByRole('list', { name: 'レシピ' })).getAllByRole('listitem')[0]
+    await user.click(within(first).getByRole('button', { name: '★ お気に入り' }))
+    await waitFor(() => expect(titles()).toEqual(['[E2E_TEST] 親子丼']))
+    expect(screen.getByRole('heading', { level: 3, name: 'お気に入りのレシピ（1件）' })).toBeInTheDocument()
+    expect(favorites).toHaveFocus()
+    expect(calls.find((call) => call.method === 'PATCH' && call.url === '/api/recipes/1/favorite')?.body).toMatchObject({ isFavorite: false })
+    // 「すべて」に戻すと、星を外したレシピは残っている。
+    await user.click(screen.getByRole('radio', { name: 'すべて' }))
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] 親子丼'])
+  })
+
+  it('「すべて」を表示中に星を付け外ししても、一覧からは消えずフォーカスも動かない', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const star = await screen.findByRole('button', { name: '★ お気に入り' })
+    await user.click(star)
+    const off = await screen.findByRole('button', { name: '☆ お気に入りにする' })
+    expect(off).toHaveFocus()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが'])
+  })
+
+  it('レシピが1件も無いときは切り替えを出さない', async () => {
+    setupApi()
+    renderRecipesPage()
+    await screen.findByText('レシピはありません')
+    expect(screen.queryByRole('group', { name: '表示するレシピ' })).not.toBeInTheDocument()
+  })
+})

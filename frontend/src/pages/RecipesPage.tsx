@@ -1,7 +1,7 @@
 // `useCallback`/`useEffect`もReactの機能。
 // - useCallback: 関数を「作り直さない」ようにするための仕組み(パフォーマンス最適化・無限ループ防止用)。
 // - useEffect: 「画面が表示された後に1回だけ行いたい処理(APIからのデータ取得など)」を書く場所。
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -37,6 +37,10 @@ export function RecipesPage() {
   const [deleting, setDeleting] = useState(false)
   // 詳細モーダルで表示中のレシピ(nullなら非表示)。
   const [detailTarget, setDetailTarget] = useState<Recipe | null>(null)
+  // 一覧の絞り込み(#495)。'all'は全件、'favorites'は星を付けたレシピだけ。選択は記憶しない。
+  const [filter, setFilter] = useState<'all' | 'favorites'>('all')
+  const filterName = useId()
+  const favoritesFilter = useRef<HTMLInputElement>(null)
   // Escapeキー監視の登録し直しを避けるため、閉じる処理は作り直さない。
   const closeDetail = useCallback(() => setDetailTarget(null), [])
   // 画面右下等に一時的に出すお知らせ(トースト)の表示内容。
@@ -108,6 +112,8 @@ export function RecipesPage() {
     // 該当IDのレシピだけ`{ ...r, isFavorite: nextIsFavorite }`(元の中身をコピーしつつ
     // isFavoriteだけ上書きしたオブジェクト)に差し替える。
     setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? { ...r, isFavorite: nextIsFavorite } : r)))
+    // 「お気に入り」を表示中に星を外すと、その行は一覧から消える。フォーカスを失わないよう切り替えへ移す。
+    if (filter === 'favorites' && !nextIsFavorite) favoritesFilter.current?.focus()
   }
 
   // 削除確認ダイアログの「削除する」ボタンが押されたときの処理。
@@ -130,6 +136,8 @@ export function RecipesPage() {
     showToast('レシピを削除しました')
   }
 
+  const visibleRecipes = filter === 'favorites' ? recipes.filter((recipe) => recipe.isFavorite) : recipes
+
   // 読み込み中は一覧本体を描画せず、簡易メッセージだけを表示する
   // (この`return`以降のJSXは実行されない=早期リターン)。
   if (loading) {
@@ -150,13 +158,25 @@ export function RecipesPage() {
         <button type="button" className="ui-action" onClick={() => setModalTarget(null)}>
           <span aria-hidden="true">＋</span>レシピを登録
         </button>
+        {recipes.length > 0 && (
+          <fieldset className="ui-segmented recipe-filter">
+            <legend className="visually-hidden">表示するレシピ</legend>
+            <label><input type="radio" name={filterName} checked={filter === 'all'} onChange={() => setFilter('all')} />すべて</label>
+            <label><input ref={favoritesFilter} type="radio" name={filterName} checked={filter === 'favorites'} onChange={() => setFilter('favorites')} />お気に入り</label>
+          </fieldset>
+        )}
         {/* 一覧はタイトル(とサムネイル・お気に入り)だけを表示し、材料・手順などは詳細モーダルで見る。 */}
         {recipes.length === 0 ? (
           <p className="ui-empty">レシピはありません</p>
+        ) : visibleRecipes.length === 0 ? (
+          <div className="ui-empty recipe-filter-empty">
+            <p>お気に入りのレシピはありません</p>
+            <p>「すべて」で星（☆）を押すと、お気に入りに追加できます。</p>
+          </div>
         ) : (<>
-          <h3 className="ui-section-label">登録済みのレシピ（{recipes.length}件）</h3>
+          <h3 className="ui-section-label">{filter === 'favorites' ? 'お気に入りのレシピ' : '登録済みのレシピ'}（{visibleRecipes.length}件）</h3>
           <ul className="recipe-list" aria-label="レシピ">
-            {recipes.map((recipe) => (
+            {visibleRecipes.map((recipe) => (
               <li key={recipe.id} className="ui-card recipe-list-item">
                 <button type="button" className="recipe-title-button" onClick={() => setDetailTarget(recipe)}>
                   {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" className="recipe-list-thumbnail" />}
