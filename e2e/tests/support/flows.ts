@@ -34,7 +34,7 @@ export async function setupUserWithHousehold(page: Page, label: string): Promise
 
 export async function getInviteCode(page: Page): Promise<string> {
   await page.goto('/household/settings')
-  const code = (await page.locator('p', { hasText: '招待コード' }).locator('strong').textContent())?.trim()
+  const code = (await page.getByTestId('household-invite-code').textContent())?.trim()
   expect(code).toBeTruthy()
   return code!
 }

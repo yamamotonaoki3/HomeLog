@@ -154,3 +154,166 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 世帯設定(S-27、#501)。情報を1枚のカードにまとめ、退出は下の赤い枠に分ける。 */
+.household-fact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0 14px;
+}
+.household-fact + .household-fact {
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+.household-fact-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.household-fact-text dt {
+  color: var(--ui-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.household-fact-text dd {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* 招待コードは1文字ずつ見分けやすい等幅にし、押すと全体を選択できるようにする。 */
+.household-fact-text .household-invite-code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+.household-copy {
+  flex-shrink: 0;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: #f4f8fd;
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.household-copy:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.household-copy-result {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.household-copy-result:not(:empty) {
+  margin-bottom: 12px;
+}
+.household-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+.household-members-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+.household-members {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.household-members li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.household-members li > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.household-members .ui-icon-tile {
+  flex-basis: 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.household-members .ui-icon-tile svg {
+  width: 18px;
+  height: 18px;
+}
+.household-info .ui-empty {
+  margin: 10px 0 0;
+}
+.household-danger {
+  margin-top: 16px;
+  padding: 14px 15px;
+  border: 1px solid #f1c7c2;
+  border-radius: 16px;
+  background: #fff6f5;
+}
+.household-danger-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.household-danger-head > div {
+  min-width: 0;
+}
+.household-danger h3 {
+  margin: 0;
+  color: #a12a1f;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.household-danger-head p {
+  margin: 2px 0 0;
+  color: #5b4a48;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.household-danger .error {
+  margin: 10px 0 0;
+}
+.household-danger .ui-danger-outline {
+  margin-top: 12px;
+}
+/* 影響の説明は、補足の小さな灰色の文字ではなく本文として読める濃さと大きさにする。 */
+.household-leave-modal .hint {
+  color: #42536a;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.household-leave-modal .ui-form-actions {
+  margin-top: 18px;
+}
+/* 狭い画面では、招待コードが1行に収まるよう「コピー」を下の段へ回す。 */
+@media (max-width: 380px) {
+  .household-fact {
+    flex-wrap: wrap;
+  }
+  .household-copy {
+    flex-basis: 100%;
+  }
+}
