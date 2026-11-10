@@ -71,24 +71,28 @@ export function EventsPage() {
 
   return (
     <div className="page events-page">
-      <div className="panel" data-testid="events-panel">
-        <div className="toolbar">
-          <h2>イベント一覧</h2>
-          <button ref={addButton} type="button" className="btn btn-primary event-register-button" onClick={() => setModalTarget(null)}>
-            イベントを登録
-          </button>
-        </div>
+      <div className="ui-narrow" data-testid="events-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>イベント一覧</h2>
+            <p className="ui-page-sub">家族と個人の予定を一覧で確認</p>
+          </div>
+        </header>
+        <button ref={addButton} type="button" className="ui-action event-register-button" onClick={() => setModalTarget(null)}>
+          <span aria-hidden="true">＋</span>イベントを登録
+        </button>
         <div className="events-list">
           {!eventsLoaded && <p role="status">イベント一覧を確認できません</p>}
           {events.length === 0 ? (eventsLoaded && (
-            <div className="events-empty">
+            <div className="ui-card events-empty">
               <p>イベントはありません</p>
               <p>イベントを登録すると、予定を一覧で確認できます。</p>
             </div>
-          )) : (
+          )) : (<>
+            <h3 className="ui-section-label">登録済みのイベント</h3>
             <ul className="event-list" aria-label="イベント">
               {events.map((event) => (
-                <li key={event.id}>
+                <li key={event.id} className="ui-card event-card">
                 <button type="button" className="list-row-button event-list-row" aria-label={`${event.name}の詳細`} aria-describedby={`event-description-${event.id}`}
                   onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; if (event.editable) { setDetailId(null); setModalTarget(event) } else setDetailId(event.id) }}>
                   <span className="event-date-block">
@@ -101,12 +105,13 @@ export function EventsPage() {
                   <span className="event-row-content">
                     <span className="event-row-title">{event.name}</span>
                     <span className="event-row-meta"><span>{timeRangeLabel(event)}</span><span>{RECURRENCE_LABELS[event.recurrenceType]}</span></span>
+                    <span className="ui-tag event-row-scope">{event.personal ? '個人' : '世帯共有'}</span>
                   </span>
                 </button>
                 </li>
               ))}
             </ul>
-          )}
+          </>)}
         </div>
       </div>
       {detailEvent && modalTarget === undefined && (

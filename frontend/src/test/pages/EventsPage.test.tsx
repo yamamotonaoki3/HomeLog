@@ -350,3 +350,29 @@ describe('イベント一覧A案・一覧限定partial (#426)', () => {
     expect(calls.filter(call => call.method !== 'GET')).toHaveLength(0)
   })
 })
+
+describe('イベント一覧の見た目に関わる構成', () => {
+  it('補足と見出しを表示し、1件を1つのリスト項目にして公開範囲の印を添える', async () => {
+    setupApi({ events: [{ ...travelEvent, id: 1, name: '[E2E_TEST] 家族でお出かけ', personal: false }, { ...travelEvent, id: 2, name: '[E2E_TEST] 健康診断', personal: true }] })
+    renderEventsPage()
+    expect(await screen.findByRole('heading', { level: 2, name: 'イベント一覧' })).toBeInTheDocument()
+    expect(screen.getByText('家族と個人の予定を一覧で確認')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'イベントを登録' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 3, name: '登録済みのイベント' })).toBeInTheDocument()
+    const items = within(screen.getByRole('list', { name: 'イベント' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(within(within(items[0]).getByRole('button', { name: '[E2E_TEST] 家族でお出かけの詳細' })).getByText('世帯共有')).toBeInTheDocument()
+    expect(within(within(items[1]).getByRole('button', { name: '[E2E_TEST] 健康診断の詳細' })).getByText('個人')).toBeInTheDocument()
+  })
+
+  it('フォームの操作はキャンセル・登録の順に並ぶ', async () => {
+    setupApi()
+    renderEventsPage()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'イベントを登録' }))
+    const dialog = screen.getByRole('dialog', { name: 'イベントを登録' })
+    const cancel = within(dialog).getByRole('button', { name: 'キャンセル' })
+    const submit = within(dialog).getByRole('button', { name: '登録' })
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
