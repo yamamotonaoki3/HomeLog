@@ -128,8 +128,13 @@ export function AccountsPage() {
   const cards = accounts.flatMap(account => account.cards.map(card => ({ card, account })))
   return (
     <div className="page accounts-page">
-      <div className="panel" data-testid="accounts-panel">
-        <h2>口座・カード管理</h2>
+      <div className="ui-narrow" data-testid="accounts-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>口座・カード管理</h2>
+            <p className="ui-page-sub">タブで項目を切り替え</p>
+          </div>
+        </header>
         <div className="accounts-tabs" role="tablist" aria-label="口座とカード">
           {(['accounts', 'cards'] as const).map((value, index) => <button key={value} type="button" role="tab"
             id={'accounts-tab-' + value} aria-controls={'accounts-panel-' + value} aria-selected={tab === value}
@@ -138,16 +143,17 @@ export function AccountsPage() {
         </div>
         <section role="tabpanel" id={'accounts-panel-' + tab} aria-labelledby={'accounts-tab-' + tab}>
           <div className="accounts-actions">
-            {tab === 'accounts' ? <button ref={registration} type="button" className="btn btn-primary"
-              onClick={event => { modalTrigger.current = event.currentTarget; setAccountModalOpen(true) }}>口座を登録</button>
-              : <button ref={registration} type="button" className="btn btn-primary" disabled={accounts.length === 0}
-                onClick={event => { modalTrigger.current = event.currentTarget; setCardModalOpen(true) }}>カードを登録</button>}
+            {tab === 'accounts' ? <button ref={registration} type="button" className="ui-action"
+              onClick={event => { modalTrigger.current = event.currentTarget; setAccountModalOpen(true) }}><span aria-hidden="true">＋</span>口座を登録</button>
+              : <button ref={registration} type="button" className="ui-action" disabled={accounts.length === 0}
+                onClick={event => { modalTrigger.current = event.currentTarget; setCardModalOpen(true) }}><span aria-hidden="true">＋</span>カードを登録</button>}
           </div>
-          {tab === 'accounts' ? accounts.length === 0 ? <p>口座はありません</p> :
+          <h3 className="ui-section-label">{tab === 'accounts' ? '口座・財布一覧' : 'カード一覧'}</h3>
+          {tab === 'accounts' ? accounts.length === 0 ? <p className="ui-empty">口座はありません</p> :
             <ul className="accounts-list" aria-label="口座一覧">{accounts.map(account => {
               const key = 'account:' + account.id
               const opened = expanded.includes(key)
-              return <li key={account.id}>
+              return <li key={account.id} className={opened ? 'ui-card accounts-card is-open' : 'ui-card accounts-card'}>
                 <button type="button" className="accounts-row" aria-label={account.name + 'の詳細'} aria-expanded={opened}
                   aria-controls={'account-detail-' + account.id} aria-describedby={'account-type-' + account.id + ' account-balance-' + account.id} onClick={() => toggle(key)}>
                   <span>{account.name}</span><span id={'account-type-' + account.id}>{account.type === 'bank' ? '銀行' : '電子マネー'}</span><span id={'account-balance-' + account.id}>{account.balance}円</span>
@@ -161,11 +167,11 @@ export function AccountsPage() {
               </li>
             })}</ul>
             : <>
-              {accounts.length === 0 && <div><p>カードを登録するには口座を登録してください</p><button type="button" className="btn btn-secondary" onClick={() => { modalTrigger.current = null; restorePending.current = true; setTab('accounts') }}>口座登録へ</button></div>}
-              {cards.length === 0 ? <p>カードはありません</p> : <ul className="accounts-list" aria-label="カード一覧">{cards.map(({ card, account }) => {
+              {accounts.length === 0 && <div className="ui-card accounts-guide"><p>カードを登録するには口座を登録してください</p><button type="button" className="btn btn-secondary" onClick={() => { modalTrigger.current = null; restorePending.current = true; setTab('accounts') }}>口座登録へ</button></div>}
+              {cards.length === 0 ? <p className="ui-empty">カードはありません</p> : <ul className="accounts-list" aria-label="カード一覧">{cards.map(({ card, account }) => {
                 const key = 'card:' + card.id
                 const opened = expanded.includes(key)
-                return <li key={card.id}>
+                return <li key={card.id} className={opened ? 'ui-card accounts-card is-open' : 'ui-card accounts-card'}>
                   <button type="button" className="accounts-row accounts-card-row" aria-label={card.name + 'の詳細'} aria-expanded={opened}
                     aria-controls={'card-detail-' + card.id} aria-describedby={'card-type-' + card.id + ' card-account-' + card.id} onClick={() => toggle(key)}>
                     <span>{card.name}</span><span id={'card-type-' + card.id}>{card.cardType === 'charge' ? 'チャージ型カード' : 'クレジットカード'}</span><span id={'card-account-' + card.id}>{account.name}</span>

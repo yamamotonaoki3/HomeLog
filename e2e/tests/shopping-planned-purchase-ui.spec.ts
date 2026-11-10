@@ -74,6 +74,8 @@ for (const width of [1280, 390, 320]) {
     const labelBox = await checkbox(0).locator('..').boundingBox()
     expect(labelBox!.height).toBeGreaterThanOrEqual(44)
     expect(labelBox!.width).toBeGreaterThanOrEqual(44)
+    // 本人と世帯の確認中はチェックボックスが無効になる。有効になってから操作する(無効のままでは Space が効かない)。
+    await expect(checkbox(0)).toBeEnabled()
     await checkbox(0).focus()
     await checkbox(0).press('Space')
     await expect(checkbox(0)).toBeChecked()
