@@ -568,3 +568,32 @@ describe('AccountsPage', () => {
   })
 
 })
+
+describe('口座・カード管理の見た目に関わる構成 (#477)', () => {
+  const account = { id: 1, name: '[E2E_TEST] 生活費口座', type: 'bank', balance: 1000, cards: [{ id: 5, name: '[E2E_TEST] メインカード', cardType: 'credit', accountId: 1, balance: 0 }] } as unknown as Account
+
+  it('補足と一覧の見出しを表示し、登録の名前は変えず、1件を1つのリスト項目にする', async () => {
+    setupApi({ accounts: [account] })
+    renderAccountsPage()
+    expect(await screen.findByRole('heading', { level: 2, name: '口座・カード管理' })).toBeInTheDocument()
+    expect(screen.getByText('タブで項目を切り替え')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '口座を登録' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: '口座・財布一覧' })).toBeInTheDocument()
+    const items = within(screen.getByRole('list', { name: '口座一覧' })).getAllByRole('listitem')
+    expect(items).toHaveLength(1)
+    const row = within(items[0]).getByRole('button', { name: '[E2E_TEST] 生活費口座の詳細' })
+    expect([...row.querySelectorAll(':scope > span')].map(cell => cell.textContent)).toEqual(['[E2E_TEST] 生活費口座', '銀行', '1000円'])
+    // 行を開くと、詳細は同じリスト項目(カード)の中に表示される。
+    await userEvent.setup().click(row)
+    expect(within(items[0]).getByRole('region', { name: '[E2E_TEST] 生活費口座の詳細' })).toBeInTheDocument()
+  })
+
+  it('カードのタブでは「カード一覧」の見出しと「カードを登録」を表示する', async () => {
+    setupApi({ accounts: [account] })
+    renderAccountsPage()
+    await userEvent.setup().click(await screen.findByRole('tab', { name: 'カード' }))
+    expect(screen.getByRole('heading', { level: 3, name: 'カード一覧' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'カードを登録' })).toBeEnabled()
+    expect(within(screen.getByRole('list', { name: 'カード一覧' })).getAllByRole('listitem')).toHaveLength(1)
+  })
+})
