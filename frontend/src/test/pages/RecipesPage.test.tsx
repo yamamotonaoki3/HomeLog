@@ -373,3 +373,52 @@ describe('RecipesPage', () => {
     expect(screen.getByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/shared')
   })
 })
+
+describe('レシピ一覧の見た目に関わる構成 (#489)', () => {
+  const recipe = (id: number, title: string, isFavorite = false): Recipe => ({ id, title, ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite })
+
+  it('補足・全幅の登録・件数つきの見出しを表示し、1件を1つのリスト項目にする', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] カレー')] })
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(within(panel).getByRole('heading', { level: 2, name: 'レシピ一覧' })).toBeInTheDocument()
+    expect(within(panel).getByText('タイトルを押すと材料と手順を確認できます')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'レシピを登録' })).toHaveClass('ui-action')
+    expect(within(panel).getByRole('heading', { level: 3, name: '登録済みのレシピ（2件）' })).toBeInTheDocument()
+    const items = within(within(panel).getByRole('list', { name: 'レシピ' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveClass('ui-card', 'recipe-list-item')
+    // 行のボタン名はタイトルのまま。お気に入りは行のボタンの外に置き、文言を変えない。
+    const row = within(items[0]).getByRole('button', { name: '[E2E_TEST] 肉じゃが' })
+    const favorite = within(items[0]).getByRole('button', { name: '★ お気に入り' })
+    expect(favorite).toHaveAttribute('aria-pressed', 'true')
+    // 見た目は星だけ。読み上げ用の名前は従来の文言のまま。
+    expect(favorite).toHaveTextContent(/^★$/)
+    expect(row).not.toContainElement(favorite)
+    expect(within(items[1]).getByRole('button', { name: '☆ お気に入りにする' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('0件のときは見出しと一覧を出さず、案内だけを表示する', async () => {
+    setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(within(panel).getByText('レシピはありません')).toHaveClass('ui-empty')
+    expect(within(panel).queryByRole('heading', { level: 3, name: /登録済みのレシピ/ })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('list', { name: 'レシピ' })).not.toBeInTheDocument()
+  })
+
+  it('PC・iPhoneの案内を「ほかの登録方法」の下に、同じ幅のカードで表示する', async () => {
+    setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const label = within(panel).getByText('ほかの登録方法')
+    const pc = within(panel).getByRole('region', { name: 'PCからレシピを登録' })
+    const iphone = within(panel).getByRole('region', { name: 'iPhoneからレシピを登録' })
+    expect(pc).toHaveClass('ui-card')
+    expect(iphone).toHaveClass('ui-card')
+    expect(label.compareDocumentPosition(pc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(pc.compareDocumentPosition(iphone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(pc).getByRole('link', { name: 'シェファミに登録' })).toBeInTheDocument()
+    expect(within(iphone).getByRole('link', { name: 'ショートカットを追加する' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
+  })
+})

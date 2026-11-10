@@ -133,45 +133,54 @@ export function RecipesPage() {
   // 読み込み中は一覧本体を描画せず、簡易メッセージだけを表示する
   // (この`return`以降のJSXは実行されない=早期リターン)。
   if (loading) {
-    return <p>読み込み中...</p>
+    return <p className="ui-empty">読み込み中...</p>
   }
 
   return (
-    <div className="page">
-      <div className="panel" data-testid="recipes-panel">
-        <div className="toolbar">
-          <h2>レシピ一覧</h2>
-          {/* クリックでmodalTargetをnullにする=新規登録モーダルを開く。 */}
-          <button type="button" className="btn btn-primary" onClick={() => setModalTarget(null)}>
-            レシピを登録
-          </button>
-        </div>
+    <div className="page recipes-page">
+      {/* 他の画面と同じ共通部品(補足つきタイトル・全幅の主ボタン・1件1カード)で構成する(#489)。 */}
+      <div className="ui-narrow" data-testid="recipes-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>レシピ一覧</h2>
+            <p className="ui-page-sub">タイトルを押すと材料と手順を確認できます</p>
+          </div>
+        </header>
+        {/* クリックでmodalTargetをnullにする=新規登録モーダルを開く。 */}
+        <button type="button" className="ui-action" onClick={() => setModalTarget(null)}>
+          <span aria-hidden="true">＋</span>レシピを登録
+        </button>
         {/* 一覧はタイトル(とサムネイル・お気に入り)だけを表示し、材料・手順などは詳細モーダルで見る。 */}
         {recipes.length === 0 ? (
-          <p>レシピはありません</p>
-        ) : (
-          <ul className="recipe-list">
+          <p className="ui-empty">レシピはありません</p>
+        ) : (<>
+          <h3 className="ui-section-label">登録済みのレシピ（{recipes.length}件）</h3>
+          <ul className="recipe-list" aria-label="レシピ">
             {recipes.map((recipe) => (
-              <li key={recipe.id} className="recipe-list-item">
+              <li key={recipe.id} className="ui-card recipe-list-item">
                 <button type="button" className="recipe-title-button" onClick={() => setDetailTarget(recipe)}>
                   {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" className="recipe-list-thumbnail" />}
                   <span>{recipe.title}</span>
                 </button>
                 <button
                   type="button"
-                  className="btn btn-tiny"
+                  className="recipe-favorite-button"
                   onClick={() => handleToggleFavorite(recipe)}
                   aria-pressed={recipe.isFavorite}
+                  // 見た目は星だけにして行を1段に収める。読み上げ用の名前は従来の文言のまま。
+                  aria-label={recipe.isFavorite ? '★ お気に入り' : '☆ お気に入りにする'}
+                  title={recipe.isFavorite ? 'お気に入り' : 'お気に入りにする'}
                 >
-                  {recipe.isFavorite ? '★ お気に入り' : '☆ お気に入りにする'}
+                  <span aria-hidden="true">{recipe.isFavorite ? '★' : '☆'}</span>
                 </button>
               </li>
             ))}
           </ul>
-        )}
+        </>)}
+        <p className="ui-section-label">ほかの登録方法</p>
+        <RecipeBookmarkletGuide />
+        <RecipeIphoneShortcutGuide />
       </div>
-      <RecipeBookmarkletGuide />
-      <RecipeIphoneShortcutGuide />
       {/* 編集・削除は詳細モーダルから。押したら詳細を閉じて、編集モーダル/削除確認へ切り替える。 */}
       {detailTarget && (
         <RecipeDetailModal
