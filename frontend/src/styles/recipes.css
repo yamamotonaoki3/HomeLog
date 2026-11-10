@@ -518,3 +518,9 @@
 .recipes-page .recipe-guide .hint { color: var(--ui-muted); font-size: 12px; }
 .recipes-page .recipe-bookmarklet-link { border-radius: 12px; color: var(--ui-primary-strong); font-weight: 700; }
 .recipes-page .recipe-iphone-guide .btn { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; border-radius: 12px; }
+
+/* #495: 「すべて／お気に入り」の切り替えと、お気に入りが0件のときの案内。 */
+.recipes-page .recipe-filter { margin-top: 12px; }
+.recipes-page .recipe-filter-empty { margin-top: 12px; }
+.recipes-page .recipe-filter-empty p { margin: 0; }
+.recipes-page .recipe-filter-empty p + p { margin-top: 4px; font-size: 13px; }

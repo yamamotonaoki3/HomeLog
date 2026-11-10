@@ -67,6 +67,37 @@ for (const width of [1280, 390, 320]) {
       await page.screenshot({ path: join(process.env.RECIPES_SCREENSHOT_DIR, `recipes-list-${width}.png`), fullPage: true })
     }
 
+    // 「すべて／お気に入り」の切り替え(#495)。星を付けたレシピだけに絞り込める。
+    const filter = panel.getByRole('group', { name: '表示するレシピ', exact: true })
+    const all = filter.getByRole('radio', { name: 'すべて', exact: true })
+    const favorites = filter.getByRole('radio', { name: 'お気に入り', exact: true })
+    await expect(all).toBeChecked()
+    for (const option of ['すべて', 'お気に入り']) {
+      const box = (await filter.locator('label').filter({ hasText: option }).first().boundingBox())!
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(width)
+    }
+    await filter.locator('label').filter({ hasText: 'お気に入り' }).click()
+    await expect(favorites).toBeChecked()
+    await expect(panel.getByRole('heading', { level: 3, name: 'お気に入りのレシピ（1件）', exact: true })).toBeVisible()
+    await expect(items).toHaveCount(1)
+    await expect(shortRow).toBeVisible()
+    await expect(longRow).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+    if (process.env.RECIPES_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RECIPES_SCREENSHOT_DIR, `recipes-favorites-${width}.png`), fullPage: true })
+    // 表示中に星を外すと一覧から消え、0件の案内に変わる。フォーカスは切り替えに残る。
+    await favoriteOn.click()
+    await expect(panel.getByText('お気に入りのレシピはありません', { exact: true })).toBeVisible()
+    await expect(items).toHaveCount(0)
+    await expect(favorites).toBeFocused()
+    await filter.locator('label').filter({ hasText: 'すべて' }).click()
+    await expect(items).toHaveCount(2)
+    await expect(favoriteOff).toHaveCount(2)
+    // 元の状態(短いタイトルがお気に入り)へ戻す。
+    await panel.getByRole('listitem').filter({ hasText: shortTitle }).getByRole('button', { name: '☆ お気に入りにする', exact: true }).click()
+    await expect(favoriteOn).toHaveCount(1)
+
     // お気に入りの切り替えと、行の隅を押しても詳細が開くこと。
     await favoriteOff.click()
     await expect(panel.getByRole('button', { name: '★ お気に入り', exact: true })).toHaveCount(2)
