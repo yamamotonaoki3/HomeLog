@@ -225,7 +225,7 @@ for (const width of [1280, 390, 320]) {
     await expect(nav.getByRole('button', { name: 'その他', exact: true })).not.toHaveClass(/is-active/)
   })
 
-  test(width + 'pxで口座管理リンクを残高の下に表示し管理画面へ移動できる', async ({ page, consoleGuard }) => {
+  test(width + 'pxで口座管理リンクをタイトルの右に表示し管理画面へ移動できる', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 })
     await setupUserWithHousehold(page, 'dashboard-accounts-' + width)
@@ -241,15 +241,24 @@ for (const width of [1280, 390, 320]) {
     const card = page.locator('.card').filter({ has: page.getByRole('heading', { name: '個人の財政', exact: true }) })
     const balance = card.locator('p').filter({ hasText: '口座残高合計:' })
     const link = card.getByRole('link', { name: '口座・カード管理を見る', exact: true })
+    const title = card.getByRole('heading', { name: '個人の財政', exact: true })
     await expect(balance).toHaveText('口座残高合計: 13000円')
     await expect(link).toHaveCount(1)
     await expect(link).toHaveAttribute('href', '/accounts')
     await link.scrollIntoViewIfNeeded()
-    const [balanceBox, linkBox, cardBox] = await Promise.all([balance.boundingBox(), link.boundingBox(), card.boundingBox()])
+    const [balanceBox, linkBox, cardBox, titleBox] = await Promise.all([balance.boundingBox(), link.boundingBox(), card.boundingBox(), title.boundingBox()])
     expect(balanceBox).not.toBeNull()
     expect(linkBox).not.toBeNull()
     expect(cardBox).not.toBeNull()
-    expect(linkBox!.y).toBeGreaterThanOrEqual(balanceBox!.y + balanceBox!.height)
+    expect(titleBox).not.toBeNull()
+    // リンクは残高より上の見出しの行に置く(#493)。狭い画面ではタイトルの下の段に回る。
+    expect(linkBox!.y + linkBox!.height).toBeLessThanOrEqual(balanceBox!.y + 1)
+    expect(linkBox!.height).toBeGreaterThanOrEqual(44)
+    if (width > 380) {
+      expect(linkBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width - 1)
+      expect(linkBox!.y).toBeLessThan(titleBox!.y + titleBox!.height)
+      expect(linkBox!.y + linkBox!.height).toBeGreaterThan(titleBox!.y)
+    } else expect(linkBox!.y).toBeGreaterThanOrEqual(titleBox!.y + titleBox!.height - 1)
     expect(linkBox!.x).toBeGreaterThanOrEqual(cardBox!.x)
     expect(linkBox!.x + linkBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
