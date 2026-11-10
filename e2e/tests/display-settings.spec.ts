@@ -3,7 +3,7 @@ import { expect, test } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
 async function dashboardCardHeadings(page: Page) {
-  return page.locator('.dashboard-summary-grid > .card > h2').allTextContents()
+  return page.locator('.dashboard-summary-grid > .card h2').allTextContents()
 }
 
 async function orderListCards(page: Page) {

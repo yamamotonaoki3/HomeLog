@@ -1,10 +1,12 @@
 import { StrictMode } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { DashboardPage } from '../../pages/DashboardPage'
+import { AuthContext, type AuthContextValue } from '../../context/authContextValue'
 import type { InventoryItem, ShoppingListItem } from '../../api/zaikoTypes'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
 import type { CalendarDay } from '../../components/dashboard/CalendarPanel'
@@ -248,7 +250,7 @@ describe('DashboardPage', () => {
     { state: '口座あり', accounts: [{ id: 1, name: '[E2E_TEST] 口座', type: 'bank', balance: 13000, cards: [] }], balance: '13000円' },
     { state: '口座なし', accounts: [], balance: '0円' },
     { state: '取得失敗', accountsError: true, balance: '取得できませんでした' },
-  ])('$stateでも残高段落の直後に管理リンクを表示する', async ({ balance, ...options }) => {
+  ])('$stateでもタイトルと同じ行に管理リンクを表示する (#493)', async ({ balance, ...options }) => {
     setupApi(options)
     renderDashboardPage()
     const paragraph = await screen.findByText('口座残高合計: ' + balance)
@@ -257,10 +259,10 @@ describe('DashboardPage', () => {
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', '/accounts')
     expect(paragraph).not.toContainElement(links[0])
-    expect(paragraph.nextElementSibling).toBe(links[0])
+    expect(within(card as HTMLElement).getByRole('heading', { name: '個人の財政' }).parentElement).toContainElement(links[0])
   })
 
-  it('読み込み中も残高段落の直後に管理リンクを表示する', async () => {
+  it('読み込み中もタイトルと同じ行に管理リンクを表示する (#493)', async () => {
     setupApi()
     server.use(http.get('/api/accounts', async () => {
       await delay(200)
@@ -270,12 +272,12 @@ describe('DashboardPage', () => {
     const paragraph = screen.getByText('口座残高合計: 読み込み中...')
     const link = screen.getByRole('link', { name: '口座・カード管理を見る' })
     expect(paragraph).not.toContainElement(link)
-    expect(paragraph.nextElementSibling).toBe(link)
+    expect(screen.getByRole('heading', { name: '個人の財政' }).parentElement).toContainElement(link)
     expect(link).toHaveAttribute('href', '/accounts')
     await screen.findByText('口座残高合計: 0円')
   })
 
-  it('買い物リスト（未購入のみ）と在庫の残数・不足を非リンクで表示する', async () => {
+  it('買い物リスト（未購入のみ）と在庫の残数・不足を表示し、小見出しの右にそれぞれのリンクを置く (#493)', async () => {
     setupApi({ inventory, shoppingList })
     renderDashboardPage()
 
@@ -285,7 +287,17 @@ describe('DashboardPage', () => {
     expect(within(stock).getAllByRole('listitem')).toHaveLength(4)
     expect(within(stock).getByText('卵').closest('li')).toHaveTextContent('残2')
     expect(within(stock).getByText('醤油').closest('li')).toHaveTextContent('残0.5')
-    expect(within(screen.getByRole('heading', { name: '買い物・在庫' }).parentElement!).queryAllByRole('link')).toHaveLength(0)
+    const stockCard = screen.getByRole('heading', { name: '買い物・在庫' }).closest('.card') as HTMLElement
+    const shoppingLink = within(stockCard).getByRole('link', { name: '買い物リストを見る' })
+    const inventoryLink = within(stockCard).getByRole('link', { name: '在庫一覧を見る' })
+    expect(shoppingLink).toHaveAttribute('href', '/zaiko/shopping')
+    expect(inventoryLink).toHaveAttribute('href', '/zaiko')
+    expect(within(stockCard).getByRole('heading', { level: 3, name: '買い物リスト' }).parentElement).toContainElement(shoppingLink)
+    expect(within(stockCard).getByRole('heading', { level: 3, name: '在庫リスト' }).parentElement).toContainElement(inventoryLink)
+    expect(within(stockCard).getAllByRole('link')).toHaveLength(2)
+    // 一覧の行そのものはリンクにしない。
+    expect(within(shopping).queryAllByRole('link')).toHaveLength(0)
+    expect(within(stock).queryAllByRole('link')).toHaveLength(0)
     expect(within(stock).getByText('醤油').closest('li')).toHaveTextContent('（不足）')
     expect(within(stock).getByText('卵').closest('li')).not.toHaveTextContent('（不足）')
     expect(screen.queryByText(/よく使う品目/)).not.toBeInTheDocument()
@@ -311,14 +323,14 @@ describe('DashboardPage', () => {
     expect(screen.getByText('残数')).toBeInTheDocument()
   })
 
-  it.each(['loading', 'empty', 'error'] as const)('%sでも買い物・在庫カードにはリンクがない', async (state) => {
+  it.each(['loading', 'empty', 'error'] as const)('%sでも買い物・在庫カードの2つのリンクを表示する (#493)', async (state) => {
     setupApi({ shoppingListError: state === 'error' })
     if (state === 'loading') server.use(http.get('/api/shopping-list-items', async () => { await delay(100); return HttpResponse.json([]) }))
     renderDashboardPage()
     if (state === 'error') await screen.findByText('買い物リストを取得できませんでした')
     if (state === 'empty') await screen.findByText('買い物リストは空です')
-    const card = screen.getByRole('heading', { name: '買い物・在庫' }).parentElement!
-    expect(within(card).queryAllByRole('link')).toHaveLength(0)
+    const card = screen.getByRole('heading', { name: '買い物・在庫' }).closest('.card') as HTMLElement
+    expect(within(card).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/zaiko/shopping', '/zaiko'])
     if (state === 'loading') await screen.findByText('買い物リストは空です')
   })
 
@@ -552,7 +564,7 @@ describe('DashboardPage', () => {
 
     async function cardHeadings(container: HTMLElement) {
       await screen.findByRole('heading', { name: '月間カレンダー' })
-      return Array.from(container.querySelectorAll('.dashboard-summary-grid > .card > h2')).map((h) => h.textContent)
+      return Array.from(container.querySelectorAll('.dashboard-summary-grid > .card h2')).map((h) => h.textContent)
     }
 
     it('保存済みのカード順でカードを並べ、イベント別支出を独立したカードとして表示する', async () => {
@@ -589,5 +601,117 @@ describe('DashboardPage', () => {
       expect(await screen.findByRole('heading', { name: '今日の状況' })).toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: '月間カレンダー' })).not.toBeInTheDocument()
     })
+  })
+})
+
+// #493: カードの折りたたみ。最初は開き、開閉を利用者ごとにこの端末へ記憶する。
+describe('ホームのカードの折りたたみ (#493)', () => {
+  const titles = ['今日の状況', '買い物・在庫', '個人の財政', '今月のお金', 'イベント別支出']
+  const summary = { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }
+  const auth = (id: number): AuthContextValue => ({ isAuthenticated: true, user: { id, displayName: 'testuser_' + id }, userStatus: 'ready', login: async () => {}, cancelDeletion: async () => {}, logout: async () => {}, updateDisplayName: () => {} })
+  const renderAs = (id: number) => render(
+    <AuthContext.Provider value={auth(id)}>
+      <MemoryRouter initialEntries={['/']}><DashboardPage /></MemoryRouter>
+    </AuthContext.Provider>,
+  )
+  const toggle = (title: string) => screen.getByRole('button', { name: title + 'の開閉' })
+
+  it('5枚とも開いた状態で始まり、開閉ボタンが本文を指す。カレンダーには開閉ボタンが無い', async () => {
+    localStorage.clear()
+    setupApi({ summary, inventory, shoppingList })
+    renderAs(1)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    for (const title of titles) {
+      const button = toggle(title)
+      expect(button).toHaveAttribute('aria-expanded', 'true')
+      const body = document.getElementById(button.getAttribute('aria-controls')!)!
+      expect(body).toBeVisible()
+      expect(screen.getByRole('heading', { level: 2, name: title }).parentElement).toContainElement(button)
+    }
+    expect(screen.getAllByRole('button', { name: /の開閉$/ })).toHaveLength(5)
+  })
+
+  it('閉じると本文が隠れ、タイトルの右のリンクは押せるまま。もう一度押すと開く', async () => {
+    localStorage.clear()
+    setupApi({ summary, inventory, shoppingList })
+    const user = userEvent.setup()
+    renderAs(1)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    await user.click(toggle('買い物・在庫'))
+    expect(toggle('買い物・在庫')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: '在庫リスト' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '在庫一覧を見る' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '買い物・在庫' })).toBeVisible()
+    await user.click(toggle('個人の財政'))
+    expect(screen.getByText(/口座残高合計:/)).not.toBeVisible()
+    expect(screen.getByRole('link', { name: '口座・カード管理を見る' })).toBeVisible()
+    // 他のカードは開いたまま。
+    expect(toggle('今月のお金')).toHaveAttribute('aria-expanded', 'true')
+    await user.click(toggle('買い物・在庫'))
+    expect(toggle('買い物・在庫')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('list', { name: '在庫リスト' })).toBeVisible()
+  })
+
+  it('開閉を利用者ごとに記憶し、開き直しても同じ状態にする。別の利用者には引き継がない', async () => {
+    localStorage.clear()
+    setupApi({ summary, inventory, shoppingList })
+    const user = userEvent.setup()
+    const first = renderAs(1)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    await user.click(toggle('買い物・在庫'))
+    await user.click(toggle('イベント別支出'))
+    first.unmount()
+    const second = renderAs(1)
+    await screen.findByText(/口座残高合計:/)
+    expect(toggle('買い物・在庫')).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle('イベント別支出')).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle('今日の状況')).toHaveAttribute('aria-expanded', 'true')
+    second.unmount()
+    renderAs(2)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    for (const title of titles) expect(toggle(title)).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('記憶が壊れているときや利用者が分からないときは、開いた状態で始めてその場の開閉だけ行う', async () => {
+    localStorage.clear()
+    localStorage.setItem('homelog.dashboardCollapsedCards.v1:1', '{壊れた記憶')
+    setupApi({ summary, inventory, shoppingList })
+    const user = userEvent.setup()
+    const first = renderAs(1)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    for (const title of titles) expect(toggle(title)).toHaveAttribute('aria-expanded', 'true')
+    first.unmount()
+    // 認証の情報が無い(利用者が分からない)ときは記憶しない。
+    localStorage.clear()
+    renderDashboardPage()
+    await screen.findByRole('list', { name: '在庫リスト' })
+    await user.click(toggle('今月のお金'))
+    expect(toggle('今月のお金')).toHaveAttribute('aria-expanded', 'false')
+    expect(localStorage.length).toBe(0)
+  })
+
+  it('3枚のカードはタイトルの右にリンクを置き、本文の中にはリンクを置かない', async () => {
+    localStorage.clear()
+    setupApi({ summary })
+    renderAs(1)
+    await screen.findByText(/個人支出:/)
+    for (const [title, name, href] of [['個人の財政', '口座・カード管理を見る', '/accounts'], ['今月のお金', '精算一覧を見る', '/warikan'], ['イベント別支出', 'イベント一覧を見る', '/events']]) {
+      const heading = screen.getByRole('heading', { level: 2, name: title })
+      const link = within(heading.parentElement!).getByRole('link', { name })
+      expect(link).toHaveAttribute('href', href)
+      const body = document.getElementById(toggle(title).getAttribute('aria-controls')!)!
+      expect(within(body).queryAllByRole('link')).toHaveLength(0)
+    }
+    // 今日の状況にはリンクを置かない。
+    expect(within(screen.getByRole('heading', { level: 2, name: '今日の状況' }).closest('.card') as HTMLElement).queryAllByRole('link')).toHaveLength(0)
+  })
+
+  it('表示設定で買い物リストを隠しているときは、そのリンクも出さない', async () => {
+    localStorage.clear()
+    setupApi({ summary, inventory, shoppingList, settings: { cards: {}, cardOrder: ['today', 'stock', 'finance', 'money', 'eventExpenses'], items: { calendar: {}, today: {}, stock: { shoppingList: false }, money: {} } } as unknown as DisplaySettings })
+    renderAs(1)
+    await screen.findByRole('list', { name: '在庫リスト' })
+    expect(screen.queryByRole('link', { name: '買い物リストを見る' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '在庫一覧を見る' })).toHaveAttribute('href', '/zaiko')
   })
 })

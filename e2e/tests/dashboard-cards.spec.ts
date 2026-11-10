@@ -55,7 +55,11 @@ test.describe('S-04 ダッシュボードカード再設計', () => {
     await period.selectOption('month')
     await expect(page.getByRole('list', { name: 'イベント別支出（今月）' })).toContainText(`${eventName}: 700円`)
 
-    await expect(page.locator('.card').filter({ has: page.getByRole('heading', { name: '買い物・在庫', exact: true }) }).getByRole('link')).toHaveCount(0)
+    // 買い物・在庫カードは、小見出しの右にそれぞれの一覧へのリンクを置く(#493)。
+    const stockCard = page.locator('.card').filter({ has: page.getByRole('heading', { name: '買い物・在庫', exact: true }) })
+    await expect(stockCard.getByRole('link', { name: '買い物リストを見る', exact: true })).toHaveAttribute('href', '/zaiko/shopping')
+    await expect(stockCard.getByRole('link', { name: '在庫一覧を見る', exact: true })).toHaveAttribute('href', '/zaiko')
+    await expect(stockCard.getByRole('link')).toHaveCount(2)
 
     await page.goto('/settings/display')
     await page.getByRole('group', { name: '買い物・在庫' }).getByLabel('在庫リスト').uncheck()
