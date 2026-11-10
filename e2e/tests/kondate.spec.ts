@@ -5,7 +5,7 @@ import { expect, test } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
 async function openAdd(page: Page) {
-  const sheet = page.getByRole('dialog', { name: 'レシピを追加' })
+  const sheet = page.getByRole('dialog', { name: '献立に追加する' })
   if (!await sheet.isVisible()) await page.getByTestId('menu-panel').getByRole('button', { name: 'レシピを追加', exact: true }).click()
   return sheet
 }
@@ -29,13 +29,13 @@ test.describe('F-09/F-10 レシピ・献立', () => {
     // キーワードで絞り込んでから選ぶ(#281)。
     await (await openAdd(page)).getByLabel('レシピを検索').fill('肉じゃ')
     await (await openAdd(page)).getByRole('checkbox', { name: title, exact: true }).check()
-    await (await openAdd(page)).getByRole('button', { name: '追加', exact: true }).click()
+    await (await openAdd(page)).getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
     await expect(menu.getByRole('listitem').filter({ hasText: title })).toBeVisible()
 
     // 自由メモでも追加できる
     await (await openAdd(page)).getByLabel('自由メモ', { exact: true }).check()
     await (await openAdd(page)).getByLabel('自由メモの内容').fill('[E2E_TEST] 外食')
-    await (await openAdd(page)).getByRole('button', { name: '追加', exact: true }).click()
+    await (await openAdd(page)).getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
     await expect(menu.getByRole('listitem').filter({ hasText: '[E2E_TEST] 外食' })).toBeVisible()
   })
 
@@ -46,25 +46,29 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       await setupUserWithHousehold(page, `menu${width}`)
       await page.goto('/menu')
       const menu = page.getByTestId('menu-panel')
-      const weekLabel = menu.locator('.toolbar > span')
-      await expect(weekLabel).toHaveText(/\d{4}-\d{2}-\d{2} の週/)
-      const monday = (await weekLabel.innerText()).split(' ')[0]
+      const weekLabel = menu.getByTestId('menu-week-range')
+      const weekOfMonth = menu.locator('.menu-week-label')
+      await expect(weekLabel).toHaveText(/^\d{4}年\d{1,2}月\d{1,2}日（月）〜(\d{4}年)?\d{1,2}月\d{1,2}日（日）$/)
+      await expect(weekOfMonth).toHaveText(/^\d{1,2}月 第[1-5]週$/)
+      const [, year, month, day] = (await weekLabel.innerText()).match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/)!.map(Number)
+      // 画面と同じ形(年をまたぐ週だけ終わりにも年を付ける)で、移動後の期間を組み立てる。
       const shiftedLabel = (delta: number) => {
-        const date = new Date(`${monday}T12:00:00Z`)
-        date.setUTCDate(date.getUTCDate() + delta * 7)
-        return `${date.toISOString().slice(0, 10)} の週`
+        const start = new Date(Date.UTC(year, month - 1, day + delta * 7))
+        const end = new Date(Date.UTC(year, month - 1, day + delta * 7 + 6))
+        const endYear = end.getUTCFullYear() === start.getUTCFullYear() ? '' : `${end.getUTCFullYear()}年`
+        return `${start.getUTCFullYear()}年${start.getUTCMonth() + 1}月${start.getUTCDate()}日（月）〜${endYear}${end.getUTCMonth() + 1}月${end.getUTCDate()}日（日）`
       }
       const memo = `[E2E_TEST] menu${width}`
       await (await openAdd(page)).getByLabel('自由メモ', { exact: true }).check()
       await (await openAdd(page)).getByLabel('自由メモの内容').fill(memo)
-      await (await openAdd(page)).getByRole('button', { name: '追加', exact: true }).click()
+      await (await openAdd(page)).getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
       await expect(menu.getByRole('listitem').filter({ hasText: memo })).toBeVisible()
       await page.setViewportSize({ width, height: width === 1280 ? 800 : 844 })
 
       const assertLayout = async () => {
         await expect(menu).toBeVisible()
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-        const elements = [menu, menu.getByRole('button', { name: '先週', exact: true }), weekLabel, menu.getByRole('button', { name: '次週', exact: true })]
+        const elements = [menu, menu.getByRole('button', { name: '前の週', exact: true }), weekOfMonth, menu.getByRole('button', { name: '次の週', exact: true }), weekLabel]
         const boxes = []
         for (const element of elements) {
           const box = await element.boundingBox()
@@ -80,14 +84,16 @@ test.describe('F-09/F-10 レシピ・献立', () => {
           }
         }
       }
-      for (const [name, arrow] of [['先週', '◀'], ['次週', '▶']]) {
+      for (const [name, arrow] of [['前の週', '‹'], ['次の週', '›']]) {
         const button = menu.getByRole('button', { name, exact: true })
-        await expect(button).toHaveText(arrow)
         await expect(button).toHaveAccessibleName(name)
+        await expect(button.locator('span')).toHaveText(arrow)
         await expect(button.locator('span')).toHaveAttribute('aria-hidden', 'true')
+        const box = (await button.boundingBox())!
+        expect(box.height).toBeGreaterThanOrEqual(44)
       }
       await assertLayout()
-      for (const [name, delta] of [['先週', -1], ['次週', 0], ['次週', 1], ['先週', 0]] as const) {
+      for (const [name, delta] of [['前の週', -1], ['次の週', 0], ['次の週', 1], ['前の週', 0]] as const) {
         await menu.getByRole('button', { name, exact: true }).click()
         await expect(weekLabel).toHaveText(shiftedLabel(delta))
         if (delta === 0) await expect(menu.getByRole('listitem').filter({ hasText: memo })).toBeVisible()
@@ -113,9 +119,9 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       await page.goto('/menu')
       const menu = page.getByTestId('menu-panel')
       await (await openAdd(page)).getByLabel('レシピを検索').fill('[E2E_TEST] 該当なし')
-      await expect(page.getByRole('dialog', { name: 'レシピを追加' }).getByRole('group', { name: 'レシピ候補' })).toContainText('該当するレシピがありません')
+      await expect(page.getByRole('dialog', { name: '献立に追加する' }).getByRole('group', { name: 'レシピ候補' })).toContainText('該当するレシピがありません')
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-      for (const element of [page.getByRole('dialog', { name: 'レシピを追加' }).getByLabel('レシピを検索'), page.getByRole('dialog', { name: 'レシピを追加' }).getByRole('group', { name: 'レシピ候補' })]) {
+      for (const element of [page.getByRole('dialog', { name: '献立に追加する' }).getByLabel('レシピを検索'), page.getByRole('dialog', { name: '献立に追加する' }).getByRole('group', { name: 'レシピ候補' })]) {
         const box = (await element.boundingBox())!
         expect(box.x).toBeGreaterThanOrEqual(0)
         expect(box.x + box.width).toBeLessThanOrEqual(width)
@@ -140,7 +146,7 @@ test.describe('F-09/F-10 レシピ・献立', () => {
       await page.goto('/menu')
       const menu = page.getByTestId('menu-panel')
       await (await openAdd(page)).getByRole('checkbox', { name: title, exact: true }).check()
-      await (await openAdd(page)).getByRole('button', { name: '追加', exact: true }).click()
+      await (await openAdd(page)).getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
       await menu.getByRole('button', { name: title, exact: true }).click()
       await menu.getByRole('button', { name: 'レシピを見る', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: 'レシピ詳細' })
@@ -204,9 +210,22 @@ for (const width of [1280, 390, 320]) {
     await openAdd(page)
     await expect(sheet.getByRole('checkbox', { name: long, exact: true })).toBeChecked()
     expect(await sheet.getByRole('searchbox').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-    await sheet.getByRole('button', { name: '追加', exact: true }).click()
+    // 追加ボタンは選択件数を表示し、シートの幅いっぱいに広がる(#467)。
+    const submit = sheet.getByRole('button', { name: '選択した2件を追加', exact: true })
+    const [submitBox, sheetBox] = await Promise.all([submit.boundingBox(), sheet.boundingBox()])
+    expect(submitBox!.height).toBeGreaterThanOrEqual(44)
+    expect(submitBox!.width).toBeGreaterThanOrEqual(sheetBox!.width - 48)
+    const closeBox = (await sheet.getByRole('button', { name: '閉じる', exact: true }).boundingBox())!
+    expect(Math.min(closeBox.width, closeBox.height)).toBeGreaterThanOrEqual(44)
+    await submit.click()
     await expect(sheet).toBeHidden()
     await expect(menu.locator('.menu-list-row')).toHaveCount(2)
+    await expect(menu.getByRole('heading', { name: '登録済みの献立（2件）' })).toBeVisible()
+    // 登録済みのレシピは、追加シートの候補に印が付く。
+    await openAdd(page)
+    await expect(sheet.getByRole('group', { name: 'レシピ候補' }).getByText('登録済み', { exact: true })).toHaveCount(2)
+    await sheet.getByRole('button', { name: '閉じる', exact: true }).click()
+    await expect(sheet).toBeHidden()
     const listTitle = menu.getByRole('button', { name: long, exact: true })
     await listTitle.click()
     const link = menu.getByRole('link', { name: 'レシピを見る' })
@@ -234,6 +253,8 @@ for (const width of [1280, 390, 320]) {
     expect(recipes.some((recipe: { title: string }) => recipe.title === manual)).toBe(true)
     const [triggerBox, listBox] = await Promise.all([trigger.boundingBox(), menu.locator('.menu-list').boundingBox()])
     expect(triggerBox!.y).toBeLessThan(listBox!.y)
+    // 追加ボタンは一覧と同じ幅いっぱいに置く。
+    expect(Math.abs(triggerBox!.width - listBox!.width)).toBeLessThanOrEqual(1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   })
 }

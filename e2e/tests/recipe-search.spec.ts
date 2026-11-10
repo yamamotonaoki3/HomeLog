@@ -17,7 +17,7 @@ for (const width of [1280, 390, 320]) {
     await page.goto('/menu')
     const menu = page.getByTestId('menu-panel')
     await menu.getByRole('button', { name: 'レシピを追加', exact: true }).click()
-    const sheet = page.getByRole('dialog', { name: 'レシピを追加' })
+    const sheet = page.getByRole('dialog', { name: '献立に追加する' })
     const search = sheet.getByRole('searchbox', { name: 'レシピを検索' })
     const candidates = sheet.getByRole('group', { name: 'レシピ候補' })
     const radios = candidates.getByRole('checkbox')
@@ -51,7 +51,7 @@ for (const width of [1280, 390, 320]) {
       await mkdir(process.env.RECIPE_SEARCH_SCREENSHOT_DIR, { recursive: true })
       await page.screenshot({ path: join(process.env.RECIPE_SEARCH_SCREENSHOT_DIR, `recipe-search-${width}.png`), fullPage: true })
     }
-    await sheet.getByRole('button', { name: '追加', exact: true }).click()
+    await sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
     await expect(menu.getByRole('listitem').filter({ hasText: titles[3] })).toBeVisible()
 
     // 既存の2検索も追加操作なしで結果が切り替わることを実データで確認する。

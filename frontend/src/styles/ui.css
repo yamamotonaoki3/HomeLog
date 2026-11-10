@@ -1,0 +1,199 @@
+/* 追加画像資料に合わせた共通の見た目(#466)。
+ * 色・角丸・カード・全幅ボタン・切り替えタブなどを画面ごとに別々の値で持たないよう、ここにまとめる。
+ * 既存の .btn / .modal などは他の画面が使っているため変更せず、移行した画面から ui- の部品へ置き換える。 */
+
+:root {
+  --ui-text: #1d2b3b;
+  /* 補足の文字色。白地・淡い地のどちらでも 4.5:1 以上になる濃さにする。 */
+  --ui-muted: #5f6f85;
+  --ui-border: #e0e7ee;
+  --ui-control-border: #cad7e6;
+  --ui-surface: #fff;
+  --ui-soft: #eef4fa;
+  --ui-primary: #176cd4;
+  --ui-primary-soft: #dcecff;
+  --ui-primary-strong: #165eb7;
+  --ui-focus: #2563eb;
+}
+
+/* 一覧やフォームが中心の画面は、PCでも読みやすい幅に収める。 */
+.ui-narrow {
+  max-width: 720px;
+  margin-inline: auto;
+  color: var(--ui-text);
+}
+
+/* 画面タイトルと、その下の補足 */
+.ui-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ui-page-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.ui-page-sub {
+  margin: 2px 0 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* 白いカード */
+.ui-card {
+  padding: 14px 15px;
+  border: 1px solid var(--ui-border);
+  border-radius: 16px;
+  background: var(--ui-surface);
+  box-shadow: 0 2px 6px rgba(40, 55, 80, 0.035);
+}
+
+/* 一覧の上に置く小さな見出し */
+.ui-section-label {
+  margin: 16px 0 9px;
+  color: var(--ui-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 画面の主操作に使う全幅ボタン */
+.ui-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ui-primary);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ui-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 記号だけの四角いボタン(閉じる など)。読み上げ名は aria-label で付ける。 */
+.ui-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #dce4ee;
+  border-radius: 12px;
+  background: #f8fafd;
+  color: #4f6078;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ui-icon-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 二者択一などの切り替えタブ。中身はラジオボタンのままにして、キーボード操作と読み上げを保つ。 */
+.ui-segmented {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: #eaf0f6;
+}
+.ui-segmented label {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 9px;
+  color: #55687f;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  cursor: pointer;
+}
+.ui-segmented label:has(input:checked) {
+  background: var(--ui-surface);
+  color: var(--ui-primary-strong);
+  font-weight: 800;
+  box-shadow: 0 1px 3px #cbd5e1;
+}
+/* ラジオ本体は見えなくするが、ラベル全体に重ねて押せる範囲とフォーカスを保つ。 */
+.ui-segmented input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ui-segmented:disabled label {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 入力欄の上に置くラベル */
+.ui-field-label,
+.modal .ui-field-label {
+  display: block;
+  margin: 14px 0 7px;
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 小さな印(登録済み など) */
+.ui-tag {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: #eef3f8;
+  color: #4a5c74;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 0件のときの案内 */
+.ui-empty {
+  padding: 18px;
+  border-radius: 13px;
+  background: #f2f6fa;
+  color: var(--ui-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ui-action:focus-visible,
+.ui-icon-button:focus-visible,
+.ui-segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
