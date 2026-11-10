@@ -470,3 +470,38 @@ describe('#425 削除後の再取得とフォーカス', () => {
     }
   })
 })
+
+describe('割り勘・精算の見た目に関わる構成', () => {
+  it('補足と予定額の合計を表示し、1件を1つのリスト項目にする', async () => {
+    setupApi([
+      split({ id: 1, expensePurpose: '[E2E_TEST] 旅行費用', role: 'payer', amountDue: 6000, status: 'unpaid' }),
+      split({ id: 2, expensePurpose: '[E2E_TEST] 外食', role: 'debtor', amountDue: 3000, status: 'unpaid' }),
+      split({ id: 3, expensePurpose: '[E2E_TEST] 精算済み', role: 'payer', amountDue: 1000, status: 'settled' }),
+    ])
+    renderPage()
+    expect(await screen.findByRole('heading', { level: 2, name: '割り勘・精算' })).toBeInTheDocument()
+    expect(screen.getByText('未精算と精算済みを一覧で確認')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '家計簿に戻る' })).toHaveAttribute('href', '/kakeibo')
+    const summary = await screen.findByTestId('warikan-plan-summary')
+    // 精算済みは予定額に含めない。
+    expect(summary).toHaveTextContent('受け取り予定6,000円')
+    expect(summary).toHaveTextContent('支払い予定3,000円')
+    const items = within(screen.getByRole('list', { name: '割り勘の内訳一覧' })).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    const row = within(items[0]).getByRole('button', { name: /旅行費用/ })
+    expect(row.querySelectorAll(':scope > span')).toHaveLength(5)
+  })
+
+  it('絞り込みで表示が変わると、予定額も表示中の内訳だけで計算する', async () => {
+    setupApi([
+      split({ id: 1, expensePurpose: '[E2E_TEST] 世帯内', role: 'payer', amountDue: 6000, status: 'unpaid', isExternal: false }),
+      split({ id: 2, expensePurpose: '[E2E_TEST] 世帯外', role: 'payer', amountDue: 500, status: 'unpaid', isExternal: true, debtorLabel: 'E2EUser A' }),
+    ])
+    renderPage()
+    const summary = await screen.findByTestId('warikan-plan-summary')
+    expect(summary).toHaveTextContent('受け取り予定6,500円')
+    await userEvent.setup().click(screen.getByRole('tab', { name: '世帯外' }))
+    expect(summary).toHaveTextContent('受け取り予定500円')
+    expect(summary).toHaveTextContent('支払い予定0円')
+  })
+})
