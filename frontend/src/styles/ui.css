@@ -181,6 +181,18 @@
   white-space: nowrap;
 }
 
+/* 画面や操作の前提を伝える案内文 */
+.ui-note {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: #e8f2fd;
+  color: #2b4a6f;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
 /* 0件のときの案内 */
 .ui-empty {
   padding: 18px;

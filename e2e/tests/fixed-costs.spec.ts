@@ -24,7 +24,7 @@ test.describe('F-05 固定費', () => {
     await page.getByRole('button', { name: '登録', exact: true }).click()
 
     const row = page.getByTestId('fixed-costs-panel').getByRole('button', { name: `${name}の詳細` })
-    await expect(row).toContainText('80000円')
+    await expect(row).toContainText('80,000円')
     await expect(row).toContainText('27日')
 
     await row.click()
