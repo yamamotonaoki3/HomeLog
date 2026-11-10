@@ -53,6 +53,18 @@
   box-shadow: 0 2px 6px rgba(40, 55, 80, 0.035);
 }
 
+/* 見出しの左に置く、線画アイコンの台(components/UiIcon.tsx)。 */
+.ui-icon-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--ui-soft);
+  color: var(--ui-primary-strong);
+}
+
 /* 一覧の上に置く小さな見出し */
 .ui-section-label {
   margin: 16px 0 9px;
