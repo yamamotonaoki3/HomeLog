@@ -203,20 +203,6 @@
   margin: 0;
   font-size: 16px;
 }
-.inline-form {
-  background: #f8fafc;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.inline-form select {
-  padding: 6px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-}
 
 /* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
 .tabs {

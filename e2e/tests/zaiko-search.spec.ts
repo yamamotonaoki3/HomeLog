@@ -41,7 +41,7 @@ for (const width of [1280, 390, 320]) {
 
     await page.getByRole('navigation', { name: '在庫管理関連機能' }).getByRole('link', { name: '買い物リスト' }).click()
     const shopping = page.getByTestId('shopping-panel')
-    await shopping.getByRole('searchbox', { name: 'キーワード検索' }).fill('牛乳')
+    await shopping.getByRole('searchbox', { name: '商品を探す' }).fill('牛乳')
     await expect(shopping.getByRole('button', { name: '[E2E_TEST] 牛乳の詳細' })).toBeVisible()
     await expect(shopping.getByRole('button', { name: '[E2E_TEST] Butterの詳細' })).toHaveCount(0)
     await expectFits(page, width)

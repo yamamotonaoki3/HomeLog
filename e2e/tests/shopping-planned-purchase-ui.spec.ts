@@ -137,7 +137,7 @@ for (const width of [1280, 390, 320]) {
     await actual(3).fill('2.5')
     await close.click()
     await checkbox(3).uncheck()
-    const search = panel.getByRole('searchbox', { name: 'キーワード検索', exact: true })
+    const search = panel.getByRole('searchbox', { name: '商品を探す', exact: true })
     await search.fill('該当しない品名')
     await expect(panel.getByRole('button', { name: /の詳細$/ })).toHaveCount(0)
     await expect(panel.getByText('該当する品目がありません', { exact: true })).toBeVisible()

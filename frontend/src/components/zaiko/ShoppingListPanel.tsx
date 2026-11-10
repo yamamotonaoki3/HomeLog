@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { filterByKeyword } from '../../lib/keyword'
 import { apiClient } from '../../api/client'
 import { captureCredentials } from '../../api/shoppingPurchases'
@@ -17,6 +17,7 @@ interface Props {
 interface RowDraft { checked: boolean; actualText: string; checkedRevision: number; plannedText?: string; plannedDirty?: boolean; error?: string }
 type ConfirmLine = PurchaseLine & { name: string }
 export function ShoppingListPanel({ shopping, inventory, categories, stores, sort, onSortChange, onRefresh, onNotify, actorUserId, active = true, onScopeDetached, onScopeReconnect }: Props) {
+  const searchId = useId()
   const [keyword, setKeyword] = useState(''), [addFormOpen, setAddFormOpen] = useState(false), [addItemId, setAddItemId] = useState(''), [addPrice, setAddPrice] = useState('')
   const [drafts, setDrafts] = useState<Record<number, RowDraft>>({})
   const [completed, setCompleted] = useState<Record<number, number>>({})
@@ -151,16 +152,14 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
   const visible = filterByKeyword(rows, keyword, item => item.name)
   const groups = new Map<string, ShoppingListItem[]>()
   for (const item of visible) { const name = storeName(inventoryOf(item.inventoryItemId)?.storeId); groups.set(name, [...(groups.get(name) ?? []), item]) }
-  return <div className="panel shopping-panel" data-testid="shopping-panel" style={{ '--shopping-bar-height': position.height + 'px', '--shopping-bar-bottom': position.bottom + 'px' } as CSSProperties}>
-    <div className="toolbar">
-      <h2>買い物リスト</h2>
-      <button ref={addButton} type="button" className="btn btn-secondary" disabled={checking || sending || detached || mutation} onClick={() => setAddFormOpen(open => !open)}>品目を追加</button>
-      <select aria-label="並び替え" value={sort} disabled={detached} onChange={e => onSortChange(e.target.value as ShoppingSort)}>
-        <option value="name">あいうえお順</option>
-        <option value="category">カテゴリー順</option>
-        <option value="store">買う店順</option>
-      </select>
-    </div>
+  return <div className="ui-narrow shopping-panel" data-testid="shopping-panel" style={{ '--shopping-bar-height': position.height + 'px', '--shopping-bar-bottom': position.bottom + 'px' } as CSSProperties}>
+    <header className="ui-page-head">
+      <div>
+        <h2>買い物リスト</h2>
+        <p className="ui-page-sub">店舗ごとにまとめて購入を管理</p>
+      </div>
+    </header>
+    <button ref={addButton} type="button" className="ui-action" aria-expanded={addFormOpen} disabled={checking || sending || detached || mutation} onClick={() => setAddFormOpen(open => !open)}><span aria-hidden="true">＋</span>品目を追加</button>
     {purchase.message && <p role="status" className="shopping-status">{purchase.message}</p>}
     {checking && <p role="status">本人と世帯を確認中…</p>}
     {purchase.pending && <div className="shopping-recovery">
@@ -170,7 +169,7 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
     {['blocked', 'detached'].includes(purchase.status) && <button type="button" className="btn btn-secondary" onClick={() => void purchase.recheck()}>本人と世帯を再確認</button>}
     {['refreshFailed', 'notApplied', 'notAppliedRefreshFailed', 'scopeRefreshFailed', 'listRefreshing', 'listRefreshFailed'].includes(purchase.status) && <button type="button" className="btn btn-secondary" disabled={refreshing || purchase.status === 'listRefreshing'} onClick={() => void (purchase.status === 'scopeRefreshFailed' ? purchase.recheck() : purchase.status === 'listRefreshFailed' ? purchase.retrySynchronization() : retryRefresh())}>一覧を再取得</button>}
     {!detached && <>
-      {addFormOpen && <div className="inline-form shopping-add-form">
+      {addFormOpen && <div className="ui-card shopping-add-form">
         <select aria-label="追加する品目" value={addItemId} disabled={mutation} onChange={e => { setAddItemId(e.target.value); const price = inventoryOf(Number(e.target.value))?.price; setAddPrice(price == null ? '' : String(price)) }}>
           <option value="">選択してください</option>{inventory.map(item =>
             <option key={item.id} value={item.id}>{item.name}</option>)}</select>
@@ -178,13 +177,24 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
         <input id="shopping-price" type="text" inputMode="numeric" value={addPrice} disabled={mutation} onChange={e => setAddPrice(e.target.value)} />
         <button type="button" className="btn btn-primary" disabled={mutation} onClick={() => void handleManualAdd()}>追加</button>
       </div>}
-      <input type="search" className="zaiko-search" aria-label="キーワード検索" placeholder="キーワードで絞り込み" value={keyword} onChange={e => setKeyword(e.target.value)} />
+      <div className="shopping-search-head">
+        <label className="ui-field-label" htmlFor={searchId}>商品を探す</label>
+        <label className="shopping-sort">並び替え
+          <select aria-label="並び替え" value={sort} disabled={detached} onChange={e => onSortChange(e.target.value as ShoppingSort)}>
+            <option value="name">あいうえお順</option>
+            <option value="category">カテゴリー順</option>
+            <option value="store">買う店順</option>
+          </select>
+        </label>
+      </div>
+      <input id={searchId} type="search" className="ui-search" placeholder="商品名で検索" value={keyword} onChange={e => setKeyword(e.target.value)} />
       {stale && <p role="alert">予定が変更されています。最新の予定数を確認し、チェックを付け直してください。</p>}
       {invalid && <p role="alert">実購入数は0〜99999.9、小数第一位までで入力してください。</p>}
-      <div aria-label="買い物リスト一覧">{rows.length === 0 ? <p>買い物リストは空です</p> : visible.length === 0 ? <p>該当する品目がありません</p> : [...groups].map(([name, items]) =>
+      <div className="shopping-groups">{rows.length === 0 ? <p className="ui-empty">買い物リストは空です</p> : visible.length === 0 ? <p className="ui-empty">該当する品目がありません</p> : [...groups].map(([name, items]) =>
         <section key={name} aria-label={name + 'の買い物'} className="shopping-store-group">
-          <h3>{name}</h3>{items.map(item => {
-const draft = draftOf(item); return <div key={item.id} className="shopping-row">
+          <div className="shopping-store-head"><h3>{name}</h3><span>{items.length}件</span></div>
+          <ul className="shopping-list">{items.map(item => {
+const draft = draftOf(item); return <li key={item.id} className="ui-card shopping-row">
               <label className="shopping-checkbox">
                 <input type="checkbox" aria-label={item.name + 'を購入済みにする'} checked={draft.checked} disabled={locked(item.id)} onChange={e => updateDraft(item, { checked: e.target.checked, actualText: e.target.checked ? String(item.plannedQuantity) : draft.actualText, checkedRevision: item.purchaseRevision, error: undefined })} />
               </label>
@@ -194,14 +204,14 @@ const draft = draftOf(item); return <div key={item.id} className="shopping-row">
                   <span>予定 {item.plannedQuantity}</span>
                   <span>在庫 {stockText(item.inventoryItemId)}</span>{draft.checked && <span>実購入 {draft.actualText || '未入力'}</span>}</span>
               </button>
-            </div>
-})}</section>)}</div>
+            </li>
+})}</ul></section>)}</div>
     </>}
     {active && !detached && selected && !confirmLines && <ShoppingListDetailModal item={selected} category={categories.find(c => c.id === inventoryOf(selected.inventoryItemId)?.categoryId)?.name ?? ''} store={storeName(inventoryOf(selected.inventoryItemId)?.storeId) === '店舗未指定' ? '' : storeName(inventoryOf(selected.inventoryItemId)?.storeId)} stock={stockText(selected.inventoryItemId)} plannedText={plannedTextOf(selected)} actualText={draftOf(selected).actualText} checked={draftOf(selected).checked} busy={locked(selected.id)} saving={savingId === selected.id} error={draftOf(selected).error ?? ''} onPlanned={text => updateDraft(selected, { plannedText: text, plannedDirty: true, error: undefined })} onActual={text => updateDraft(selected, { actualText: text, error: undefined })} onSavePlanned={() => void savePlanned(selected)} onDelete={() => void handleDelete(selected)} onClose={closeDetail} />}
     {active && !detached && confirmLines && <ShoppingPurchaseConfirmDialog lines={confirmLines} busy={sending || !canConfirm} onClose={closeConfirm} onConfirm={() => { if (!canConfirm) return; const lines = confirmLines.map(({ id, purchasedQuantity, expectedPurchaseRevision }) => ({ id, purchasedQuantity, expectedPurchaseRevision })); setConfirmLines(null); void purchase.confirm(lines) }} />}
     {active && !detached && <div ref={bar} className="shopping-purchase-bar">
-      <span>{targets.length}品目を反映</span>
-      <button ref={reflectButton} type="button" className="btn btn-primary" disabled={!canConfirm} onClick={() => { if (canConfirm) setConfirmLines(targets.map(line => ({ ...line }))) }}>購入を反映</button>
+      <p className="shopping-purchase-summary"><span>購入済み {targets.length}件</span><span aria-hidden="true">在庫へ反映</span></p>
+      <button ref={reflectButton} type="button" className="ui-action" disabled={!canConfirm} onClick={() => { if (canConfirm) setConfirmLines(targets.map(line => ({ ...line }))) }}>購入を反映</button>
     </div>}
   </div>
 }
