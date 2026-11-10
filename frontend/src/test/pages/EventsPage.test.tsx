@@ -326,6 +326,11 @@ describe('イベント一覧A案・一覧限定partial (#426)', () => {
     expect(screen.getByLabelText('日付')).toHaveValue('2026-09-20')
     await user.keyboard('{Escape}')
     await waitFor(() => expect(rows[0]).toHaveFocus())
+    // 編集ダイアログを閉じたあとのフォーカス復帰は、次の描画コマ(requestAnimationFrame)でも行われる。
+    // 閉じた時点で先頭の行へフォーカスが戻って見えるため、上の待機だけでは遅れた復帰を待てない。
+    // 待たずに2行目へ移ると、遅れた復帰がフォーカスを先頭の行へ戻し、Enterが先頭の行に届く(#490)。
+    await act(async () => { await new Promise<void>(resolve => { requestAnimationFrame(() => resolve()) }) })
+    expect(rows[0]).toHaveFocus()
     rows[1].focus()
     await user.keyboard('{Enter}')
     const readOnly = screen.getByRole('dialog', { name: 'イベント詳細' })
