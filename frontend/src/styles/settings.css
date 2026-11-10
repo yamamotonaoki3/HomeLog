@@ -1,26 +1,66 @@
 /* 設定画面・表示設定(カードの並び替え) */
 
-.settings-page h1 {
-  margin: 0 0 16px;
-  font-size: 24px;
-}
-.settings-grid {
+/* 設定トップ(S-25、#499)。入口を同じ形のカードで縦に並べる。 */
+.settings-menu {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-}
-.settings-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.settings-card h2,
-.settings-card p {
+  gap: 12px;
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.settings-card p {
+.settings-menu-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.settings-menu-text {
+  min-width: 0;
+}
+.settings-menu-text h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.settings-menu-text p {
+  margin: 2px 0 0;
+  color: var(--ui-muted);
+  font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.settings-menu .settings-menu-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--ui-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.settings-menu .settings-menu-open:hover {
+  background: var(--ui-primary-strong);
+}
+.settings-menu .settings-menu-open:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+/* 狭い画面では、説明文の幅を保つために「開く」を下の段へ回す。 */
+@media (max-width: 380px) {
+  .settings-menu-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .settings-menu .settings-menu-open {
+    grid-column: 1 / -1;
+  }
 }
 
 /* 表示設定（S-21） */

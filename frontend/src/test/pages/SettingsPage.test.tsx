@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
-import { DisplaySettingsPage } from '../../pages/SettingsPage'
+import { apiClient } from '../../api/client'
+import { DisplaySettingsPage, SettingsPage } from '../../pages/SettingsPage'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
 
 function makeSettings(): DisplaySettings {
@@ -175,5 +176,40 @@ describe('DisplaySettingsPage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+})
+
+describe('SettingsPage 設定トップ (#499)', () => {
+  const entries = [
+    ['世帯設定', '世帯グループ名・招待コード・メンバーを確認できます。', '/household/settings'],
+    ['表示設定', 'ダッシュボードに表示するカードや項目、並び順を調整できます。', '/settings/display'],
+    ['アカウント設定', '表示名・メールアドレス・パスワードの変更、退会の手続きができます。', '/settings/account'],
+  ] as const
+
+  it('見出しと補足の下に、3つの入口を同じ形のカードで順に並べる', () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 2, name: '設定' })).toBeInTheDocument()
+    expect(screen.getByText('世帯・表示・アカウントの設定を開きます')).toBeInTheDocument()
+    const items = within(screen.getByRole('list', { name: '設定の種類' })).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    entries.forEach(([title, description, href], index) => {
+      const item = within(items[index])
+      expect(item.getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
+      expect(item.getByText(description)).toBeInTheDocument()
+      // 表示は短い「開く」、読み上げ名は行き先が分かる従来の名前のままにする。
+      const link = item.getByRole('link', { name: title + 'を開く' })
+      expect(link).toHaveAttribute('href', href)
+      expect(link).toHaveTextContent('開く')
+      expect(item.getAllByRole('link')).toHaveLength(1)
+    })
+  })
+
+  it('入口の画面なのでAPIを呼ばず、人数や設定済みなどの概要は出さない', () => {
+    const calls = (['get', 'post', 'put', 'patch', 'delete'] as const).map(method => vi.spyOn(apiClient, method))
+    try {
+      render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+      for (const call of calls) expect(call).not.toHaveBeenCalled()
+      expect(screen.queryByText(/設定済み|発行中|\d+人|\d+項目/)).not.toBeInTheDocument()
+    } finally { for (const call of calls) call.mockRestore() }
   })
 })

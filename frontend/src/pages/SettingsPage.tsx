@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
+import { UiIcon, type UiIconName } from '../components/UiIcon'
 import {
   CARD_DESCRIPTIONS,
   CARD_LABELS,
@@ -13,26 +14,38 @@ import {
   type OrderableCard,
 } from '../api/userSettingsTypes'
 
+// 設定の入口(S-25)。各設定の中身はここでは取得せず、行き先を選ぶだけの画面にする。
+const SETTINGS_ENTRIES: { title: string; description: string; to: string; icon: UiIconName }[] = [
+  { title: '世帯設定', description: '世帯グループ名・招待コード・メンバーを確認できます。', to: '/household/settings', icon: 'household' },
+  { title: '表示設定', description: 'ダッシュボードに表示するカードや項目、並び順を調整できます。', to: '/settings/display', icon: 'display' },
+  { title: 'アカウント設定', description: '表示名・メールアドレス・パスワードの変更、退会の手続きができます。', to: '/settings/account', icon: 'account' },
+]
+
 export function SettingsPage() {
   return (
     <div className="page settings-page">
-      <h1>設定</h1>
-      <div className="settings-grid">
-        <section className="panel settings-card">
-          <h2>世帯設定</h2>
-          <p>世帯情報やメンバー設定を確認・変更できます。</p>
-          <NavLink to="/household/settings">世帯設定を開く</NavLink>
-        </section>
-        <section className="panel settings-card">
-          <h2>表示設定</h2>
-          <p>ダッシュボードに表示するカードや項目を調整できます。</p>
-          <NavLink to="/settings/display">表示設定を開く</NavLink>
-        </section>
-        <section className="panel settings-card">
-          <h2>アカウント設定</h2>
-          <p>表示名・メールアドレス・パスワードを変更できます。</p>
-          <NavLink to="/settings/account">アカウント設定を開く</NavLink>
-        </section>
+      <div className="ui-narrow" data-testid="settings-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>設定</h2>
+            <p className="ui-page-sub">世帯・表示・アカウントの設定を開きます</p>
+          </div>
+        </header>
+        <ul className="settings-menu" aria-label="設定の種類">
+          {SETTINGS_ENTRIES.map((entry) => (
+            <li key={entry.to} className="ui-card settings-menu-item">
+              <UiIcon name={entry.icon} />
+              <div className="settings-menu-text">
+                <h3>{entry.title}</h3>
+                <p>{entry.description}</p>
+              </div>
+              {/* 表示は短くし、読み上げ名は行き先が分かる従来の名前のままにする。 */}
+              <NavLink to={entry.to} className="settings-menu-open" aria-label={entry.title + 'を開く'}>
+                開く<span aria-hidden="true">›</span>
+              </NavLink>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
