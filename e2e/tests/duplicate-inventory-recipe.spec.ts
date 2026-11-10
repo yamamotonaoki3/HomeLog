@@ -25,7 +25,7 @@ for (const width of [1280, 390, 320]) {
     await page.getByRole('button', { name: '在庫を登録' }).click()
     await page.getByLabel('品名', { exact: true }).fill(name)
     await page.getByRole('button', { name: '保存', exact: true }).click()
-    const rows = page.locator('.inventory-list .list-row-button')
+    const rows = page.locator('.inventory-list .inventory-row-button')
     await expect(rows).toHaveCount(1)
     await expect(rows).toHaveText(/重複する牛乳/)
     await page.getByRole('button', { name: '在庫を登録' }).click()

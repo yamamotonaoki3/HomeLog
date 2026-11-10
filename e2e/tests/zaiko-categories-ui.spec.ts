@@ -27,7 +27,7 @@ for (const width of [1280, 390, 320]) {
       await dialog.getByLabel('品名', { exact: true }).fill(name)
       await dialog.getByLabel('値段（円・任意）').fill('1280')
       await dialog.getByLabel('在庫個数', { exact: true }).fill('2')
-      if (await dialog.getByRole('switch', { name: '自動消費' }).getAttribute('aria-checked') !== 'true') await dialog.getByRole('switch', { name: '自動消費' }).click()
+      if (await dialog.getByRole('switch', { name: '毎日の自動消費' }).getAttribute('aria-checked') !== 'true') await dialog.getByRole('switch', { name: '毎日の自動消費' }).click()
       await dialog.getByLabel('1日の消費量（任意）').fill('0.2')
       await dialog.getByRole('button', { name: '＋カテゴリーを登録' }).click()
       const categoryInput = dialog.getByLabel('カテゴリー名', { exact: true })
@@ -84,7 +84,7 @@ for (const width of [1280, 390, 320]) {
       await expect(selection.locator('option:checked')).toHaveText('[E2E_TEST] 編集で追加')
       await expect(dialog.getByLabel('品名', { exact: true })).toHaveValue('[E2E_TEST] 保存しない名前')
       await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click()
-      await expect(page.getByRole('button', { name: `${name}の詳細設定`, exact: true })).toBeFocused()
+      await expect(page.getByRole('button', { name: `${name}の詳細を編集`, exact: true })).toBeFocused()
       await page.reload()
       await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText(categoryName)
@@ -101,7 +101,7 @@ for (const width of [1280, 390, 320]) {
       await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText('[E2E_TEST] 編集で追加')
       await page.keyboard.press('Escape')
-      await expect(page.getByRole('button', { name: `${name}の詳細設定`, exact: true })).toBeFocused()
+      await expect(page.getByRole('button', { name: `${name}の詳細を編集`, exact: true })).toBeFocused()
     } finally { await context.close() }
   })
 }

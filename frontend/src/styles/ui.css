@@ -191,6 +191,171 @@
   text-align: center;
 }
 
+/* 検索欄。左に虫めがねの印を置く。 */
+.ui-search {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px 10px 42px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c7c92' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E") 14px center / 18px 18px no-repeat;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+/* 絞り込みの選択肢(すべて／各カテゴリーなど)。中身はラジオボタンのままにする。
+ * 狭い画面では1行で横に流し、広い画面では折り返す。枠(.ui-chips-row)だけが横に動き、ページは動かない。 */
+.ui-chips {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ui-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  min-width: 0;
+}
+.ui-chips label {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 100%;
+  min-height: 44px;
+  margin: 0;
+  cursor: pointer;
+}
+.ui-chips label > span {
+  display: block;
+  max-width: min(240px, 70vw);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #4a5c74;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-chips label:has(input:checked) > span {
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary-strong);
+  font-weight: 800;
+}
+.ui-chips input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .ui-chips-row {
+    flex-wrap: nowrap;
+    /* フォーカス枠が切れないよう、枠の内側に余白を取って同じ分だけ外へ広げる。 */
+    margin: 0 -4px;
+    padding: 0 4px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+}
+
+/* オン・オフの切り替えスイッチ(role="switch" のボタン)。状態は位置と色に加えて文字でも示す。 */
+.ui-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--ui-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ui-switch-track {
+  position: relative;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #7d8da1;
+  transition: background-color 0.15s;
+}
+.ui-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.ui-switch[aria-checked="true"] {
+  color: var(--ui-primary-strong);
+}
+.ui-switch[aria-checked="true"] .ui-switch-track {
+  background: var(--ui-primary);
+}
+.ui-switch[aria-checked="true"] .ui-switch-track::after {
+  transform: translateX(20px);
+}
+.ui-switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-switch-track,
+  .ui-switch-track::after {
+    transition: none;
+  }
+}
+
+/* フォーム末尾の「キャンセル／保存」。同じ幅で横に並べ、主操作を右に置く。 */
+.ui-form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.ui-form-cancel {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #eef3f8;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ui-form-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-search:focus-visible,
+.ui-chips label:has(input:focus-visible) > span,
+.ui-switch:focus-visible,
+.ui-form-cancel:focus-visible,
 .ui-action:focus-visible,
 .ui-icon-button:focus-visible,
 .ui-segmented label:has(input:focus-visible) {

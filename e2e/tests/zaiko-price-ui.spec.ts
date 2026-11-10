@@ -28,7 +28,7 @@ for (const width of [1280, 390, 320]) {
     const inventory = page.getByTestId('inventory-panel')
     const row = inventory.getByRole('button', { name: `${name}の詳細`, exact: true })
     await openInventoryDetails(page, row)
-    const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
+    const detail = page.getByRole('dialog', { name: '在庫の詳細編集' })
     const price = detail.getByLabel('値段（円・任意）')
     await expect(price).toHaveValue('9999999999')
     expect(await price.evaluate((cell) => cell.scrollWidth <= cell.clientWidth)).toBe(true)

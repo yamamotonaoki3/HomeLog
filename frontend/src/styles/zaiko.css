@@ -14,59 +14,183 @@
   width: 55px;
   margin-left: 6px;
 }
-.inventory-list-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(4rem, auto) 1.25rem;
-  gap: 8px;
+/* 在庫一覧: 1品目1枚のカード。行(展開ボタン)と右端の削除(×)を並べ、押すとカードの中に数量操作を開く(#469) */
+.inventory-search-label,
+.modal .inventory-search-label {
+  margin-top: 0;
+}
+.inventory-category-filter {
+  margin: 12px 0;
+}
+.inventory-list-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 9px;
+}
+.inventory-list-head .ui-section-label {
+  margin: 0;
+}
+.inventory-low-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 9px 3px 4px;
+  border-radius: 999px;
+  background: #fff3e0;
+  color: #8a4300;
+  font-size: 12px;
+  font-weight: 700;
+}
+.inventory-low-legend .inventory-low-stock {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
 }
 .inventory-list {
+  display: grid;
+  gap: 10px;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-/* 一覧の行: 詳細を開くボタンと、右端の削除(×)ボタンを並べる(#380) */
+.inventory-card {
+  min-width: 0;
+  padding: 0;
+}
 .inventory-row {
   display: flex;
   align-items: stretch;
-}
-.inventory-row > .list-row-button {
-  flex: 1;
-  width: auto;
   min-width: 0;
+}
+.inventory-row-button {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 24px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 64px;
+  position: relative;
+  padding: 12px 6px 12px 14px;
+  border: 0;
+  /* 角を丸めると四隅が押せなくなるため、ボタン自体は四角のままにする。丸みはカードとフォーカス枠で付ける。 */
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.inventory-list-heading {
-  padding: 0;
+.inventory-card:has(.inventory-row-button:hover:not(:disabled)) {
+  border-color: #b7cbe4;
 }
-.inventory-list-heading > .inventory-list-grid {
-  flex: 1;
+.inventory-row-button:focus-visible {
+  outline: none;
+}
+.inventory-row-button:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 2px solid var(--ui-focus);
+  border-radius: 13px 0 0 13px;
+  pointer-events: none;
+}
+.inventory-card.is-open .inventory-row-button:focus-visible::after {
+  border-bottom-left-radius: 0;
+}
+.inventory-row-main {
+  display: grid;
+  gap: 2px;
   min-width: 0;
-  padding: 12px 8px;
 }
-.inventory-delete-button,
-.inventory-delete-spacer {
-  flex: 0 0 44px;
-  width: 44px;
+.inventory-row-name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.inventory-row-category {
+  color: var(--ui-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.inventory-list-quantity {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+/* 行頭の印。補充対象(在庫が閾値以下)だけ赤い「！」にし、それ以外は控えめな四角にする。 */
+.inventory-low-stock {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+.inventory-low-stock:not(.is-low)::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #9fb0c4;
+  border-radius: 3px;
+  background: linear-gradient(#9fb0c4, #9fb0c4) center / 5px 5px no-repeat;
+}
+.inventory-low-stock.is-low {
+  border-radius: 50%;
+  background: #d92d32;
+  color: #fff;
+}
+.inventory-chevron {
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-right: 2px solid #6c7c92;
+  border-bottom: 2px solid #6c7c92;
+  transform: rotate(45deg);
+}
+.inventory-card.is-open .inventory-chevron {
+  margin-top: 4px;
+  transform: rotate(-135deg);
 }
 .inventory-delete-button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
   border: 0;
-  border-bottom: 1px solid #ddd;
-  background: white;
-  color: #8695a9;
+  border-radius: 0 15px 15px 0;
+  background: none;
+  color: #c8343a;
   font: inherit;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 300;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.inventory-delete-button:hover {
+.inventory-card.is-open .inventory-delete-button {
+  border-bottom-right-radius: 0;
+}
+.inventory-delete-button:hover:not(:disabled) {
   background: #fef2f2;
-  color: #dc2626;
 }
 .inventory-delete-button:focus-visible {
   outline: 2px solid #dc2626;
   outline-offset: -2px;
   background: #fef2f2;
-  color: #dc2626;
+}
+.inventory-row-button:disabled,
+.inventory-delete-button:disabled {
+  cursor: not-allowed;
 }
 .inventory-delete-dialog {
   max-width: 420px;
@@ -145,46 +269,8 @@
   border-radius: 6px;
   font-size: 16px;
 }
-.inventory-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 16px;
-  margin: 8px 0 12px;
-}
-.inventory-filters .zaiko-search {
-  flex: 1 1 220px;
-  min-width: 0;
-  margin: 0;
-}
-.inventory-category-filter {
-  display: flex;
-  flex: 0 1 220px;
-  min-width: 0;
-  max-width: 100%;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-}
-.inventory-category-filter select {
-  width: 100%;
-  min-height: 38px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 16px;
-}
 .inventory-modal .hint {
   overflow-wrap: anywhere;
-}
-.inventory-consumption-switch {
-  max-width: 100%;
-  white-space: normal;
-}
-.inventory-consumption-switch[aria-checked="true"] {
-  border-color: var(--primary, #2563eb);
 }
 .inventory-quantity-row {
   display: flex;
@@ -270,32 +356,253 @@
   gap: 8px;
 }
 
-/* #420: 在庫の行下操作と既存詳細フォームの操作領域 */
-.inventory-list-grid > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.inventory-list-quantity { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.inventory-low-stock { color: #b45309; font-weight: 700; text-align: center; }
-.inventory-expanded { padding: 12px; border-bottom: 1px solid #ddd; background: #f8fafc; min-width: 0; }
+/* #420・#469: 行を押して開く数量操作欄 */
+.inventory-expanded {
+  min-width: 0;
+  padding: 14px 15px 10px;
+  border-top: 1px solid var(--ui-border);
+}
 .inventory-expanded[hidden] { display: none; }
-.inventory-inline-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
-.inventory-delta-form { margin: 12px 0; }
-.inventory-delta-form label { display: block; margin-bottom: 4px; }
-.inventory-delta-form > div { display: flex; gap: 8px; }
-.inventory-delta-form button { flex-shrink: 0; white-space: nowrap; }
-.inventory-delta-form input { width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; padding: 8px; }
-.inventory-expanded .hint { overflow-wrap: anywhere; }
+.inventory-expanded-title {
+  margin: 0 0 8px;
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 800;
+}
+.inventory-expanded-caption {
+  margin: 0 0 6px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.inventory-stepper {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+}
+.inventory-stepper-button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-soft);
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.inventory-stepper-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.inventory-current-quantity {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.inventory-expanded .inventory-step-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.inventory-expanded .inventory-step-options > span {
+  margin-right: auto;
+  color: var(--ui-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+.inventory-expanded .inventory-step-options .btn {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-radius: 10px;
+  background: #eef3f8;
+  color: #4a5c74;
+  font-weight: 700;
+}
+.inventory-expanded .inventory-step-options .btn[aria-pressed="true"] {
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary-strong);
+  box-shadow: inset 0 0 0 1.5px var(--ui-primary);
+}
+.inventory-delta-form { margin: 12px 0 0; }
+.inventory-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inventory-delta-row .ui-tag {
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary-strong);
+}
+.inventory-delta-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+}
+.inventory-delta-form .hint {
+  margin: 6px 0 10px;
+  overflow-wrap: anywhere;
+}
+.inventory-expanded-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 8px;
+  margin-top: 6px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.inventory-details-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.inventory-details-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.inventory-expanded :is(button, input):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* 主要操作は44px以上、入力は16px以上を保つ(#420) */
 .inventory-expanded .btn,
 .inventory-modal .btn,
-.inventory-delete-dialog .btn,
-[data-testid="inventory-panel"] > .toolbar .btn { min-width: 44px; min-height: 44px; }
-.inventory-expanded .inventory-step-options { grid-template-columns: repeat(2, 44px); }
+.inventory-delete-dialog .btn { min-width: 44px; min-height: 44px; }
 .inventory-modal .inventory-step-options { grid-template-columns: repeat(2, 44px); }
 .inventory-modal .inventory-quantity-inline { grid-template-columns: minmax(0, 1fr) 44px; }
 .inventory-modal .inventory-quantity-inline .btn { width: 44px; height: 44px; }
 .inventory-modal { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .inventory-modal input, .inventory-modal select { min-height: 44px; font-size: 16px; }
-.inventory-filters input, .inventory-filters select, .inventory-delete-button { min-height: 44px; }
 .inventory-row .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.inventory-details-button { max-width: 100%; white-space: normal; }
+
+/* #469: 在庫の登録／詳細編集フォーム(買い物の詳細は同じ .inventory-modal を使うため、専用のクラスで分ける) */
+.inventory-form-modal {
+  border-radius: 18px;
+  color: var(--ui-text);
+}
+.inventory-form-modal h2 {
+  margin-bottom: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.inventory-form-modal label {
+  margin-top: 14px;
+  color: #42536a;
+  font-weight: 700;
+}
+.inventory-form-modal input,
+.inventory-form-modal select {
+  min-height: 48px;
+  margin-top: 5px;
+  padding: 10px 12px;
+  border-color: var(--ui-control-border);
+  border-radius: 12px;
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+}
+.inventory-form-modal .inventory-category-heading {
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.inventory-form-modal .inventory-category-heading + select {
+  margin-top: 0;
+}
+.inventory-form-modal .btn-tiny {
+  padding: 0 4px;
+  background: none;
+  color: var(--ui-primary-strong);
+  font-weight: 700;
+}
+.inventory-form-modal .inventory-category-form {
+  border-color: var(--ui-border);
+  border-radius: 12px;
+}
+.inventory-form-modal .inventory-category-form label {
+  margin-top: 0;
+}
+/* 数量操作の見出し。入力欄のラベルと同じ見た目にそろえる。 */
+.inventory-quantity-caption {
+  margin: 14px 0 5px;
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.inventory-form-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+.inventory-form-pair > div { min-width: 0; }
+.inventory-form-modal .qty-value {
+  border-color: var(--ui-control-border);
+  border-radius: 12px;
+}
+.inventory-consumption-card {
+  margin-top: 16px;
+  padding: 12px 14px;
+  box-shadow: none;
+}
+.inventory-consumption-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inventory-consumption-head > div { min-width: 0; }
+.inventory-consumption-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+.inventory-consumption-card .hint {
+  margin: 2px 0 0;
+  color: var(--ui-muted);
+}
+.inventory-consumption-card > .hint { margin-top: 8px; }
+.inventory-form-modal :is(button, input, select):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
 
 /* #421: 店舗別の購入下書きとナビ上の反映操作 */
 .shopping-panel { padding-bottom: calc(var(--shopping-bar-height, 80px) + 24px); }

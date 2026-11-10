@@ -95,7 +95,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         for (const [delta, quantity] of [['2.5', '3.5'], ['-2.5', '1.0'], ['-0.5', '0.5'], ['0.5', '1.0']]) {
           await operations.getByLabel('増減量', { exact: true }).fill(delta)
           const adjusted = page.waitForResponse(response => response.request().method() === 'PATCH' && /\/api\/inventory-items\/\d+\/quantity$/.test(new URL(response.url()).pathname))
-          await operations.getByRole('button', { name: '適用', exact: true }).click()
+          await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
           expect((await adjusted).status()).toBe(200)
           await expect(listQuantity).toHaveText(quantity)
           if (quantity === '0.5') {
@@ -110,7 +110,7 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         expect(inlineDeltas).toEqual([1, -1, 0.1, -0.1, 2.5, -2.5, -0.5, 0.5])
         await expectActionTargets44(page.getByTestId('inventory-panel'))
         expect(await operations.getByLabel('増減量', { exact: true }).evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-        const applyLine = await operations.getByRole('button', { name: '適用', exact: true }).evaluate(el => {
+        const applyLine = await operations.getByRole('button', { name: '数量を適用', exact: true }).evaluate(el => {
           const range = document.createRange()
           range.selectNodeContents(el)
           return { text: el.textContent, font: parseFloat(getComputedStyle(el).fontSize), tops: [...range.getClientRects()].map(rect => rect.top) }
@@ -119,14 +119,14 @@ test.describe('F-07/F-08 在庫・買い物リスト', () => {
         expect(Math.max(...applyLine.tops) - Math.min(...applyLine.tops), '適用ラベルは単一行: ' + JSON.stringify(applyLine)).toBeLessThan(applyLine.font / 2)
         if (process.env.ZAIKO_SCREENSHOT_DIR) {
           await mkdir(process.env.ZAIKO_SCREENSHOT_DIR, { recursive: true })
-          await operations.getByRole('button', { name: '適用', exact: true }).scrollIntoViewIfNeeded()
+          await operations.getByRole('button', { name: '数量を適用', exact: true }).scrollIntoViewIfNeeded()
           await page.screenshot({ path: join(process.env.ZAIKO_SCREENSHOT_DIR, 'inventory-b-actions-' + width + '.png') })
           await page.evaluate(() => window.scrollTo(0, 0))
           await page.screenshot({ path: join(process.env.ZAIKO_SCREENSHOT_DIR, 'inventory-b-' + width + '.png'), fullPage: true })
         }
         await openInventoryDetails(page, row)
         await expect(operations).toBeHidden()
-        const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
+        const detail = page.getByRole('dialog', { name: '在庫の詳細編集' })
         const quantity = detail.locator('.qty-value')
         await expect(quantity).toHaveText('1.0')
         await expect(detail).toContainText(categoryName)

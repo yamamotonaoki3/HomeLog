@@ -156,7 +156,7 @@ const egg: InventoryItem = { id: 2, name: '卵', categoryId: 1, storeId: null, q
 async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>, name: string) {
   const row = await screen.findByRole('button', { name: name + 'の詳細' })
   if (row.getAttribute('aria-expanded') !== 'true') await user.click(row)
-  await user.click(screen.getByRole('button', { name: name + 'の詳細設定' }))
+  await user.click(screen.getByRole('button', { name: name + 'の詳細を編集' }))
 }
 
 describe('ZaikoPage', () => {
@@ -244,7 +244,7 @@ describe('ZaikoPage', () => {
       expect(screen.getByRole('button', { name: freshInventory.name + 'の詳細' })).toHaveTextContent('在庫 7.5')
       await openTab(user, '在庫一覧')
       await openInventoryDetails(user, freshInventory.name)
-      expect(within(screen.getByRole('dialog', { name: '在庫詳細・編集' })).getByText('7.5')).toBeInTheDocument()
+      expect(within(screen.getByRole('dialog', { name: '在庫の詳細編集' })).getByText('7.5')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: oldInventory.name + 'の詳細', hidden: true })).not.toBeInTheDocument()
     } finally { gates.forEach(gate => gate.resolve()); get.mockRestore() }
   })
@@ -267,7 +267,7 @@ describe('ZaikoPage', () => {
     } else {
       await user.click(screen.getByRole('button', { name: '在庫を登録' }))
     }
-    const modal = screen.getByRole('dialog', { name: mode === '編集' ? '在庫詳細・編集' : '在庫を登録' })
+    const modal = screen.getByRole('dialog', { name: mode === '編集' ? '在庫の詳細編集' : '在庫を登録' })
     await user.clear(within(modal).getByLabelText('品名'))
     await user.type(within(modal).getByLabelText('品名'), '牛乳')
     await user.type(within(modal).getByLabelText('値段（円・任意）'), '123')
@@ -287,7 +287,7 @@ describe('ZaikoPage', () => {
     renderZaikoPage()
     await openInventoryDetails(user, '牛乳')
     const plus = screen.getByRole('button', { name: '牛乳を増やす' })
-    const row = screen.getByRole('dialog', { name: '在庫詳細・編集' })
+    const row = screen.getByRole('dialog', { name: '在庫の詳細編集' })
     const controls = [...row.querySelectorAll('.inventory-quantity-controls button, .qty-value')]
     expect(controls).toEqual([
       row.querySelector('.qty-value'), plus,
@@ -296,13 +296,13 @@ describe('ZaikoPage', () => {
     await user.click(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' }))
     await user.click(plus)
     await waitFor(() => expect(row.querySelector('.qty-value')).toHaveTextContent(/^2\.1$/))
-    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫の詳細編集' }) ? 'キャンセル' : '閉じる' }))
     await openInventoryDetails(user, '卵')
     await user.click(screen.getByRole('button', { name: '卵を減らす' }))
-    const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
+    const eggRow = screen.getByRole('dialog', { name: '在庫の詳細編集' })
     await waitFor(() => expect(eggRow.querySelector('.qty-value')).toHaveTextContent(/^1\.0$/))
     expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '1' })).toHaveAttribute('aria-pressed', 'true')
-    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫の詳細編集' }) ? 'キャンセル' : '閉じる' }))
     await openInventoryDetails(user, '牛乳')
     expect(within(screen.getByRole('group', { name: '増減幅' })).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
     expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
@@ -321,12 +321,12 @@ describe('ZaikoPage', () => {
 
     await waitFor(() => expect(screen.getByText('牛乳')).toBeInTheDocument())
     const inventoryPanel = screen.getByTestId('inventory-panel')
-    // カテゴリーは絞り込みの選択肢に表示するが、品目行の3列には追加しない。
-    expect(within(inventoryPanel.querySelector('.inventory-list') as HTMLElement).queryByText('乳製品')).not.toBeInTheDocument()
+    // カテゴリーは絞り込みの選択肢に加えて、品名の下にも表示する(#469)。
+    expect(within(within(inventoryPanel).getByRole('button', { name: '牛乳の詳細' })).getByText('乳製品')).toBeInTheDocument()
     await openInventoryDetails(user, '牛乳')
     expect(within(screen.getByRole('dialog')).getByText('乳製品')).toBeInTheDocument()
     expect(screen.getByText('スーパーA')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫の詳細編集' }) ? 'キャンセル' : '閉じる' }))
     expect(screen.getByTestId('shopping-panel')).not.toBeVisible()
 
     await openTab(user, '買い物リスト')
@@ -386,11 +386,11 @@ describe('ZaikoPage', () => {
     await within(inventoryPanel).findByRole('button', { name: '牛乳の詳細' })
 
     // 全角・半角、大文字・小文字を区別しない
-    await user.type(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }), 'butter')
+    await user.type(within(inventoryPanel).getByRole('searchbox', { name: '商品を探す' }), 'butter')
     expect(within(inventoryPanel).getByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).toBeInTheDocument()
     expect(within(inventoryPanel).queryByRole('button', { name: '牛乳の詳細' })).not.toBeInTheDocument()
-    await user.clear(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }))
-    await user.type(within(inventoryPanel).getByRole('searchbox', { name: 'キーワード検索' }), 'チーズ')
+    await user.clear(within(inventoryPanel).getByRole('searchbox', { name: '商品を探す' }))
+    await user.type(within(inventoryPanel).getByRole('searchbox', { name: '商品を探す' }), 'チーズ')
     expect(within(inventoryPanel).getByText('該当する品目がありません')).toBeInTheDocument()
 
     await openTab(user, '買い物リスト')
@@ -448,7 +448,7 @@ describe('ZaikoPage', () => {
     await user.click(screen.getByRole('button', { name: '牛乳を減らす' }))
     await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('0.0')).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫の詳細編集' }) ? 'キャンセル' : '閉じる' }))
     // タブを切り替えたときに、在庫の増減で自動追加された最新の買い物リストが表示される
     await openTab(user, '買い物リスト')
     const shoppingPanel = screen.getByTestId('shopping-panel')
@@ -624,7 +624,7 @@ describe('ZaikoPage', () => {
     await user.click(screen.getByRole('button', { name: '卵の詳細' }))
     await user.clear(screen.getByRole('textbox', { name: '卵の実購入数' }))
     await user.type(screen.getByRole('textbox', { name: '卵の実購入数' }), '2')
-    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫詳細・編集' }) ? 'キャンセル' : '閉じる' }))
+    await user.click(screen.getByRole('button', { name: screen.queryByRole('dialog', { name: '在庫の詳細編集' }) ? 'キャンセル' : '閉じる' }))
     await user.click(screen.getByRole('button', { name: '購入を反映' }))
     await user.click(screen.getByRole('button', { name: 'この内容で購入を反映' }))
 
@@ -639,7 +639,7 @@ describe('ZaikoPage', () => {
     // 在庫一覧タブに切り替えると、購入分が反映された最新の在庫が表示される
     await openTab(user, '在庫一覧')
     await openInventoryDetails(user, '卵')
-    const eggRow = screen.getByRole('dialog', { name: '在庫詳細・編集' })
+    const eggRow = screen.getByRole('dialog', { name: '在庫の詳細編集' })
     expect(within(eggRow).getByText('2.0')).toBeInTheDocument()
   })
 })

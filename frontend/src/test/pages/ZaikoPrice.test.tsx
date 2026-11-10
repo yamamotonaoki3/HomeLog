@@ -31,7 +31,7 @@ function setup(path = '/zaiko') {
 async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>) {
   const row = await screen.findByRole('button', { name: 'testuser_牛乳の詳細' })
   if (row.getAttribute('aria-expanded') !== 'true') await user.click(row)
-  await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細設定' }))
+  await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細を編集' }))
 }
 
 describe('値段入力', () => {
