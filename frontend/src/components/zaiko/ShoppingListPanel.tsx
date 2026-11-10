@@ -16,6 +16,8 @@ interface Props {
 }
 interface RowDraft { checked: boolean; actualText: string; checkedRevision: number; plannedText?: string; plannedDirty?: boolean; error?: string }
 type ConfirmLine = PurchaseLine & { name: string }
+// 購入数の上限 99999.9 を10倍の整数で持つ(小数の誤差を避ける)。
+const MAX_COUNT_TENTHS = 999999
 export function ShoppingListPanel({ shopping, inventory, categories, stores, sort, onSortChange, onRefresh, onNotify, actorUserId, active = true, onScopeDetached, onScopeReconnect }: Props) {
   const searchId = useId()
   const [keyword, setKeyword] = useState(''), [addFormOpen, setAddFormOpen] = useState(false), [addItemId, setAddItemId] = useState(''), [addPrice, setAddPrice] = useState('')
@@ -194,16 +196,28 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
         <section key={name} aria-label={name + 'の買い物'} className="shopping-store-group">
           <div className="shopping-store-head"><h3>{name}</h3><span>{items.length}件</span></div>
           <ul className="shopping-list">{items.map(item => {
-const draft = draftOf(item); return <li key={item.id} className="ui-card shopping-row">
+const draft = draftOf(item)
+            // 行の購入数(#485)。チェック前は予定数を表示し、－／＋を押すとチェックを付けて実購入数にする。通信はしない。
+            const countTenths = Math.round((draft.checked ? parseQuantity(draft.actualText) ?? 0 : item.plannedQuantity) * 10)
+            const stepCount = (delta: number) => {
+              const next = String(Math.min(MAX_COUNT_TENTHS, Math.max(0, countTenths + delta * 10)) / 10)
+              updateDraft(item, draft.checked ? { actualText: next, error: undefined } : { checked: true, actualText: next, checkedRevision: item.purchaseRevision, error: undefined })
+            }
+            return <li key={item.id} className="ui-card shopping-row">
               <label className="shopping-checkbox">
                 <input type="checkbox" aria-label={item.name + 'を購入済みにする'} checked={draft.checked} disabled={locked(item.id)} onChange={e => updateDraft(item, { checked: e.target.checked, actualText: e.target.checked ? String(item.plannedQuantity) : draft.actualText, checkedRevision: item.purchaseRevision, error: undefined })} />
               </label>
               <button type="button" className="list-row-button shopping-item-button" aria-label={item.name + 'の詳細'} onClick={e => { origin.current = e.currentTarget; setSelectedId(item.id) }}>
                 <span className="shopping-item-name">{item.name}</span>
                 <span className="shopping-item-quantities">
-                  <span>予定 {item.plannedQuantity}</span>
-                  <span>在庫 {stockText(item.inventoryItemId)}</span>{draft.checked && <span>実購入 {draft.actualText || '未入力'}</span>}</span>
+                  <span>在庫 {stockText(item.inventoryItemId)}</span></span>
               </button>
+              <div className="shopping-count" role="group" aria-label={item.name + 'の購入数'}>
+                <span className="shopping-count-label" aria-hidden="true">購入数</span>
+                <button type="button" className="shopping-count-button" aria-label={item.name + 'の購入数を1減らす'} disabled={locked(item.id) || countTenths <= 0} onClick={() => stepCount(-1)}>－</button>
+                <output className="shopping-count-value">{draft.checked ? draft.actualText || '未入力' : String(item.plannedQuantity)}</output>
+                <button type="button" className="shopping-count-button" aria-label={item.name + 'の購入数を1増やす'} disabled={locked(item.id) || countTenths >= MAX_COUNT_TENTHS} onClick={() => stepCount(1)}>＋</button>
+              </div>
             </li>
 })}</ul></section>)}</div>
     </>}
