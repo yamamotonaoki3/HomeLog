@@ -22,10 +22,39 @@ export function getMondayOf(date: Date): string {
   return formatDate(monday)
 }
 
+/** "YYYY-MM-DD"形式の文字列を、端末のタイムゾーンでのその日の0時として読み取る。 */
+function parseDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 /** "YYYY-MM-DD"形式の月曜日から、指定週数だけ前後した週の月曜日を算出する(負数で前週方向)。 */
 export function addWeeks(weekStartDate: string, weeks: number): string {
-  const [year, month, day] = weekStartDate.split('-').map(Number)
-  const date = new Date(year, month - 1, day)
+  const date = parseDate(weekStartDate)
   date.setDate(date.getDate() + weeks * 7)
   return formatDate(date)
+}
+
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
+
+/**
+ * 週の期間を「2026年11月2日（月）〜11月8日（日）」の形で返す。
+ * 年をまたぐ週だけ、終わりの日付にも年を付ける。
+ */
+export function formatWeekRange(weekStartDate: string): string {
+  const start = parseDate(weekStartDate)
+  const end = parseDate(weekStartDate)
+  end.setDate(end.getDate() + 6)
+  const label = (date: Date, withYear: boolean) =>
+    `${withYear ? `${date.getFullYear()}年` : ''}${date.getMonth() + 1}月${date.getDate()}日（${WEEKDAY_LABELS[date.getDay()]}）`
+  return `${label(start, true)}〜${label(end, end.getFullYear() !== start.getFullYear())}`
+}
+
+/**
+ * 週を「11月 第1週」の形で返す。週の月曜日が、その月の何回目の月曜日かで数える
+ * (月をまたぐ週は、月曜日が属する月の週として扱う)。
+ */
+export function formatWeekOfMonth(weekStartDate: string): string {
+  const start = parseDate(weekStartDate)
+  return `${start.getMonth() + 1}月 第${Math.ceil(start.getDate() / 7)}週`
 }

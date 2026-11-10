@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { MenuEntry, Recipe } from '../api/kondateTypes'
-import { addWeeks, getMondayOf } from '../lib/week'
+import { addWeeks, formatWeekOfMonth, formatWeekRange, getMondayOf } from '../lib/week'
 import { Toast } from '../components/Toast'
 import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import { MenuAddSheet, type AddMode } from '../components/kondate/MenuAddSheet'
@@ -13,6 +13,13 @@ import { useDialog } from '../hooks/useDialog'
 
 function displayLabel(entry: MenuEntry): string {
   return entry.recipeId !== null ? entry.recipeTitle ?? '(削除されたレシピ)' : entry.freeTextMemo ?? ''
+}
+
+// 行の2行目に出す出典。サイト名が分かればサイト名、無ければ登録の種類を示す。
+function sourceLabel(entry: MenuEntry, recipe: Recipe | undefined): string | undefined {
+  if (entry.recipeId === null) return '自由メモ'
+  if (!recipe || entry.recipeTitle === null) return undefined
+  return recipeSite(recipe.url) ?? 'レシピ'
 }
 
 function DeleteConfirmation({ entry, busy, error, onClose, onDelete }: {
@@ -155,31 +162,41 @@ export function MenuPage() {
     finally { pending.current = false; setSubmitting(false) }
   }
 
+  const weekMoveDisabled = submitting || addOpen || deleteTarget !== null
+
   return <div className="page">
-    <div className="panel" data-testid="menu-panel">
-      <div className="toolbar menu-toolbar">
-        <h2>献立表</h2>
-        <button type="button" aria-label="先週" className="btn btn-secondary" disabled={submitting || addOpen || deleteTarget !== null} onClick={() => setWeekStartDate(value => addWeeks(value, -1))}><span aria-hidden="true">◀</span></button>
-        <span>{weekStartDate} の週</span>
-        <button type="button" aria-label="次週" className="btn btn-secondary" disabled={submitting || addOpen || deleteTarget !== null} onClick={() => setWeekStartDate(value => addWeeks(value, 1))}><span aria-hidden="true">▶</span></button>
+    <div className="ui-narrow" data-testid="menu-panel">
+      <header className="ui-page-head">
+        <div>
+          <h2>献立表</h2>
+          <p className="ui-page-sub" data-testid="menu-week-range">{formatWeekRange(weekStartDate)}</p>
+        </div>
+      </header>
+      <div className="ui-card menu-week-nav" role="group" aria-label="週の移動">
+        <button type="button" className="menu-week-button" disabled={weekMoveDisabled} onClick={() => setWeekStartDate(value => addWeeks(value, -1))}><span aria-hidden="true">‹</span>前の週</button>
+        <span className="menu-week-label">{formatWeekOfMonth(weekStartDate)}</span>
+        <button type="button" className="menu-week-button" disabled={weekMoveDisabled} onClick={() => setWeekStartDate(value => addWeeks(value, 1))}>次の週<span aria-hidden="true">›</span></button>
       </div>
-      <button ref={addTrigger} type="button" className="btn btn-primary menu-add-trigger" disabled={loading} onClick={() => { if (!uncertain) setError(''); setAddOpen(true) }}>レシピを追加</button>
-      {loading ? <p>読み込み中...</p> : <ul className="menu-list" aria-label="この週の献立">
-        {entries.length === 0 ? <li>この週の献立はまだありません</li> : entries.map(entry => {
-          const recipe = recipes.find(item => item.id === entry.recipeId)
-          const available = recipe && entry.recipeTitle !== null
-          return <li key={entry.id} className="menu-list-row">
-            <MenuTitle text={displayLabel(entry)} siteLabel={recipeSite(recipe?.url)}>
-              {available && (recipe.sourceType === 'web' && recipe.url
-                ? <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">レシピを見る</a>
-                : <button type="button" className="menu-entry-link" onClick={event => { detailTrigger.current = event.currentTarget; setDetailRecipe(recipe) }}>レシピを見る</button>)}
-            </MenuTitle>
-            <button type="button" className="btn btn-secondary menu-delete-trigger" onClick={event => { deleteTrigger.current = event.currentTarget; setDeleteError(''); setDeleteTarget(entry) }}>削除</button>
-          </li>
-        })}
-      </ul>}
+      <button ref={addTrigger} type="button" className="ui-action" disabled={loading} onClick={() => { if (!uncertain) setError(''); setAddOpen(true) }}><span aria-hidden="true">＋</span>レシピを追加</button>
+      {loading ? <p className="ui-empty">読み込み中...</p> : <>
+        <h3 className="ui-section-label">登録済みの献立（{entries.length}件）</h3>
+        <ul className="menu-list" aria-label="この週の献立">
+          {entries.length === 0 ? <li className="ui-empty">この週の献立はまだありません</li> : entries.map(entry => {
+            const recipe = recipes.find(item => item.id === entry.recipeId)
+            const available = recipe && entry.recipeTitle !== null
+            return <li key={entry.id} className="ui-card menu-list-row">
+              <MenuTitle text={displayLabel(entry)} siteLabel={sourceLabel(entry, recipe)} chevron>
+                {available && (recipe.sourceType === 'web' && recipe.url
+                  ? <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">レシピを見る</a>
+                  : <button type="button" className="menu-entry-link" onClick={event => { detailTrigger.current = event.currentTarget; setDetailRecipe(recipe) }}>レシピを見る</button>)}
+                <button type="button" className="menu-delete-trigger" onClick={event => { deleteTrigger.current = event.currentTarget; setDeleteError(''); setDeleteTarget(entry) }}>削除</button>
+              </MenuTitle>
+            </li>
+          })}
+        </ul>
+      </>}
     </div>
-    {addOpen && <MenuAddSheet recipes={recipes} mode={addMode} keyword={recipeKeyword} selectedIds={selectedIds} memo={memo} error={error} busy={submitting} uncertain={uncertain}
+    {addOpen && <MenuAddSheet recipes={recipes} registeredRecipeIds={entries.flatMap(entry => entry.recipeId === null ? [] : [entry.recipeId])} mode={addMode} keyword={recipeKeyword} selectedIds={selectedIds} memo={memo} error={error} busy={submitting} uncertain={uncertain}
       onMode={setAddMode} onKeyword={setRecipeKeyword} onToggle={id => setSelectedIds(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])}
       onClear={() => setSelectedIds([])} onMemo={setMemo} onSubmit={handleAdd} onClose={closeAdd} />}
     {deleteTarget && <DeleteConfirmation entry={deleteTarget} busy={submitting} error={deleteError} onDelete={() => { void handleDelete() }} onClose={() => { setDeleteTarget(null); deleteTrigger.current?.focus() }} />}

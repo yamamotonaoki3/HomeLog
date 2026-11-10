@@ -6,8 +6,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { MenuPage } from '../../pages/MenuPage'
-import { addWeeks, getMondayOf } from '../../lib/week'
+import { addWeeks, formatWeekOfMonth, formatWeekRange, getMondayOf } from '../../lib/week'
 import type { MenuEntry, Recipe } from '../../api/kondateTypes'
+
+// 追加ボタンは、レシピを選ぶと「選択したN件を追加」に変わる。上部の「レシピを追加」とは区別する。
+const SUBMIT = /^(選択した\d+件を)?追加$/
 
 function setupApi(initial: { entries?: Record<string, MenuEntry[]>; recipes?: Recipe[] } = {}) {
   const state = { entries: initial.entries ?? {}, recipes: initial.recipes ?? [] }
@@ -57,15 +60,61 @@ function renderMenuPage() {
 }
 
 describe('MenuPage', () => {
-  it('週ボタンは矢印のみで読み上げ名を持つ', async () => {
+  it('週ボタンは表示どおりの読み上げ名を持ち、矢印は読み上げない', async () => {
     setupApi()
     renderMenuPage()
-    for (const [name, arrow] of [['先週', '◀'], ['次週', '▶']]) {
+    for (const [name, arrow] of [['前の週', '‹'], ['次の週', '›']]) {
       const button = await screen.findByRole('button', { name })
       expect(button).toHaveAccessibleName(name)
-      expect(button.textContent?.trim()).toBe(arrow)
+      expect(button).toHaveTextContent(name)
       expect(within(button).getByText(arrow)).toHaveAttribute('aria-hidden', 'true')
     }
+  })
+
+  it('画面タイトルの下に週の期間を、週移動の中央に月と第何週かを表示する', async () => {
+    const monday = getMondayOf(new Date())
+    setupApi()
+    renderMenuPage()
+    expect(await screen.findByRole('heading', { name: '献立表' })).toBeVisible()
+    expect(screen.getByText(formatWeekRange(monday))).toBeVisible()
+    expect(within(screen.getByRole('group', { name: '週の移動' })).getByText(formatWeekOfMonth(monday))).toBeVisible()
+  })
+
+  it('登録済みの件数を見出しに表示し、行には出典の種類を添える', async () => {
+    const monday = getMondayOf(new Date())
+    const base = { ingredients: null, steps: null, thumbnailUrl: null, memo: null, isFavorite: false }
+    setupApi({
+      entries: {
+        [monday]: [
+          { id: 1, recipeId: 10, recipeTitle: '[E2E_TEST] サイトのレシピ', freeTextMemo: null, weekStartDate: monday },
+          { id: 2, recipeId: 11, recipeTitle: '[E2E_TEST] 手入力レシピ', freeTextMemo: null, weekStartDate: monday },
+          { id: 3, recipeId: null, recipeTitle: null, freeTextMemo: '[E2E_TEST] 外食', weekStartDate: monday },
+        ],
+      },
+      recipes: [
+        { ...base, id: 10, title: '[E2E_TEST] サイトのレシピ', sourceType: 'web', url: 'https://recipe.example.com/a' },
+        { ...base, id: 11, title: '[E2E_TEST] 手入力レシピ', sourceType: 'manual', url: null },
+      ],
+    })
+    renderMenuPage()
+    expect(await screen.findByRole('heading', { name: '登録済みの献立（3件）' })).toBeVisible()
+    const rows = within(screen.getByRole('list')).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('recipe.example.com')
+    expect(within(rows[1]).getByText('レシピ', { exact: true })).toBeVisible()
+    expect(within(rows[2]).getByText('自由メモ', { exact: true })).toBeVisible()
+  })
+
+  it('削除は行を開いたときだけ表示する', async () => {
+    const monday = getMondayOf(new Date())
+    setupApi({ entries: { [monday]: [{ id: 1, recipeId: null, recipeTitle: null, freeTextMemo: '外食', weekStartDate: monday }] } })
+    const user = userEvent.setup()
+    renderMenuPage()
+    const title = await screen.findByRole('button', { name: '外食' })
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+    await user.click(title)
+    expect(screen.getByRole('button', { name: '削除' })).toBeVisible()
+    await user.click(title)
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
   })
 
   it.each([false, true])('週ごとの一覧・取得日・復帰を検証する（年境界: %s）', async (yearBoundary) => {
@@ -81,10 +130,10 @@ describe('MenuPage', () => {
       const user = userEvent.setup()
       renderMenuPage()
       await screen.findByText(`[E2E_TEST] ${monday}`)
-      for (const [name, week] of [['先週', previous], ['次週', monday], ['次週', next], ['先週', monday]]) {
+      for (const [name, week] of [['前の週', previous], ['次の週', monday], ['次の週', next], ['前の週', monday]]) {
         await user.click(screen.getByRole('button', { name }))
         await screen.findByText(`[E2E_TEST] ${week}`)
-        expect(screen.getByText(`${week} の週`)).toBeInTheDocument()
+        expect(screen.getByText(formatWeekRange(week))).toBeInTheDocument()
         expect(screen.getAllByRole('listitem')).toHaveLength(1)
         expect(calls.at(-1)?.url).toBe(`/api/menu-entries?weekStartDate=${week}`)
       }
@@ -98,13 +147,13 @@ describe('MenuPage', () => {
     setupApi()
     const user = userEvent.setup()
     renderMenuPage()
-    const previous = await screen.findByRole('button', { name: '先週' })
+    const previous = await screen.findByRole('button', { name: '前の週' })
     previous.focus()
     await user.keyboard('{Enter}')
-    await screen.findByText(`${addWeeks(monday, -1)} の週`)
-    screen.getByRole('button', { name: '次週' }).focus()
+    await screen.findByText(formatWeekRange(addWeeks(monday, -1)))
+    screen.getByRole('button', { name: '次の週' }).focus()
     await user.keyboard(' ')
-    await screen.findByText(`${monday} の週`)
+    await screen.findByText(formatWeekRange(monday))
   })
   it('今週の献立が無い場合はプレースホルダーを表示する', async () => {
     setupApi()
@@ -148,7 +197,7 @@ describe('MenuPage', () => {
     renderMenuPage()
     await waitFor(() => expect(calls.some((c) => c.url.includes(monday))).toBe(true))
 
-    await user.click(screen.getByRole('button', { name: '次週' }))
+    await user.click(screen.getByRole('button', { name: '次の週' }))
 
     await waitFor(() => {
       const nextWeekCalls = calls.filter((c) => c.method === 'GET' && c.url === `/api/menu-entries?weekStartDate=${addWeeks(monday, 1)}`)
@@ -161,13 +210,13 @@ describe('MenuPage', () => {
     setupApi()
     const user = userEvent.setup()
     renderMenuPage()
-    await waitFor(() => expect(screen.getByText(`${monday} の週`)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(formatWeekRange(monday))).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: '先週' }))
-    await screen.findByText(`${addWeeks(monday, -1)} の週`)
+    await user.click(screen.getByRole('button', { name: '前の週' }))
+    await screen.findByText(formatWeekRange(addWeeks(monday, -1)))
 
-    await user.click(screen.getByRole('button', { name: '次週' }))
-    await waitFor(() => expect(screen.getByText(`${monday} の週`)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '次の週' }))
+    await waitFor(() => expect(screen.getByText(formatWeekRange(monday))).toBeInTheDocument())
   })
 
   it('レシピを選択して確定登録できる', async () => {
@@ -180,7 +229,7 @@ describe('MenuPage', () => {
 
     await user.click(screen.getByRole('checkbox', { name: '肉じゃが' }))
     expect(calls.some(c => c.method === 'POST')).toBe(false)
-    await user.click(screen.getByRole('button', { name: '追加' }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     const list = screen.getByRole('list')
     await waitFor(() => expect(within(list).getByText('肉じゃが')).toBeInTheDocument())
@@ -215,7 +264,7 @@ describe('MenuPage', () => {
     expect(screen.getByRole('checkbox', { name: 'Pasta Carbonara' })).toBeChecked()
     await user.click(screen.getByRole('checkbox', { name: 'Pasta Carbonara' }))
     await user.click(screen.getByRole('checkbox', { name: '鶏の唐揚げ' }))
-    await user.click(screen.getByRole('button', { name: '追加' }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
     await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ weekStartDate: monday, recipeId: 11 }))
   })
 
@@ -243,7 +292,7 @@ describe('MenuPage', () => {
 
     await user.click(screen.getByRole('radio', { name: '自由メモ' }))
     await user.type(screen.getByLabelText('自由メモの内容'), '魚料理')
-    await user.click(screen.getByRole('button', { name: '追加' }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     await waitFor(() => expect(screen.getByText('魚料理')).toBeInTheDocument())
     const postCall = calls.find((c) => c.method === 'POST')
@@ -257,7 +306,7 @@ describe('MenuPage', () => {
     await userEvent.setup().click(await screen.findByRole('button', { name: 'レシピを追加' }))
     await waitFor(() => expect(screen.getByText('この週の献立はまだありません')).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: '追加' }))
+    await user.click(screen.getByRole('button', { name: SUBMIT }))
 
     await waitFor(() => expect(screen.getByText('レシピを選択してください')).toBeInTheDocument())
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
@@ -272,6 +321,7 @@ describe('MenuPage', () => {
     renderMenuPage()
     await waitFor(() => expect(screen.getByText('外食')).toBeInTheDocument())
 
+    await user.click(screen.getByRole('button', { name: '外食' }))
     await user.click(screen.getByRole('button', { name: '削除' }))
     await user.click(screen.getByRole('button', { name: '献立から削除' }))
 
@@ -338,7 +388,7 @@ const recipe = (id: number, title = '[E2E_TEST] レシピ' + id): Recipe => ({
 
 async function openSheet(user = userEvent.setup()) {
   await user.click(await screen.findByRole('button', { name: 'レシピを追加' }))
-  return screen.getByRole('dialog', { name: 'レシピを追加' })
+  return screen.getByRole('dialog', { name: '献立に追加する' })
 }
 
 describe('#419 献立の追加シート', () => {
@@ -379,8 +429,8 @@ describe('#419 献立の追加シート', () => {
     await user.click(within(sheet).getByRole('checkbox', { name: recipe(2).title }))
     await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
     expect(calls.filter(c => c.method === 'POST')).toHaveLength(0)
-    await user.dblClick(within(sheet).getByRole('button', { name: '追加' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'レシピを追加' })).not.toBeInTheDocument())
+    await user.dblClick(within(sheet).getByRole('button', { name: SUBMIT }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '献立に追加する' })).not.toBeInTheDocument())
     expect(calls.filter(c => c.method === 'POST').map(c => (c.body as {recipeId:number}).recipeId)).toEqual([2, 1])
     expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(2)
   })
@@ -402,15 +452,15 @@ describe('#419 献立の追加シート', () => {
     renderMenuPage()
     const sheet = await openSheet(user)
     for (const item of [1, 2, 3]) await user.click(within(sheet).getByRole('checkbox', { name: recipe(item).title }))
-    await user.click(within(sheet).getByRole('button', { name: '追加' }))
+    await user.click(within(sheet).getByRole('button', { name: SUBMIT }))
     await within(sheet).findByRole('alert')
     expect(posted).toEqual([1, 2])
     expect(within(sheet).getByRole('checkbox', { name: recipe(1).title })).not.toBeChecked()
     expect(within(sheet).getByRole('checkbox', { name: recipe(2).title })).toBeChecked()
     expect(within(sheet).getByRole('checkbox', { name: recipe(3).title })).toBeChecked()
     fail = false
-    await user.click(within(sheet).getByRole('button', { name: '追加' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'レシピを追加' })).not.toBeInTheDocument())
+    await user.click(within(sheet).getByRole('button', { name: SUBMIT }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '献立に追加する' })).not.toBeInTheDocument())
     expect(posted).toEqual([1, 2, 2, 3])
     expect(calls.filter(c => c.method === 'DELETE')).toHaveLength(0)
     expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(3)
@@ -427,7 +477,7 @@ describe('#419 献立の追加シート', () => {
     renderMenuPage()
     const sheet = await openSheet(user)
     await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
-    await user.click(within(sheet).getByRole('button', { name: '追加' }))
+    await user.click(within(sheet).getByRole('button', { name: SUBMIT }))
     await waitFor(() => expect(release).toBeDefined())
     await user.keyboard('{Escape}')
     expect(sheet).toBeInTheDocument()
@@ -462,6 +512,58 @@ describe('#419 献立の追加シート', () => {
   })
 })
 
+describe('#467 追加シートの表示', () => {
+  it('見出しは「献立に追加する」、閉じるボタンは×表示で読み上げ名「閉じる」を持つ', async () => {
+    setupApi({ recipes: [recipe(1)] })
+    renderMenuPage()
+    const sheet = await openSheet()
+    expect(within(sheet).getByRole('heading', { name: '献立に追加する' })).toBeVisible()
+    const close = within(sheet).getByRole('button', { name: '閉じる' })
+    expect(close).toHaveTextContent('×')
+    expect(within(close).getByText('×')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('追加ボタンは選択件数を表示し、未選択と自由メモでは「追加」と表示する', async () => {
+    setupApi({ recipes: [recipe(1), recipe(2)] })
+    const user = userEvent.setup()
+    renderMenuPage()
+    const sheet = await openSheet(user)
+    expect(within(sheet).getByRole('button', { name: '追加' })).toBeEnabled()
+    await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
+    expect(within(sheet).getByRole('button', { name: '選択した1件を追加' })).toBeVisible()
+    await user.click(within(sheet).getByRole('checkbox', { name: recipe(2).title }))
+    expect(within(sheet).getByRole('button', { name: '選択した2件を追加' })).toBeVisible()
+    await user.click(within(sheet).getByLabelText('自由メモ', { exact: true }))
+    expect(within(sheet).getByRole('button', { name: '追加' })).toBeVisible()
+  })
+
+  it('この週に登録済みのレシピには「登録済み」の印を付け、もう一度選ぶこともできる', async () => {
+    const monday = getMondayOf(new Date())
+    setupApi({
+      recipes: [recipe(1), recipe(2)],
+      entries: { [monday]: [{ id: 1, recipeId: 1, recipeTitle: recipe(1).title, freeTextMemo: null, weekStartDate: monday }] },
+    })
+    const user = userEvent.setup()
+    renderMenuPage()
+    await within(await screen.findByRole('list')).findByRole('button', { name: recipe(1).title })
+    const sheet = await openSheet(user)
+    const candidates = within(sheet).getByRole('group', { name: 'レシピ候補' })
+    expect(within(candidates).getAllByText('登録済み')).toHaveLength(1)
+    const registered = within(candidates).getByText('登録済み').closest('.menu-recipe-candidate') as HTMLElement
+    expect(within(registered).getByRole('checkbox', { name: recipe(1).title })).toBeEnabled()
+    await user.click(within(registered).getByRole('checkbox', { name: recipe(1).title }))
+    expect(within(registered).getByRole('checkbox', { name: recipe(1).title })).toBeChecked()
+  })
+
+  it('検索欄は見えるラベル「レシピを検索」を持つ', async () => {
+    setupApi({ recipes: [recipe(1)] })
+    renderMenuPage()
+    const sheet = await openSheet()
+    expect(within(sheet).getByText('レシピを検索', { selector: 'label' })).toBeVisible()
+    expect(within(sheet).getByRole('searchbox', { name: 'レシピを検索' })).toHaveAttribute('placeholder', '料理名を検索')
+  })
+})
+
 describe('#419 非同期境界', () => {
   it.each([0, 500])('結果不明の追加(%s)は閉じて再表示しても停止理由を保持し、再送しない', async status => {
     const { state } = setupApi({ recipes: [recipe(1)] })
@@ -477,14 +579,14 @@ describe('#419 非同期境界', () => {
     renderMenuPage()
     const sheet = await openSheet(user)
     await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
-    await user.click(within(sheet).getByRole('button', { name: '追加' }))
+    await user.click(within(sheet).getByRole('button', { name: SUBMIT }))
     expect(await within(sheet).findByRole('alert')).toHaveTextContent('追加結果を確認できません')
     await waitFor(() => expect(within(sheet).getByRole('button', { name: '閉じる' })).toBeEnabled())
     await user.click(within(sheet).getByRole('button', { name: '閉じる' }))
     expect(await within(screen.getByRole('list')).findByRole('button', { name: recipe(1).title })).toBeVisible()
     const reopened = await openSheet(user)
     expect(within(reopened).getByRole('alert')).toHaveTextContent('追加結果を確認できません')
-    expect(within(reopened).getByRole('button', { name: '追加' })).toBeDisabled()
+    expect(within(reopened).getByRole('button', { name: SUBMIT })).toBeDisabled()
     expect(attempts).toBe(1)
     expect(state.entries[getMondayOf(new Date())]).toHaveLength(1)
   })
@@ -507,15 +609,15 @@ describe('#419 非同期境界', () => {
     renderMenuPage()
     const sheet = await openSheet(user)
     await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
-    await user.click(within(sheet).getByRole('button', { name: '追加' }))
+    await user.click(within(sheet).getByRole('button', { name: SUBMIT }))
     await waitFor(() => expect(within(sheet).getByRole('alert')).toHaveTextContent('一覧を更新できませんでした'))
-    expect(within(sheet).getByRole('button', { name: '追加' })).toBeDisabled()
+    expect(within(sheet).getByRole('button', { name: SUBMIT })).toBeDisabled()
     expect(confirmationReads).toBe(1)
     await waitFor(() => expect(within(sheet).getByRole('button', { name: '閉じる' })).toBeEnabled())
     await user.click(within(sheet).getByRole('button', { name: '閉じる' }))
     const reopened = await openSheet(user)
     expect(within(reopened).getByRole('alert')).toHaveTextContent('一覧を更新できませんでした')
-    expect(within(reopened).getByRole('button', { name: '追加' })).toBeDisabled()
+    expect(within(reopened).getByRole('button', { name: SUBMIT })).toBeDisabled()
     expect(attempts).toBe(1)
   })
 
@@ -534,7 +636,7 @@ describe('#419 非同期境界', () => {
     const user = userEvent.setup()
     renderMenuPage()
     await waitFor(() => expect(release).toBeDefined())
-    await user.click(screen.getByRole('button', { name: '次週' }))
+    await user.click(screen.getByRole('button', { name: '次の週' }))
     await waitFor(() => expect(nextRequested).toBe(true))
     await screen.findByRole('button', { name: next })
     release()
@@ -558,11 +660,11 @@ describe('#419 StrictModeの起点復帰', () => {
     render(<StrictMode><MemoryRouter><MenuPage /></MemoryRouter></StrictMode>)
     const trigger = await screen.findByRole('button', { name: 'レシピを追加' })
     await user.click(trigger)
-    const sheet = screen.getByRole('dialog', { name: 'レシピを追加' })
+    const sheet = screen.getByRole('dialog', { name: '献立に追加する' })
     if (action === 'Escape') await user.keyboard('{Escape}')
     else {
       if (action === '追加') await user.click(within(sheet).getByRole('checkbox', { name: recipe(1).title }))
-      await user.click(within(sheet).getByRole('button', { name: action }))
+      await user.click(within(sheet).getByRole('button', { name: action === '追加' ? SUBMIT : action }))
     }
     await waitFor(() => expect(sheet).not.toBeInTheDocument())
     await waitFor(() => expect(trigger).toHaveFocus())
