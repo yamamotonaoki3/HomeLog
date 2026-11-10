@@ -326,3 +326,15 @@
 .accounts-page .accounts-guide { display: grid; gap: 8px; margin-bottom: 10px; }
 .accounts-page .accounts-guide p { margin: 0; }
 @media(max-width:480px) { .accounts-page .ui-narrow { padding: 0; } .accounts-page .accounts-row { gap: 2px 8px; } }
+
+/* #425・#479: 収支登録・固定費フォームの中の割り勘の入力欄(追加画像資料15)。項目と操作名は変えず、見た目だけそろえる。 */
+.transaction-modal fieldset.split-fields,.fixed-cost-modal fieldset.split-fields { margin: 12px 0 0; padding: 0; border: 0; }
+.transaction-modal .split-fields .tabs,.fixed-cost-modal .split-fields .tabs { display: flex; gap: 4px; margin-top: 4px; padding: 4px; border-radius: 12px; background: #eaf0f6; }
+.transaction-modal .split-fields .tabs .btn,.fixed-cost-modal .split-fields .tabs .btn { flex: 1; min-width: 0; border-radius: 9px; background: none; color: #55687f; font-size: 14px; font-weight: 600; }
+.transaction-modal .split-fields .tabs .btn[aria-selected="true"],.fixed-cost-modal .split-fields .tabs .btn[aria-selected="true"] { background: var(--ui-surface); color: var(--ui-primary-strong); font-weight: 800; box-shadow: 0 1px 3px #cbd5e1; }
+.transaction-modal .split-rows,.fixed-cost-modal .split-rows { display: grid; gap: 10px; margin: 10px 0; }
+.transaction-modal .split-row,.fixed-cost-modal .split-row { padding: 12px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); }
+.transaction-modal .split-row > button,.fixed-cost-modal .split-row > button { border: 1px solid #f1c4c6; background: none; color: #c8343a; font-weight: 700; }
+.transaction-modal .split-fields > button.btn,.fixed-cost-modal .split-fields > button.btn { width: 100%; border: 1px solid var(--ui-primary); border-radius: 12px; background: var(--ui-surface); color: var(--ui-primary-strong); font-size: 14px; font-weight: 800; }
+.transaction-modal .split-fields > .hint,.fixed-cost-modal .split-fields > .hint { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: #f2f6fa; color: var(--ui-text); font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.transaction-modal .split-share,.fixed-cost-modal .split-share { color: var(--ui-muted); font-size: 13px; }
