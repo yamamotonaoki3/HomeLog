@@ -235,6 +235,9 @@ test.describe('390px 本人情報loading送信境界 #422', () => {
       release()
       await finished
       await expect(submit).toBeEnabled()
+      // 本人情報が確定すると、モーダルの中身は利用者ごとに作り直される。作り直した後のモーダルが
+      // キー操作の受け付けを始める(日時欄へフォーカスを置く)前のEscapeは、どこにも届かない(#497)。
+      await expect(modal.getByLabel('日時', { exact: true })).toBeFocused()
       await page.keyboard.press('Escape')
       await expect(modal).toBeHidden()
       await expect(triggerOf(page)).toBeFocused()

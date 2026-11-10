@@ -18,6 +18,19 @@ export function EventsPage() {
     (detailTrigger.current?.isConnected ? detailTrigger.current : addButton.current)?.focus({ preventScroll: true })
   }, [])
   const closeDetail = useCallback(() => { setDetailId(null); restoreFocus() }, [restoreFocus])
+  // 登録・編集モーダルを閉じた後のフォーカス復帰(#497)。閉じる処理では要求だけを残し、モーダルが画面から外れた直後に一度だけ確かめる。
+  // 次の描画まで遅らせる(requestAnimationFrame)と、その間に利用者が移したフォーカスや、開き直したモーダルのフォーカスを奪う。
+  const restoreAfterClose = useRef(false)
+  useEffect(() => {
+    if (modalTarget !== undefined || !restoreAfterClose.current) return
+    restoreAfterClose.current = false
+    // 開いた元(行・登録ボタン)へ戻すのは共通処理(useDialog)に任せる。その処理の後もフォーカスを失っているとき
+    // (削除などで元の行が消えたとき)だけ補う。
+    queueMicrotask(() => {
+      const active = document.activeElement
+      if (!active || active === document.body) restoreFocus()
+    })
+  }, [modalTarget, restoreFocus])
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -52,7 +65,7 @@ export function EventsPage() {
       const latest = await fetchEvents()
       if (wasEdit && !latest.some((event) => event.id === modalTarget.id)) {
         setDetailId(null)
-        requestAnimationFrame(restoreFocus)
+        restoreAfterClose.current = true
       }
     } catch (err) {
       showToast(getApiErrorMessage(err, 'イベント一覧の取得に失敗しました'))
@@ -121,13 +134,13 @@ export function EventsPage() {
         />
       )}
       {modalTarget !== undefined && (
-        <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) requestAnimationFrame(restoreFocus) }} onSaved={handleSaved}
+        <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) restoreAfterClose.current = true }} onSaved={handleSaved}
           onDeleted={modalTarget?.editable ? () => {
             // 削除が確定した行はcommit前にまだ接続されていても復帰先にしない。
             detailTrigger.current = null
             setEvents(previous => previous.filter(event => event.id !== modalTarget.id))
             setModalTarget(undefined)
-            requestAnimationFrame(restoreFocus)
+            restoreAfterClose.current = true
             showToast('イベントを削除しました')
           } : undefined} />
       )}
