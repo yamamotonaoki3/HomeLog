@@ -65,6 +65,29 @@
   color: var(--ui-primary-strong);
 }
 
+.ui-icon-tile.is-danger {
+  background: #fde8e6;
+  color: #b42318;
+}
+
+/* 画面の上に置く「◯◯に戻る」。 */
+.ui-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: -8px 0 2px;
+  padding: 0 6px 0 0;
+  color: var(--ui-primary-strong);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.ui-back-link > span {
+  font-size: 20px;
+  line-height: 1;
+}
+
 /* 一覧の上に置く小さな見出し */
 .ui-section-label {
   margin: 16px 0 9px;
@@ -92,6 +115,32 @@
   cursor: pointer;
 }
 .ui-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 取り消しにくい操作(退出・退会)の確定に使う。 */
+.ui-action.is-danger {
+  background: #c62828;
+}
+/* 取り消しにくい操作の入口。確認の前段なので、塗りつぶさず枠だけにする。 */
+.ui-danger-outline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid #e3a8a2;
+  border-radius: 12px;
+  background: #fff;
+  color: #b42318;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ui-danger-outline:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -377,6 +426,8 @@
 }
 
 .ui-search:focus-visible,
+.ui-back-link:focus-visible,
+.ui-danger-outline:focus-visible,
 .ui-chips label:has(input:focus-visible) > span,
 .ui-switch:focus-visible,
 .ui-form-cancel:focus-visible,
