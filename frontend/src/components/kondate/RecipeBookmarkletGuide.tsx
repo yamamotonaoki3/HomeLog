@@ -11,7 +11,7 @@ export function RecipeBookmarkletGuide() {
   }, [])
 
   return (
-    <section className="panel recipe-bookmarklet-guide" aria-labelledby="recipe-bookmarklet-heading">
+    <section className="ui-card recipe-guide recipe-bookmarklet-guide" aria-labelledby="recipe-bookmarklet-heading">
       <h3 id="recipe-bookmarklet-heading">PCからレシピを登録</h3>
       <a ref={linkRef} className="recipe-bookmarklet-link" draggable onClick={(event) => {
         event.preventDefault()
