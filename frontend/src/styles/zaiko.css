@@ -693,8 +693,47 @@
   position: absolute;
   inset: 2px;
   border: 2px solid var(--ui-focus);
-  border-radius: 0 13px 13px 0;
+  border-radius: 0 13px 0 0;
   pointer-events: none;
+}
+/* 行の購入数(#485)。行ボタンの外に置き、品名の下の段に「購入数 － 数 ＋」を並べる。 */
+.shopping-row .shopping-checkbox { grid-row: 1 / span 2; }
+.shopping-count {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 10px 6px;
+}
+.shopping-count-label { margin-right: auto; color: var(--ui-muted); font-size: 13px; }
+.shopping-count-button {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-primary-strong);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.shopping-count-button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.shopping-count-button:hover:not(:disabled) { border-color: var(--ui-primary); }
+.shopping-count-button:active:not(:disabled) { background: #e3edfb; }
+.shopping-count-button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.shopping-count-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.shopping-count-value {
+  min-width: 52px;
+  color: var(--ui-text);
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .shopping-item-name { font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
 .shopping-item-quantities { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--ui-muted); font-size: 13px; font-variant-numeric: tabular-nums; }

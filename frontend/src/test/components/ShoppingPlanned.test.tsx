@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -9,6 +9,8 @@ import { pendingKey, readPending, savePending } from '../../lib/shoppingPending'
 const inventory = [1,2].map(id => ({ id, name: 'testuser_品目'+id, categoryId: 1, storeId: id === 1 ? 1 : null, quantity: 0.5, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }))
 const shopping = inventory.map(i => ({ id: i.id+10, inventoryItemId: i.id, name: i.name, isManual: true, purchased: false, purchasedQuantity: 0, plannedQuantity: 3, purchaseRevision: 2, price: null }))
 const props = { shopping, inventory, categories: [{ id: 1, name: '食品', isDefault: true }], stores: [{ id: 1, name: '店舗A' }], sort: 'store' as const, onSortChange: vi.fn(), onRefresh: vi.fn().mockResolvedValue(undefined), onNotify: vi.fn(), actorUserId: 1 }
+// 行に表示している購入数(#485)。チェック前は予定数、チェック後は実購入数を表示する。
+const count = (name: string) => within(screen.getByRole('group', { name: name + 'の購入数' })).getByRole('status')
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done }); return { promise, resolve } }
 it('予定3を明示保存してcleanになった後の最新GET5を詳細と次PATCHの値とrevisionに使う', async () => {
   const user = userEvent.setup(), bodies: unknown[] = []
@@ -24,7 +26,7 @@ it('予定3を明示保存してcleanになった後の最新GET5を詳細と次
   expect(bodies).toEqual([{ plannedQuantity: 3, expectedPurchaseRevision: 2 }])
   expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数' })).toHaveValue('3')
   rerender(<ShoppingListPanel {...props} shopping={[{ ...shopping[0], plannedQuantity: 5, purchaseRevision: 4 }, shopping[1]]} />)
-  expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 5')
+  expect(count('testuser_品目1')).toHaveTextContent('5')
   expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数' })).toHaveValue('5')
   await user.click(screen.getByRole('button', { name: '予定数を保存' }))
   await waitFor(() => expect(bodies).toEqual([
@@ -79,7 +81,7 @@ it('通常PATCHのaccess更新後もチェックと実数とdirty予定を保持
   expect(bodies).toEqual([{ requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), items: [{ id: 11, purchasedQuantity: 2, expectedPurchaseRevision: 3 }] }])
   expect(verification).toEqual(['actor', 'household'].map(path => ({ path, authorization: 'Bearer testuser_a_planned_access' })))
   expect(screen.queryByRole('button', { name: '本人と世帯を再確認' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 1')
+  expect(count('testuser_品目1')).toHaveTextContent('1')
   await user.click(screen.getByRole('button', { name: 'testuser_品目1の詳細' }))
   expect(screen.getByRole('textbox', { name: 'testuser_品目1の予定数' })).toHaveValue('5')
 })
@@ -138,7 +140,8 @@ it.each([
   expect(screen.getByRole('button', { name: '購入を反映' })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: '購入を反映' }))
   expect(screen.queryByRole('dialog', { name: '購入内容の確認' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 3')
+  expect(count('testuser_品目1')).toHaveTextContent('2')
+  expect(screen.queryByText(/予定が変更されています/)).not.toBeInTheDocument()
   expect(screen.queryByText(/購入.*反映済|購入を反映しました/)).not.toBeInTheDocument()
   expect(posts).toBe(0); expect(patches).toBe(0)
  }
@@ -178,7 +181,7 @@ it.each([
    expect(retry).toBeDisabled(); await expectBlocked()
    await act(async () => { gates[1].resolve() })
   }
-  await waitFor(() => expect(screen.getByRole('button', { name: 'testuser_品目1の詳細' })).toHaveTextContent('予定 1'))
+  await screen.findByText(/予定が変更されています/)
   await waitFor(() => expect(first).toBeEnabled())
   // The old checked revision must not be rebased merely because the external pending disappeared.
   expect(screen.getByRole('button', { name: '購入を反映' })).toBeDisabled()
@@ -262,7 +265,7 @@ it('通常予定PATCHは同refresh-sessionのaccess更新後も予定とrevision
  render(<ShoppingListPanel {...props}/>);const check=screen.getByRole('checkbox',{name:'testuser_品目1を購入済みにする'});await waitFor(()=>expect(check).toBeEnabled());await user.click(check);await user.click(screen.getByRole('button',{name:'testuser_品目1の詳細'}))
  const planned=screen.getByRole('textbox',{name:'testuser_品目1の予定数'});await user.clear(planned);await user.type(planned,'4.5');await user.click(screen.getByRole('button',{name:'予定数を保存'}))
  await waitFor(()=>expect(screen.getByRole('button',{name:'予定数を保存'})).toBeEnabled());expect(bodies).toEqual([{plannedQuantity:4.5,expectedPurchaseRevision:2}]);expect(screen.getByRole('textbox',{name:'testuser_品目1の予定数'})).toHaveValue('4.5');expect(screen.getByRole('textbox',{name:'testuser_品目1の実購入数'})).toHaveValue('3')
- await user.click(screen.getByRole('button',{name:'閉じる'}));expect(screen.getByRole('button',{name:'testuser_品目1の詳細'})).toHaveTextContent('予定 4.5');expect(check).toBeChecked();expect(screen.getByRole('button',{name:'購入を反映'})).toBeEnabled();expect(screen.queryByText(/予定が変更されています/)).not.toBeInTheDocument()
+ await user.click(screen.getByRole('button',{name:'閉じる'}));expect(count('testuser_品目1')).toHaveTextContent('3');expect(check).toBeChecked();expect(screen.getByRole('button',{name:'購入を反映'})).toBeEnabled();expect(screen.queryByText(/予定が変更されています/)).not.toBeInTheDocument()
 })
 it.each(['追加','予定PATCH'])('新refresh-sessionへ変わった通常操作の旧成功は破棄してdetachする: %s',async(operation)=>{
  const user=userEvent.setup(),refresh=vi.fn(),notify=vi.fn();let mutations=0
@@ -305,7 +308,7 @@ it.each([
  expect(patches).toBe(0);await user.click(screen.getByRole('button',{name:'購入を反映'}));expect(bodies).toHaveLength(0);await user.click(screen.getByRole('button',{name:'この内容で購入を反映'}))
  if(failRefresh)await screen.findByText('購入は反映済み。一覧を再取得してください');else await waitFor(()=>expect(screen.getByRole('checkbox',{name:'testuser_品目1を購入済みにする'})).toBeEnabled())
  await waitFor(()=>expect(refresh).toHaveBeenCalledTimes(1));expect(bodies).toHaveLength(1);expect(bodies[0]).toEqual({requestId:expect.stringMatching(/^[0-9a-f-]{36}$/),items:[{id:11,purchasedQuantity:2,expectedPurchaseRevision:2}]});expect(patches).toBe(0)
- expect(screen.getByRole('button',{name:'testuser_品目1の詳細'})).toHaveTextContent('予定 1');expect(screen.getByRole('checkbox',{name:'testuser_品目1を購入済みにする'})).not.toBeChecked()
+ expect(count('testuser_品目1')).toHaveTextContent('1');expect(screen.getByRole('checkbox',{name:'testuser_品目1を購入済みにする'})).not.toBeChecked()
  await user.click(screen.getByRole('button',{name:'testuser_品目1の詳細'}));expect(screen.getByRole('textbox',{name:'testuser_品目1の予定数'})).toHaveValue('5');expect(screen.getByRole('textbox',{name:'testuser_品目1の実購入数'})).toHaveValue('');await user.click(screen.getByRole('button',{name:'閉じる'}))
  expect(screen.getByRole('checkbox',{name:'testuser_品目2を購入済みにする'})).toHaveProperty('checked',untargeted==='zero');await user.click(screen.getByRole('button',{name:'testuser_品目2の詳細'}));expect(screen.getByRole('textbox',{name:'testuser_品目2の予定数'})).toHaveValue('8');expect(screen.getByRole('textbox',{name:'testuser_品目2の実購入数'})).toHaveValue(untargeted==='zero'?'0':'3');expect(patches).toBe(0)
 })
