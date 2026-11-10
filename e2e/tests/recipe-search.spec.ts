@@ -65,8 +65,7 @@ for (const width of [1280, 390, 320]) {
       await page.goto(path)
       const panel = page.getByTestId(panelId)
       const rows = panel.getByRole('button', { name: /の詳細$/ })
-      // 検索欄の名前は画面ごとに異なる(在庫は「商品を探す」、買い物は「キーワード検索」)。各パネルに1つだけある。
-      const input = panel.getByRole('searchbox')
+      const input = panel.getByRole('searchbox', { name: '商品を探す' })
       await expect(rows).toHaveCount(2)
       await input.fill('ニンジン')
       await expect(rows).toHaveCount(1)

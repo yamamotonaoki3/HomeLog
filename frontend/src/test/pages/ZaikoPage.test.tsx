@@ -395,10 +395,10 @@ describe('ZaikoPage', () => {
 
     await openTab(user, '買い物リスト')
     const shoppingPanel = screen.getByTestId('shopping-panel')
-    await user.type(within(shoppingPanel).getByRole('searchbox', { name: 'キーワード検索' }), '卵')
+    await user.type(within(shoppingPanel).getByRole('searchbox', { name: '商品を探す' }), '卵')
     expect(within(shoppingPanel).getByRole('button', { name: '卵の詳細' })).toBeInTheDocument()
     expect(within(shoppingPanel).queryByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).not.toBeInTheDocument()
-    await user.clear(within(shoppingPanel).getByRole('searchbox', { name: 'キーワード検索' }))
+    await user.clear(within(shoppingPanel).getByRole('searchbox', { name: '商品を探す' }))
     expect(within(shoppingPanel).getByRole('button', { name: 'Ｂｕｔｔｅｒの詳細' })).toBeInTheDocument()
   })
 
