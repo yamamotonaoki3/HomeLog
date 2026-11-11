@@ -8,6 +8,9 @@ import type { Recipe } from '../../api/kondateTypes'
 import { ImageUnsupportedError, OCR_MAX_BYTES, prepareOcrImage } from '../../lib/ocrImage'
 
 // POST /recipes/ocr/analyze の応答(DBには保存されていない解析結果)。
+// 材料・手順の文字数の上限。サーバー(backend-workers/src/routes/recipes.ts)と同じ値にする。
+const MAX_RECIPE_TEXT_LENGTH = 10_000
+
 interface OcrAnalyzeResult {
   title: string
   ingredients: string | null
@@ -107,6 +110,12 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
     // クライアント側(ブラウザ側)での簡易バリデーション。サーバーに送る前にここで弾く。
     if (trimmedTitle.length < 1 || trimmedTitle.length > 100) {
       setError('タイトルは1〜100文字で入力してください')
+      return false
+    }
+    // 材料・手順の上限(サーバーと同じ、#513)。入力欄のmaxLengthは手入力だけを止めるため、
+    // 画像解析の結果などで超えている場合はここで案内して送信しない。
+    if (ingredients.length > MAX_RECIPE_TEXT_LENGTH || steps.length > MAX_RECIPE_TEXT_LENGTH) {
+      setError('材料と手順は、それぞれ10,000文字以内で入力してください')
       return false
     }
     // サーバーに送るデータをまとめる。材料・手順が空文字の場合はnullとして送る
@@ -296,9 +305,9 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
                   onChangeで入力される度にsetTitleを呼んで状態を更新する(制御されたコンポーネント)。 */}
               <input id="recipe-title" type="text" maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
               <label htmlFor="recipe-ingredients">材料</label>
-              <textarea id="recipe-ingredients" value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
+              <textarea id="recipe-ingredients" maxLength={MAX_RECIPE_TEXT_LENGTH} value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
               <label htmlFor="recipe-steps">手順</label>
-              <textarea id="recipe-steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
+              <textarea id="recipe-steps" maxLength={MAX_RECIPE_TEXT_LENGTH} value={steps} onChange={(e) => setSteps(e.target.value)} />
             </>
           )}
           {error && <p className="error" role="alert">{error}</p>}

@@ -1,0 +1,16 @@
+# 画面(静的ファイル)の応答に付ける安全用ヘッダー(#513)。
+# Cloudflare Workers の静的配信が、このファイルの内容を応答ヘッダーに反映する。
+# API(/api/*・/health)の応答は Worker 側(backend-workers/src/index.ts)で別に付けている。
+#
+# Content-Security-Policy の考え方:
+# - スクリプト・スタイルシート・通信先は自サイトだけに限定する(外部のスクリプトを読み込まない)。
+# - style-src の 'unsafe-inline' は、Reactのstyle属性のために必要。<script>のインライン実行は許可しない。
+# - 画像は、WEBレシピのサムネイル(外部サイトの https 画像)と、CSS内のdata:画像を許可する。
+# - frame-ancestors 'none' と X-Frame-Options で、他サイトの枠内に表示させない。
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000
+  Permissions-Policy: geolocation=(), microphone=(), payment=(), usb=()

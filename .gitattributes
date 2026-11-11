@@ -1,0 +1,2 @@
+# Cloudflare の静的配信が読む設定ファイルは、どの環境で取り出しても改行コードをLFにそろえる(#513)。
+frontend/public/_headers text eol=lf

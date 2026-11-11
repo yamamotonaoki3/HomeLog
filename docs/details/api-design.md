@@ -94,7 +94,22 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | `Strict-Transport-Security` | `max-age=31536000` | HTTPS での接続を維持する |
 | `Cache-Control` | `no-store`（個別に指定済みの応答はその値） | 個人のデータを含む応答をブラウザや中継に残さない |
 
-このほか、Hono の `secureHeaders` の既定値（`Cross-Origin-Resource-Policy: same-origin`・`Cross-Origin-Opener-Policy: same-origin` など）も付く。画面（静的ファイル）の応答は Worker を通らないため、別に設定する（フロントエンド側）。
+このほか、Hono の `secureHeaders` の既定値（`Cross-Origin-Resource-Policy: same-origin`・`Cross-Origin-Opener-Policy: same-origin` など）も付く。画面（静的ファイル）の応答は Worker を通らないため、`frontend/public/_headers` で別に設定する（#513）。
+
+**画面（静的ファイル）の応答ヘッダー（#513）**：HTML・JavaScript・CSS・Service Worker・マニフェストなど、静的配信のすべての応答に付ける。
+
+| ヘッダー | 値 |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Strict-Transport-Security` | `max-age=31536000` |
+| `Permissions-Policy` | `geolocation=(), microphone=(), payment=(), usb=()` |
+
+- スクリプト・スタイルシート・通信先は自サイトだけに限定する。インラインの `<script>` は実行されない。外部のスクリプトや外部への通信を追加するときは、この方針の変更が必要になる。
+- `style-src` の `'unsafe-inline'` は React の style 属性のために必要。画像は WEB レシピのサムネイル（外部の https 画像）と CSS 内の data: 画像を許可する。
+- 開発用サーバー（Vite）はこのヘッダーを付けない。実際の付与は Workers の静的配信の E2E（`e2e/tests/static-assets.spec.ts`）で確かめる。
 
 ---
 
