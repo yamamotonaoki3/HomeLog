@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
+import { secureHeaders } from 'hono/secure-headers'
 import { errorResponse } from './lib/errors'
 import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
@@ -69,6 +71,36 @@ app.onError((err, c) => {
 // 分けて定義したルーター)に処理を任せる」という設定。例えば/api/recipesへのリクエストは
 // routes/recipes.tsのrecipesRouteが処理する(Java/Spring MVCで言う@RequestMappingの
 // パスをファイルごとに分けているイメージ)。
+// ---- API応答の安全用ヘッダーと、リクエスト本文の大きさの上限(#512) ----
+// 画面(静的ファイル)はWorkerを通らないため、ここで付くのは /api/* と /health の応答だけ。
+const API_PATHS = ['/api/*', '/health'] as const
+// JSONのAPIが受け付ける本文の上限。最も大きい正当な入力(レシピの材料・手順が各10,000文字)でも収まる大きさ。
+const MAX_JSON_BODY_BYTES = 100 * 1024
+// 画像のアップロードは専用の上限(5MB＋余裕)を routes/recipe-ocr.ts で設けている。
+const UPLOAD_PATH = '/api/recipes/ocr/upload'
+
+const apiSecureHeaders = secureHeaders({
+  // APIはJSONだけを返す。ブラウザに文書として解釈・埋め込みさせない。
+  contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+  xFrameOptions: 'DENY',
+  referrerPolicy: 'strict-origin-when-cross-origin',
+  strictTransportSecurity: 'max-age=31536000',
+})
+const jsonBodyLimit = bodyLimit({
+  maxSize: MAX_JSON_BODY_BYTES,
+  onError: (c) => c.json(errorResponse('VALIDATION_ERROR', '送信された内容が大きすぎます'), 413),
+})
+
+for (const path of API_PATHS) {
+  app.use(path, apiSecureHeaders)
+  // 個人のデータを含む応答を、ブラウザや中継のキャッシュに残さない(個別に指定済みの応答はそのまま)。
+  app.use(path, async (c, next) => {
+    await next()
+    if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store')
+  })
+}
+app.use('/api/*', (c, next) => (c.req.path === UPLOAD_PATH ? next() : jsonBodyLimit(c, next)))
+
 app.get('/health', (c) => c.json({ status: 'ok' }))
 app.route('/api/auth', authRoute)
 app.route('/api/households', householdRoute)

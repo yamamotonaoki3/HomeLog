@@ -76,6 +76,25 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | 401 Unauthorized | 未認証・トークン無効/期限切れ |
 | 404 Not Found | リソースが存在しない、または他人/他世帯のリソースを指定した場合 |
 | 409 Conflict | メールアドレス重複等の一意制約違反 |
+| 413 Content Too Large | リクエスト本文が上限を超えた（下記 1-5） |
+| 429 Too Many Requests | 回数制限を超えた（「認証・画像解析の回数制限」、パスワード再設定の申請） |
+
+### 1-5. 入力の大きさの上限と、応答の安全用ヘッダー（#512）
+
+- **リクエスト本文の上限**：`/api/*` は 100KB まで。超えると 413 と共通形式のエラー（`code: "VALIDATION_ERROR"`、「送信された内容が大きすぎます」）を返す。画像のアップロード（`POST /api/recipes/ocr/upload`）だけは対象外で、専用の上限（画像 5MB）を使う。
+- **レシピの材料・手順**：それぞれ 10,000 文字まで（`POST /api/recipes`・`PATCH /api/recipes/:id`）。超えると 400。既存の行は変更しない（次に編集するときから適用される）。
+- **応答ヘッダー**：`/api/*` と `/health` の応答（成功・エラーとも）に次を付ける。
+
+| ヘッダー | 値 | 目的 |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | 応答の種類をブラウザに推測させない |
+| `X-Frame-Options` | `DENY` | 他サイトの枠内に表示させない |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` | APIの応答を文書として実行・埋め込みさせない |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | 外部へ渡す参照元を最小限にする |
+| `Strict-Transport-Security` | `max-age=31536000` | HTTPS での接続を維持する |
+| `Cache-Control` | `no-store`（個別に指定済みの応答はその値） | 個人のデータを含む応答をブラウザや中継に残さない |
+
+このほか、Hono の `secureHeaders` の既定値（`Cross-Origin-Resource-Policy: same-origin`・`Cross-Origin-Opener-Policy: same-origin` など）も付く。画面（静的ファイル）の応答は Worker を通らないため、別に設定する（フロントエンド側）。
 
 ---
 
