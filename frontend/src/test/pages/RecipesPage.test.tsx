@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -226,6 +226,32 @@ describe('RecipesPage', () => {
 
     await waitFor(() => expect(screen.getByText('タイトルは1〜100文字で入力してください')).toBeInTheDocument())
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(false)
+  })
+
+  it.each([
+    ['材料', '手順'],
+    ['手順', '材料'],
+  ])('%sが10,000文字を超えるとクライアント側でエラー表示しAPIを呼ばない (#513)', async (longField, otherField) => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await waitFor(() => expect(screen.getByText('レシピはありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'レシピを登録' }))
+    await user.type(screen.getByLabelText('タイトル'), '[E2E_TEST] 長いレシピ')
+    // 入力欄の上限(maxLength)は手入力だけを止める。画像解析の結果や貼り付けで超えた場合を想定し、値を直接入れる。
+    expect(screen.getByLabelText(longField)).toHaveAttribute('maxlength', '10000')
+    fireEvent.change(screen.getByLabelText(longField), { target: { value: 'あ'.repeat(10_001) } })
+    fireEvent.change(screen.getByLabelText(otherField), { target: { value: 'い'.repeat(10_000) } })
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    expect(await screen.findByText('材料と手順は、それぞれ10,000文字以内で入力してください')).toBeInTheDocument()
+    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(false)
+
+    // 上限ちょうどに直すと登録できる(境界値)。
+    fireEvent.change(screen.getByLabelText(longField), { target: { value: 'あ'.repeat(10_000) } })
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(true))
   })
 
   it('レシピを編集すると一覧に反映される', async () => {
