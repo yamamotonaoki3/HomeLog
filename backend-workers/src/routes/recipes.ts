@@ -19,14 +19,17 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
 // z.object({...})で「リクエストボディはこういう形であるべき」というルールを定義する。
 // このオブジェクト自体がPOST(新規登録)とPATCH(更新)の両方で共用されている。
+// 材料・手順の文字数の上限(#512)。保存できる大きさに限りを置き、容量の浪費を防ぐ。
+const MAX_RECIPE_TEXT_LENGTH = 10_000
+
 const recipeSchema = z.object({
   // z.string().max(100)で「文字列かつ100文字以内」、.refine(...)で追加の独自チェック
   // (トリムした結果が空文字でないこと=空白だけの入力を弾く)を行う。
   title: z.string().max(100).refine((value) => value.trim().length > 0, { message: 'タイトルを入力してください' }),
   // .nullish()は「null・undefined・その型のいずれか」を許可する、という意味
   // (材料・手順は任意入力のため、送られてこなくても、nullで送られてきてもOKにする)。
-  ingredients: z.string().nullish(),
-  steps: z.string().nullish(),
+  ingredients: z.string().max(MAX_RECIPE_TEXT_LENGTH).nullish(),
+  steps: z.string().max(MAX_RECIPE_TEXT_LENGTH).nullish(),
 })
 
 // 新規登録時のみ、登録方法(手動/手書き画像解析)を受け付ける。WEBレシピはPOST /from-url専用。
