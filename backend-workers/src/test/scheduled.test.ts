@@ -4,6 +4,7 @@ import app from '../index'
 import * as consumption from '../lib/inventory-consumption'
 import * as menuCleanup from '../lib/menu-entry-cleanup'
 import * as passwordResetMail from '../lib/password-reset-mail'
+import * as rateLimit from '../lib/rate-limit'
 
 beforeEach(() => {
   vi.spyOn(menuCleanup, 'purgePastMenuEntries').mockResolvedValue(0)
@@ -94,6 +95,18 @@ it.each(['0 15 * * *', '0 16 * * *'])('献立削除が失敗しても隔離す�
 
 it('パスワード再設定の回数制限の清掃は、JST 1時の日次処理でだけ実行する', async () => {
   const purge = vi.spyOn(passwordResetMail, 'purgePasswordResetAttempts').mockResolvedValue(0)
+  const all = vi.fn().mockResolvedValue({ results: [] })
+  const list = vi.fn().mockResolvedValue({ objects: [], truncated: false })
+  const bindings = { ...env, DB: { prepare: () => ({ bind: () => ({ all }) }), batch: vi.fn().mockResolvedValue([]) } as unknown as D1Database, RECIPE_IMAGES: { list } as unknown as R2Bucket }
+  await app.scheduled({ cron: '0 15 * * *', scheduledTime: Date.parse('2024-12-31T15:00:00Z') } as ScheduledController, bindings)
+  expect(purge).not.toHaveBeenCalled()
+  await app.scheduled({ cron: '0 16 * * *', scheduledTime: Date.parse('2024-12-31T16:00:00Z') } as ScheduledController, bindings)
+  expect(purge).toHaveBeenCalledTimes(1)
+  expect(purge).toHaveBeenCalledWith(bindings.DB)
+})
+
+it('認証・画像解析の回数制限の清掃は、JST 1時の日次処理でだけ実行する (#510)', async () => {
+  const purge = vi.spyOn(rateLimit, 'purgeRateLimits').mockResolvedValue(0)
   const all = vi.fn().mockResolvedValue({ results: [] })
   const list = vi.fn().mockResolvedValue({ objects: [], truncated: false })
   const bindings = { ...env, DB: { prepare: () => ({ bind: () => ({ all }) }), batch: vi.fn().mockResolvedValue([]) } as unknown as D1Database, RECIPE_IMAGES: { list } as unknown as R2Bucket }

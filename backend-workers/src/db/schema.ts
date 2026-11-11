@@ -48,6 +48,18 @@ export const passwordResetAttempts = sqliteTable(
   (table) => [primaryKey({ columns: [table.scope, table.keyHash, table.windowStart] })],
 )
 
+// 認証・画像解析のAPIの回数制限(#510)。数え方は password_reset_attempts と同じで、表を分けている。
+export const rateLimitCounters = sqliteTable(
+  'rate_limit_counters',
+  {
+    scope: text('scope').notNull(),
+    keyHash: text('key_hash').notNull(),
+    windowStart: integer('window_start').notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scope, table.keyHash, table.windowStart] })],
+)
+
 export const households = sqliteTable('households', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),

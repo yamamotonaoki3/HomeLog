@@ -8,6 +8,7 @@ import { errorResponse } from '../lib/errors'
 import { signAccessToken } from '../lib/jwt'
 import { countDeletionBlockers, deletionScheduledAt, hasBlockers, isReservedEmail, isWithinGracePeriod } from '../lib/account-deletion'
 import { consumePasswordResetQuota, purgePasswordResetAttempts, resolveMailMode, sendPasswordResetMail } from '../lib/password-reset-mail'
+import { RATE_LIMITS, TOO_MANY_REQUESTS_MESSAGE, clientAddressKey, consumeRateLimits, emailKey } from '../lib/rate-limit'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
@@ -95,6 +96,26 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   }
 }
 
+// ---- 回数制限(#510) ----
+// 上限を超えた要求は、登録の有無や入力内容(パスワードの正誤)と無関係に同じ429を返す。
+// パスワードの検証より前に数えるので、上限を超えた後は正しいパスワードでも窓が替わるまで通らない。
+function tooManyRequests(c: Context<AppEnv>) {
+  return c.json(errorResponse('TOO_MANY_REQUESTS', TOO_MANY_REQUESTS_MESSAGE), 429)
+}
+
+// メールアドレスとパスワードで本人確認する入口(ログイン・退会の取り消し)。
+function allowCredentialCheck(c: Context<AppEnv>, email: string): Promise<boolean> {
+  return consumeRateLimits(c.env.DB, [
+    { rule: RATE_LIMITS.loginEmail, key: emailKey(email) },
+    { rule: RATE_LIMITS.loginAddress, key: clientAddressKey(c.req.header('CF-Connecting-IP')) },
+  ])
+}
+
+// ログイン済みの利用者が、現在のパスワードで再認証する操作。
+function allowReauth(c: Context<AppEnv>): Promise<boolean> {
+  return consumeRateLimits(c.env.DB, [{ rule: RATE_LIMITS.reauthUser, key: String(c.get('userId')) }])
+}
+
 export const authRoute = new Hono<AppEnv>()
 
 authRoute.get('/me', requireAuth, async (c) => {
@@ -116,6 +137,11 @@ authRoute.post('/register', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password, displayName } = parsed.data
+
+  const registerAllowed = await consumeRateLimits(c.env.DB, [
+    { rule: RATE_LIMITS.registerAddress, key: clientAddressKey(c.req.header('CF-Connecting-IP')) },
+  ])
+  if (!registerAllowed) return tooManyRequests(c)
 
   const db = drizzle(c.env.DB)
   const existing = await db.select().from(users).where(eq(users.email, email)).get()
@@ -143,6 +169,7 @@ authRoute.post('/login', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password } = parsed.data
+  if (!(await allowCredentialCheck(c, email))) return tooManyRequests(c)
 
   const db = drizzle(c.env.DB)
   const user = await db.select().from(users).where(eq(users.email, email)).get()
@@ -425,6 +452,7 @@ authRoute.put('/password', requireAuth, async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { currentPassword, newPassword, refreshToken } = parsed.data
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const userId = c.get('userId')
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
   if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
@@ -463,6 +491,7 @@ authRoute.put('/email', requireAuth, async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { currentPassword, newEmail } = parsed.data
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const db = drizzle(c.env.DB)
   const userId = c.get('userId')
   const user = await db.select().from(users).where(eq(users.id, userId)).get()
@@ -508,6 +537,7 @@ authRoute.post('/account/deletion', requireAuth, async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const userId = c.get('userId')
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
   if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
@@ -549,6 +579,7 @@ authRoute.post('/account/deletion/cancel', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password } = parsed.data
+  if (!(await allowCredentialCheck(c, email))) return tooManyRequests(c)
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.email, email)).get()
   if (!user) {
     await verifyPassword(password, await getDummyPasswordHash())

@@ -446,6 +446,17 @@ erDiagram
 
 保持期間は2日。申請のたびと日次Cronで`window_start`が古い行を削除する（#401）。
 
+### rate_limit_counters（認証・画像解析の回数制限）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| scope | TEXT | ○ | PK。`login_email` / `login_address` / `register_address` / `reauth_user` / `ocr_upload_user` / `ocr_analyze_user` |
+| key_hash | TEXT | ○ | PK。メールアドレス（小文字・trim）・接続元IP・利用者IDのSHA-256。実値は保存しない |
+| window_start | INTEGER | ○ | PK。固定窓の開始（UNIX秒）。窓の長さは種類ごと（15分・1時間・1日） |
+| count | INTEGER | ○ | 窓内の回数。上限に達した行は増えない |
+
+保持期間は2日。日次Cronで`window_start`が古い行を削除する（#510）。上限と対象のAPIは[api-design.md](api-design.md)の「認証・画像解析の回数制限」を参照。
+
 ### user_settings（ユーザー設定）
 
 | カラム名 | 型 | 必須 | 備考 |
