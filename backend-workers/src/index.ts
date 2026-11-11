@@ -11,6 +11,7 @@ import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
 import { purgeExpiredAccounts } from './lib/account-deletion'
 import { purgePasswordResetAttempts } from './lib/password-reset-mail'
+import { purgeRateLimits } from './lib/rate-limit'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { consumeInventoryForDate, consumptionDate } from './lib/inventory-consumption'
 import { getJstToday } from './lib/date'
@@ -110,6 +111,8 @@ const appWithScheduled = Object.assign(app, {
         purgeExpiredAccounts(env.DB, new Date()),
         // 保持期間を過ぎたパスワード再設定の回数制限の行を削除する(#401)。
         purgePasswordResetAttempts(env.DB),
+        // 保持期間を過ぎた認証・画像解析の回数制限の行を削除する(#510)。
+        purgeRateLimits(env.DB),
       ]),
     ])
     for (const result of results) {

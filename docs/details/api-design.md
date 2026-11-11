@@ -113,7 +113,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```json
 { "id": 1, "email": "taro@example.com", "displayName": "太郎" }
 ```
-主なエラー：400（入力形式不正・パスワード強度不足）／409（メール重複）
+主なエラー：400（入力形式不正・パスワード強度不足）／409（メール重複）／429 `TOO_MANY_REQUESTS`（同じ接続元から1時間に5件を超過。下記「認証・画像解析の回数制限」）
 
 ### POST /api/auth/login
 
@@ -125,7 +125,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 ```json
 { "accessToken": "xxx.yyy.zzz", "refreshToken": "aaa.bbb.ccc", "expiresIn": 900 }
 ```
-主なエラー：401（メールアドレス/パスワード不一致）
+主なエラー：401（メールアドレス/パスワード不一致）／429 `TOO_MANY_REQUESTS`（同じメールアドレスで15分に10回、または同じ接続元から15分に30回を超過。パスワードの正誤・登録の有無に関わらず同一）
 
 ### POST /api/auth/refresh
 
@@ -146,6 +146,26 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 { "refreshToken": "aaa.bbb.ccc" }
 ```
 レスポンス：204 No Content（該当`refresh_tokens`レコードの`revoked_at`を設定）
+
+### 認証・画像解析の回数制限（#510）
+
+固定窓で数え、上限を超えた要求は 429 と共通形式のエラー（`code: "TOO_MANY_REQUESTS"`）で返す。入力形式の誤り（400）は数えない。
+
+| 対象のAPI | 数える単位 | 上限 |
+| --- | --- | --- |
+| `POST /api/auth/login`・`POST /api/auth/account/deletion/cancel`（合算） | メールアドレス（大文字・小文字を区別しない） | 15分に10回 |
+| 同上 | 接続元（`CF-Connecting-IP`） | 15分に30回 |
+| `POST /api/auth/register` | 接続元 | 1時間に5件 |
+| `PUT /api/auth/password`・`PUT /api/auth/email`・`POST /api/auth/account/deletion`（合算） | 利用者 | 15分に10回 |
+| `POST /api/recipes/ocr/upload` | 利用者 | 1日に20回 |
+| `POST /api/recipes/ocr/analyze` | 利用者 | 1日に20回 |
+
+- パスワードの検証より前に数える。成功した要求も1回に数え、上限を超えた後は正しいパスワードでも窓が替わるまで 429 になる。
+- メールアドレスの登録有無によって、応答と数え方は変わらない。
+- 接続元を取得できない場合とループバックの場合（ローカル開発・テスト）は、接続元単位の制限を行わない。本番では Cloudflare が必ず実際の接続元を設定する。
+- 固定窓のため、窓の境目では瞬間的に上限の最大2倍まで通りうる。
+- 画像解析の上限時のメッセージは「画像解析の利用回数が1日の上限に達しました。時間をおいて再度お試しください」。解析が上限のときは一時保存した画像を消さない（24時間後の清掃で消える）。
+- パスワード再設定の申請は、別の回数制限（`PASSWORD_RESET_RATE_LIMITED`、#401）を使う。
 
 ### GET /api/auth/password-reset/availability
 

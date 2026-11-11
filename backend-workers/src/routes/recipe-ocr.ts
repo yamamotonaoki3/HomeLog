@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import { errorResponse } from '../lib/errors'
 import { resolveHouseholdId } from '../lib/household-context'
+import { RATE_LIMITS, consumeRateLimits } from '../lib/rate-limit'
 import { ExternalServiceError, extractTextWithVision, structureRecipeText } from '../lib/recipe-ocr'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
@@ -12,6 +13,8 @@ const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 const INVALID_IMAGE_MESSAGE = '画像はJPEG・PNG・WebP形式、5MB以下のファイルを選択してください'
 const IMAGE_NOT_FOUND_MESSAGE = '画像が見つかりません。もう一度アップロードしてください'
 const EXTERNAL_ERROR_MESSAGE = '画像の解析に失敗しました。時間をおいて再度お試しください'
+// 画像解析は外部サービスの利用料がかかるため、利用者ごとに1日の回数を制限する(#510)。
+const OCR_LIMIT_MESSAGE = '画像解析の利用回数が1日の上限に達しました。時間をおいて再度お試しください'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 // 5MBの画像に加え、multipartのヘッダーや境界文字列などの余裕として64KBを確保する。
 const MAX_UPLOAD_BODY_BYTES = MAX_IMAGE_BYTES + 64 * 1024
@@ -69,6 +72,11 @@ recipeOcrRoute.post('/upload', bodyLimit({
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   }
 
+  // 形式の正しい画像を保存する直前に数える(形式の誤りは回数に数えない)。
+  if (!(await consumeRateLimits(c.env.DB, [{ rule: RATE_LIMITS.ocrUploadUser, key: String(c.get('userId')) }]))) {
+    return c.json(errorResponse('TOO_MANY_REQUESTS', OCR_LIMIT_MESSAGE), 429)
+  }
+
   const key = `${householdPrefix(householdId)}${crypto.randomUUID()}.${imageType.ext}`
   await c.env.RECIPE_IMAGES.put(key, bytes, { httpMetadata: { contentType: file.type } })
   return c.json({ key }, 201)
@@ -95,6 +103,10 @@ recipeOcrRoute.post('/analyze', async (c) => {
   const object = await c.env.RECIPE_IMAGES.get(key)
   if (!object) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', IMAGE_NOT_FOUND_MESSAGE), 404)
+  }
+  // 外部の解析サービスを呼ぶ直前に数える。上限のときは画像を消さず、次の窓でもう一度解析できるようにする。
+  if (!(await consumeRateLimits(c.env.DB, [{ rule: RATE_LIMITS.ocrAnalyzeUser, key: String(c.get('userId')) }]))) {
+    return c.json(errorResponse('TOO_MANY_REQUESTS', OCR_LIMIT_MESSAGE), 429)
   }
 
   try {
