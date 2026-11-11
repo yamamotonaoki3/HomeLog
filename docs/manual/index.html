@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>シェファミ 取扱説明書</title>
+<style>
+  :root {
+    --bg: #f5f7fb; --surface: #ffffff; --text: #1c2536; --muted: #5d6b82; --line: #dbe2ec;
+    --primary: #1a6fd6; --primary-soft: #e6f0fd; --warn: #a15c00; --warn-soft: #fff4dc;
+    --danger: #a12a1f; --danger-soft: #fdecea; --ok: #15803d; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.85; overflow-wrap: anywhere;
+  }
+  a { color: var(--primary); }
+  a:focus-visible, summary:focus-visible { outline: 3px solid #f0a020; outline-offset: 2px; border-radius: 4px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  .toc { padding: 16px; }
+  .toc-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 16px; }
+  .toc summary { cursor: pointer; font-weight: 700; padding: 8px 0; min-height: 44px; display: flex; align-items: center; }
+  .toc ol { margin: 0 0 8px; padding-left: 1.4em; }
+  .toc li { margin: 2px 0; }
+  .toc a { display: inline-block; padding: 5px 0; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  main { padding: 0 16px 64px; min-width: 0; }
+  .cover-wrap { max-width: 1180px; margin: 0 auto; padding: 16px 16px 0; }
+  .cover { background: linear-gradient(135deg, #1a6fd6, #124c96); color: #fff; border-radius: var(--radius); padding: 32px 24px; margin: 0; }
+  .cover h1 { margin: 0 0 4px; font-size: 30px; line-height: 1.3; }
+  .cover p { margin: 4px 0 0; opacity: .92; }
+  .cover .meta { font-size: 13px; margin-top: 14px; }
+  section.chapter { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 20px; margin: 0 0 20px; }
+  h2 { font-size: 23px; line-height: 1.4; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 3px solid var(--primary); }
+  h2 .num { color: var(--primary); margin-right: 8px; }
+  h3 { font-size: 18px; line-height: 1.5; margin: 30px 0 8px; padding-left: 10px; border-left: 5px solid var(--primary); }
+  h4 { font-size: 16px; margin: 20px 0 4px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 1.5em; }
+  li { margin: 4px 0; }
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li { counter-increment: step; position: relative; padding-left: 40px; margin: 10px 0; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 2px; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--primary); color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center;
+  }
+  .ui { display: inline-block; padding: 0 7px; margin: 0 2px; border: 1px solid #b9c6d8; border-radius: 6px; background: #f1f5fa; font-weight: 700; font-size: .93em; line-height: 1.6; white-space: nowrap; }
+  .note, .warn, .danger { border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+  .note { background: var(--primary-soft); border: 1px solid #bcd6f7; }
+  .warn { background: var(--warn-soft); border: 1px solid #f0d28c; }
+  .danger { background: var(--danger-soft); border: 1px solid #f1b5ae; }
+  .note > strong:first-child, .warn > strong:first-child, .danger > strong:first-child { display: block; margin-bottom: 2px; }
+  .warn > strong:first-child { color: var(--warn); }
+  .danger > strong:first-child { color: var(--danger); }
+  .with-shot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; margin: 12px 0; }
+  .shots { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+  figure.shot { margin: 0; width: 240px; max-width: 100%; }
+  figure.shot a { display: block; border: 6px solid #1f2937; border-radius: 26px; overflow: hidden; background: #fff; max-height: 500px; position: relative; }
+  figure.shot img { display: block; width: 100%; height: auto; }
+  figure.shot.tall a::after { content: "押すと全体を表示"; position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 8px 8px; text-align: center; font-size: 12px; font-weight: 700; color: #1c2536; background: linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.96) 55%); }
+  figure.shot figcaption { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5; margin-top: 6px; }
+  .table-wrap { overflow-x: auto; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 280px; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #eef3f9; }
+  dl.terms dt { font-weight: 700; margin-top: 12px; }
+  dl.terms dd { margin: 2px 0 0 0; padding-left: 12px; border-left: 3px solid var(--line); }
+  details.faq { border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; margin: 10px 0; background: #fafcff; }
+  details.faq summary { cursor: pointer; font-weight: 700; padding: 12px 0; min-height: 44px; }
+  details.faq[open] { padding-bottom: 10px; }
+  .back-top { display: inline-block; margin-top: 14px; font-size: 14px; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 16px 40px; }
+  @media (min-width: 720px) {
+    .with-shot { grid-template-columns: minmax(0, 1fr) 252px; }
+    .with-shot .shots { flex-direction: column; flex-wrap: nowrap; align-items: center; }
+    /* 画面写真が複数ある節は、写真を横に並べて先に見せ、その下に説明を全幅で置く。 */
+    .with-shot.two { grid-template-columns: minmax(0, 1fr); }
+    .with-shot.two .shots { flex-direction: row; flex-wrap: wrap; order: -1; justify-content: flex-start; align-items: flex-start; }
+    section.chapter { padding: 28px 30px; }
+  }
+  @media (min-width: 1040px) {
+    .layout { grid-template-columns: 270px minmax(0, 1fr); }
+    .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding-right: 0; }
+    .toc summary { pointer-events: none; list-style: none; }
+    .toc summary::-webkit-details-marker { display: none; }
+    main { padding-left: 20px; }
+  }
+  @media (max-width: 380px) {
+    body { font-size: 15px; }
+    section.chapter { padding: 18px 14px; }
+    .cover h1 { font-size: 25px; }
+  }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .toc { position: static; max-height: none; }
+    .layout { display: block; }
+    section.chapter { border: none; padding: 0; break-inside: auto; }
+    figure.shot a { max-height: 360px; }
+    figure.shot.tall a::after, .back-top { display: none; }
+    h2, h3 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="cover-wrap" id="top">
+<header class="cover">
+  <h1>シェファミ 取扱説明書</h1>
+  <p>家族や同居人と、献立・在庫・買い物・家計をひとつにまとめる生活管理アプリ</p>
+  <p class="meta">2026年11月版／画面写真はスマートフォン表示のものです。写真の中の名前・金額・品目はすべて説明用の架空のデータです。</p>
+</header>
+</div>
+<div class="layout">
+<nav class="toc" aria-label="目次">
+  <details class="toc-box" open>
+    <summary>目次</summary>
+    <ol>
+      <li><a href="#about">シェファミとは</a></li>
+      <li><a href="#start">はじめかた</a></li>
+      <li><a href="#screen">画面の見方</a></li>
+      <li><a href="#home">ホーム</a></li>
+      <li><a href="#menu">献立表</a></li>
+      <li><a href="#recipes">レシピ</a></li>
+      <li><a href="#zaiko">在庫</a></li>
+      <li><a href="#shopping">買い物リスト</a></li>
+      <li><a href="#kakeibo">家計簿（収入・支出）</a></li>
+      <li><a href="#accounts">口座・カード</a></li>
+      <li><a href="#fixed">固定費</a></li>
+      <li><a href="#warikan">割り勘・精算</a></li>
+      <li><a href="#events">イベント</a></li>
+      <li><a href="#categories">カテゴリー管理</a></li>
+      <li><a href="#settings">設定</a></li>
+      <li><a href="#faq">困ったときは</a></li>
+      <li><a href="#data">データの扱いについて</a></li>
+    </ol>
+  </details>
+</nav>
+
+<main>
+<!-- ============================================================ -->
+<section class="chapter" id="about">
+  <h2><span class="num">1</span>シェファミとは</h2>
+  <p>シェファミは、同じ家で暮らす人どうしで「世帯グループ」を作り、毎日の生活に関わる情報を共有するアプリです。スマートフォンでもパソコンでも、ブラウザから同じように使えます。</p>
+  <h3>できること</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>機能</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><th>ホーム</th><td>カレンダーと、今日の献立・買い物・お金の状況をひと目で確認します。</td></tr>
+      <tr><th>献立表・レシピ</th><td>レシピを登録し、週ごとに「作りたい料理」を並べます。Webのレシピや手書きレシピの写真からも登録できます。</td></tr>
+      <tr><th>在庫・買い物リスト</th><td>食品や日用品の残りを記録します。少なくなった品目は自動で買い物リストに入ります。</td></tr>
+      <tr><th>家計簿</th><td>収入と支出を記録し、月ごとの集計を確認します。口座やカードの残高も管理できます。</td></tr>
+      <tr><th>固定費</th><td>家賃や通信費など毎月の支払いを登録すると、支払日に自動で支出として記録されます。</td></tr>
+      <tr><th>割り勘・精算</th><td>立て替えた支出を相手と分け、請求から受け取りまでの状況を管理します。</td></tr>
+      <tr><th>イベント</th><td>予定や記念日を登録し、イベントごとの支出も集計します。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="scope">世帯で共有されるもの・自分だけに見えるもの</h3>
+  <p>お金に関する細かい情報は、登録した本人にだけ表示されます。安心して使えるよう、最初に確認しておいてください。</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>見える範囲</th><th>対象</th></tr></thead>
+    <tbody>
+      <tr><th>世帯の全員</th><td>在庫、買い物リスト、レシピ、献立表、公開範囲が「世帯共有」のイベントと固定費、カテゴリー、買う店、世帯のメンバー名</td></tr>
+      <tr><th>自分だけ</th><td>収入と支出の明細、口座・カードと残高、公開範囲が「個人」のイベントと固定費、ホームの表示設定</td></tr>
+      <tr><th>当事者の2人だけ</th><td>割り勘の内訳とコメント（立て替えた人と、負担する人）</td></tr>
+      <tr><th>合計金額だけ世帯で共有</th><td>「世帯合計に含める」を選んだ支出と固定費の合計（世帯合計対象額）。明細は共有されません。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>利用できる環境</h3>
+  <ul>
+    <li>スマートフォン：iPhone の Safari、Android の Chrome</li>
+    <li>パソコン：Chrome、Edge、Safari などの新しいブラウザ</li>
+    <li>インターネットに接続した状態で使います。</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="start">
+  <h2><span class="num">2</span>はじめかた</h2>
+
+  <h3 id="register">2-1. アカウントを登録する</h3>
+  <div class="with-shot">
+    <div>
+      <ol class="steps">
+        <li>ログイン画面の<span class="ui">新規登録はこちら</span>を押します。</li>
+        <li>メールアドレス、パスワード、パスワード（確認）、表示名を入力します。</li>
+        <li><span class="ui">登録する</span>を押します。登録が済むと、そのまま<a href="#household">世帯グループの画面</a>へ進みます。</li>
+      </ol>
+      <div class="note">
+        <strong>入力のきまり</strong>
+        <ul>
+          <li>パスワードは8文字以上で、英字と数字の両方を含めます。</li>
+          <li>表示名は50文字までです。世帯のメンバーに表示される名前なので、家族に分かる名前にしてください。</li>
+          <li>パスワード欄の右にある目のボタンで、入力した文字を表示して確かめられます。</li>
+        </ul>
+      </div>
+      <div class="warn">
+        <strong>パスワードは使い回さないでください</strong>
+        ほかのサービスと同じパスワードは避け、長めのものを設定することをおすすめします。
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/register.webp"><img src="images/register.webp" width="390" height="760" loading="lazy" alt="新規登録の画面。メールアドレス、パスワード、確認、表示名の入力欄と登録するボタンがある"></a><figcaption>新規登録の画面</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="login">2-2. ログイン・ログアウト</h3>
+  <div class="with-shot">
+    <div>
+      <p><strong>ログイン</strong>：メールアドレスとパスワードを入力して<span class="ui">ログイン</span>を押します。</p>
+      <p><strong>ログアウト</strong>：画面右上の自分の名前のボタンを押し、<span class="ui">ログアウト</span>を選びます。共用のパソコンで使ったあとは、必ずログアウトしてください。</p>
+      <p><strong>パスワードを忘れたとき</strong>：ログイン画面の<span class="ui">パスワードを忘れた場合</span>から手続きします。詳しくは「<a href="#faq-password">困ったときは</a>」をご覧ください。</p>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/login.webp"><img src="images/login.webp" width="390" height="760" loading="lazy" alt="ログイン画面。メールアドレスとパスワードの入力欄、ログインボタン、パスワードを忘れた場合と新規登録へのリンクがある"></a><figcaption>ログイン画面</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="household">2-3. 世帯グループを作る・参加する</h3>
+  <div class="with-shot">
+    <div>
+      <p>はじめてログインすると、世帯グループの画面が表示されます。世帯グループに入ると、すべての機能が使えるようになります。1人が入れる世帯グループは1つです。</p>
+      <h4>最初の1人：世帯グループを作る</h4>
+      <ol class="steps">
+        <li>「新規作成」の欄に世帯グループ名（例：「サンプル家」）を入力します。</li>
+        <li><span class="ui">作成する</span>を押します。</li>
+        <li>家族を招待するときは、<a href="#settings-household">世帯設定</a>に表示される「招待コード」を伝えます。</li>
+      </ol>
+      <h4>2人目以降：招待コードで参加する</h4>
+      <ol class="steps">
+        <li>先に<a href="#register">アカウントを登録</a>してログインします。</li>
+        <li>「既存に参加」の欄に、教えてもらった招待コードを入力します。</li>
+        <li><span class="ui">参加する</span>を押します。</li>
+      </ol>
+      <div class="warn">
+        <strong>招待コードは家族以外に教えないでください</strong>
+        招待コードを知っている人は、その世帯グループに参加して在庫やレシピなどの共有データを見られます。
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/household.webp"><img src="images/household.webp" width="390" height="760" loading="lazy" alt="世帯グループの画面。左に新規作成、右に既存に参加の入力欄がある"></a><figcaption>世帯グループの作成・参加</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="install">2-4. スマートフォンのホーム画面に追加する</h3>
+  <p>ホーム画面に追加しておくと、アプリのようにアイコンから開けます。</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>端末</th><th>手順</th></tr></thead>
+    <tbody>
+      <tr><th>iPhone（Safari）</th><td>シェファミを開く → 画面下の共有ボタン（四角から矢印が出ている形）→「ホーム画面に追加」</td></tr>
+      <tr><th>Android（Chrome）</th><td>シェファミを開く → 右上のメニュー（︙）→「ホーム画面に追加」または「アプリをインストール」</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="screen">
+  <h2><span class="num">3</span>画面の見方</h2>
+  <div class="with-shot two">
+    <div>
+      <h3>上のバー</h3>
+      <ul>
+        <li><strong>シェファミ</strong>（左上）：押すとホームへ戻ります。</li>
+        <li><strong>ベル</strong>：今日の通知の件数を表示します。通知を「する」にした繰り返しイベントが今日ある場合に、数字が付きます。</li>
+        <li><strong>歯車</strong>：<a href="#settings">設定</a>を開きます。</li>
+        <li><strong>自分の名前</strong>：アカウント設定とログアウトを選べます。</li>
+      </ul>
+      <h3>下のメニュー</h3>
+      <p>画面の下に、いつでも押せる5つのボタンがあります。</p>
+      <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><th>ホーム</th><td>カレンダーと今日の状況</td></tr>
+          <tr><th>献立</th><td>献立表とレシピ</td></tr>
+          <tr><th>在庫</th><td>在庫一覧と買い物リスト</td></tr>
+          <tr><th>家計簿</th><td>収支、割り勘、口座・カード、イベント</td></tr>
+          <tr><th>その他</th><td>表示設定、世帯設定、カテゴリー管理、固定費などへの入口</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <h3>画面上部のタブ</h3>
+      <p>献立・在庫・家計簿の画面では、上のバーのすぐ下にタブが並びます（例：「献立表／レシピ」「在庫一覧／買い物リスト」）。関連する画面へすぐ移動できます。</p>
+      <h3>入力画面の閉じ方</h3>
+      <p>登録や詳細の画面は、<span class="ui">キャンセル</span><span class="ui">閉じる</span><span class="ui">×</span>のいずれかで閉じます。パソコンでは Esc キーでも閉じられます。</p>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/nav-other.webp"><img src="images/nav-other.webp" width="390" height="860" loading="lazy" alt="その他の設定・管理のメニュー。表示設定、世帯設定、カテゴリー管理、固定費、口座・カード管理、割り勘、イベント、レシピ、買い物リストが並ぶ"></a><figcaption>下の「その他」を押したところ</figcaption></figure>
+      <figure class="shot"><a href="images/nav-account.webp"><img src="images/nav-account.webp" width="390" height="860" loading="lazy" alt="アカウントのメニュー。アカウント設定とログアウトがある"></a><figcaption>右上の名前を押したところ</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="home">
+  <h2><span class="num">4</span>ホーム</h2>
+  <p>ログインして最初に表示される画面です。上にカレンダー、その下に状況をまとめたカードが並びます。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>カレンダー</h3>
+      <ul>
+        <li>日付の下の点は、その日に登録があることを示します。色は「イベント」「収入」「支出」「固定費」の4種類で、カレンダーの下に見本があります。</li>
+        <li><span class="ui">前月</span><span class="ui">翌月</span>で月を切り替えます。</li>
+        <li>日付を押すと、その日の詳細が開きます。</li>
+      </ul>
+      <h3>日付の詳細</h3>
+      <p>「今週の献立」「イベント」「収支」「固定費」の4つの行が表示されます。行を押すと中身が開き、名前や金額を確認できます。献立のレシピ名を押すと、材料と手順も見られます。</p>
+      <h3>カード</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>カード</th><th>表示される内容</th></tr></thead>
+        <tbody>
+          <tr><th>今日の状況</th><td>今週の献立と今日のイベントの件数。行を押すと今日の詳細が開きます。</td></tr>
+          <tr><th>買い物・在庫</th><td>買い物リスト（品名・値段）と在庫（品名・残り）。少なくなった在庫には「不足」と表示されます。</td></tr>
+          <tr><th>個人の財政</th><td>自分の口座の残高の合計。自分にだけ表示されます。</td></tr>
+          <tr><th>今月のお金</th><td>今月の自分の支出、世帯合計対象額、割り勘の受取予定・支払予定。</td></tr>
+          <tr><th>イベント別支出</th><td>イベントごとの支出の合計。期間（今日・今月・今年）を選べます。</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <ul>
+        <li>カードの見出しの右にあるボタン（例：<span class="ui">買い物リスト ›</span>）で、それぞれの管理画面へ移動します。</li>
+        <li>見出しの右端の <span class="ui">∧</span> を押すと、カードを折りたためます。折りたたんだ状態は、お使いの端末ごとに記憶されます。</li>
+        <li>表示するカードや並び順は、<a href="#settings-display">表示設定</a>で変えられます。</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/home-cards.webp"><img src="images/home-cards.webp" width="390" height="2330" loading="lazy" alt="ホーム画面。上に月間カレンダー、その下に今日の状況、買い物・在庫、個人の財政、今月のお金、イベント別支出のカードが並ぶ"></a><figcaption>ホーム画面</figcaption></figure>
+      <figure class="shot"><a href="images/home-day.webp"><img src="images/home-day.webp" width="390" height="860" loading="lazy" alt="日付の詳細。今週の献立、イベント、収支、固定費の件数が並び、行を押すと開く"></a><figcaption>日付を押したところ</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="menu">
+  <h2><span class="num">5</span>献立表</h2>
+  <p>下のメニューの<span class="ui">献立</span>から開きます。月曜日から日曜日までの1週間ごとに、「この週に作りたい料理」を並べる表です。曜日や朝昼晩を決めずに、気軽に書きためられます。世帯の全員が見て、追加・削除できます。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>献立を追加する</h3>
+      <ol class="steps">
+        <li><span class="ui">前の週</span><span class="ui">次の週</span>で、追加したい週を表示します。</li>
+        <li><span class="ui">＋ レシピを追加</span>を押します。</li>
+        <li>追加の方法を選びます。
+          <ul>
+            <li><strong>レシピから選ぶ</strong>：登録済みのレシピにチェックを付けます。料理名で検索でき、複数まとめて選べます。その週にすでに入っているレシピには「登録済み」と表示されます。</li>
+            <li><strong>自由メモ</strong>：「外食の日」「冷蔵庫の残りもの」のように、レシピのない予定を100文字以内で書きます。</li>
+          </ul>
+        </li>
+        <li><span class="ui">追加</span>を押します。</li>
+      </ol>
+      <h3>レシピを見る・献立から外す</h3>
+      <p>献立の行を押すと開き、<span class="ui">レシピを見る</span>と<span class="ui">削除</span>が表示されます。「削除」は献立表から外すだけで、レシピそのものは消えません。</p>
+      <div class="note">
+        <strong>過ぎた週の献立は自動で消えます</strong>
+        週が替わると、前の週までの献立は自動的に削除されます。残しておきたい料理は、レシピとして登録しておいてください。
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/menu.webp"><img src="images/menu.webp" width="390" height="1100" loading="lazy" alt="献立表の画面。週の切り替え、レシピを追加ボタン、登録済みの献立の一覧がある"></a><figcaption>献立表</figcaption></figure>
+      <figure class="shot"><a href="images/menu-add.webp"><img src="images/menu-add.webp" width="390" height="860" loading="lazy" alt="献立に追加する画面。レシピから選ぶと自由メモの切り替え、検索欄、チェックボックス付きのレシピ一覧がある"></a><figcaption>献立に追加する</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="recipes">
+  <h2><span class="num">6</span>レシピ</h2>
+  <p>献立の画面の上にある<span class="ui">レシピ</span>タブから開きます。登録したレシピは世帯の全員が見て、編集・削除できます。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>レシピを見る・お気に入りにする</h3>
+      <ul>
+        <li>タイトルを押すと、材料と手順が表示されます。</li>
+        <li>右の星を押すと、お気に入りに登録・解除できます。</li>
+        <li><span class="ui">すべて</span><span class="ui">お気に入り</span>で、表示するレシピを切り替えます。</li>
+        <li>詳細の<span class="ui">編集</span>で内容を直し、<span class="ui">削除</span>でレシピを消せます。</li>
+      </ul>
+
+      <h3>レシピを登録する（3つの方法）</h3>
+      <p><span class="ui">＋ レシピを登録</span>を押し、上のタブで方法を選びます。</p>
+      <h4>手動</h4>
+      <p>タイトル（100文字まで）、材料、手順を入力して<span class="ui">登録</span>を押します。材料と手順は、1行に1つずつ書くと読みやすく表示されます。</p>
+      <h4>画像解析（手書きレシピの写真から）</h4>
+      <ol class="steps">
+        <li><span class="ui">画像解析</span>タブを選び、レシピの写真を選びます（JPEG・PNG・WebP形式、5MBまで）。</li>
+        <li>写真から読み取ったタイトル・材料・手順が入力欄に入ります。</li>
+        <li>内容を確かめ、読み間違いを直してから<span class="ui">登録</span>を押します。</li>
+      </ol>
+      <div class="warn">
+        <strong>読み取り結果は必ず確認してください</strong>
+        文字のくせや写り方によって、読み間違いや抜けが出ることがあります。分量などは元のレシピと見比べてください。
+      </div>
+      <h4>WEB（インターネットのレシピを保存）</h4>
+      <ol class="steps">
+        <li><span class="ui">WEB</span>タブを選び、レシピのページのURLを貼り付けます。</li>
+        <li>必要ならメモ（255文字まで）を書きます。</li>
+        <li><span class="ui">登録</span>を押すと、ページのタイトルと画像が自動で取り込まれます。</li>
+      </ol>
+      <p>WEBのレシピは、材料や手順を写し取らず、元のページへのリンクとして保存します。同じURLは1つの世帯に1回だけ登録できます。登録後に直せるのはメモだけです。</p>
+
+      <h3>レシピのページから直接登録する</h3>
+      <p>レシピ一覧の下の「ほかの登録方法」に、案内があります。</p>
+      <dl class="terms">
+        <dt>パソコン：ブックマークから登録</dt>
+        <dd>ブラウザのブックマークバーを表示し、<span class="ui">シェファミに登録</span>のボタンをブックマークバーへドラッグして置きます。レシピのページを見ているときにそのブックマークを押すと、URLが入った登録画面が別のタブで開きます。</dd>
+        <dt>iPhone：共有メニューから登録</dt>
+        <dd><span class="ui">ショートカットを追加する</span>から案内のページを開き、ショートカットを追加します。その後は、Safari やアプリの共有メニューで「シェファミに登録」を選ぶと、URLが入った登録画面が開きます。</dd>
+        <dt>Android：共有メニューから登録</dt>
+        <dd><a href="#install">ホーム画面に追加</a>してあると、ブラウザの共有メニューに「シェファミ」が表示されます。選ぶと、URLが入った登録画面が開きます。</dd>
+      </dl>
+      <p>どの方法でも、開いた画面で内容を確かめて<span class="ui">登録</span>を押すまでは保存されません。うまく開かないページでは、WEBタブにURLを貼り付けてください。</p>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/recipes-guide.webp"><img src="images/recipes-guide.webp" width="390" height="1720" loading="lazy" alt="レシピ一覧の画面。レシピを登録ボタン、すべてとお気に入りの切り替え、星付きのレシピ一覧、ほかの登録方法の案内がある"></a><figcaption>レシピ一覧</figcaption></figure>
+      <figure class="shot"><a href="images/recipe-detail.webp"><img src="images/recipe-detail.webp" width="390" height="900" loading="lazy" alt="レシピの詳細。材料と手順が箇条書きで表示され、編集、削除、閉じるのボタンがある"></a><figcaption>レシピの詳細</figcaption></figure>
+      <figure class="shot"><a href="images/recipe-new.webp"><img src="images/recipe-new.webp" width="390" height="900" loading="lazy" alt="レシピを登録する画面。手動、画像解析、WEBのタブと、タイトル、材料、手順の入力欄がある"></a><figcaption>レシピを登録（手動）</figcaption></figure>
+      <figure class="shot"><a href="images/recipe-web.webp"><img src="images/recipe-web.webp" width="390" height="900" loading="lazy" alt="レシピを登録する画面のWEBタブ。レシピURLとメモの入力欄がある"></a><figcaption>レシピを登録（WEB）</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="zaiko">
+  <h2><span class="num">7</span>在庫</h2>
+  <p>下のメニューの<span class="ui">在庫</span>から開きます。食品や日用品の「いま家にある数」を記録します。世帯の全員が見て、変更できます。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>在庫を登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">＋ 在庫を登録</span>を押します。</li>
+        <li>下の表の項目を入力します。</li>
+        <li><span class="ui">保存</span>を押します。</li>
+      </ol>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>項目</th><th>説明</th></tr></thead>
+        <tbody>
+          <tr><th>品名</th><td>50文字まで。同じ品名は重ねて登録できません。</td></tr>
+          <tr><th>カテゴリー</th><td>一覧から選びます。<span class="ui">＋カテゴリーを登録</span>でその場で追加できます。</td></tr>
+          <tr><th>買う店（任意）</th><td>いつも買う店を選びます。<span class="ui">＋店を登録</span>で追加できます。買い物リストが店ごとにまとまります。</td></tr>
+          <tr><th>在庫個数</th><td>いまある数。0.5 のように小数第1位まで入力できます。</td></tr>
+          <tr><th>値段（任意）</th><td>買うときの目安の値段（円）。買い物リストとホームに表示されます。</td></tr>
+          <tr><th>買い物リスト追加閾値</th><td>在庫がこの数以下になると、買い物リストに自動で入ります。画面では「補充基準」とも表示されます。</td></tr>
+          <tr><th>毎日の自動消費</th><td>オンにして「1日の消費量」を入れると、毎日午前1時ごろに在庫が自動で減ります（開始は翌日から）。</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>数を変える</h3>
+      <ol class="steps">
+        <li>在庫一覧で品目の行を押すと、操作欄が開きます。</li>
+        <li><span class="ui">−</span><span class="ui">＋</span>で数を増減します。押すたびにすぐ保存されます。「増減幅」で、1回に動かす量を 1 か 0.1 に切り替えられます。</li>
+        <li>まとめて増減したいときは、「増減量」に数（例：3、-0.5）を入れて<span class="ui">数量を適用</span>を押します。</li>
+      </ol>
+      <div class="warn">
+        <strong>数の変更は取り消せません</strong>
+        間違えたときは、反対の向きに同じ数だけ動かして戻してください。
+      </div>
+
+      <h3>探す・内容を直す・削除する</h3>
+      <ul>
+        <li>「商品を探す」に品名を入れるか、カテゴリーのボタンで絞り込みます。</li>
+        <li>赤い「！」は、補充基準以下になっている品目（補充対象）です。</li>
+        <li>操作欄の<span class="ui">詳細を編集 ›</span>で、品名・カテゴリー・店・値段・基準・自動消費を直せます。</li>
+        <li>行の右端の<span class="ui">×</span>を押すと、確認のうえ削除します。</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/zaiko-open.webp"><img src="images/zaiko-open.webp" width="390" height="1100" loading="lazy" alt="在庫一覧の画面。検索欄、カテゴリーのボタン、在庫を登録ボタン、品目のカードがあり、牛乳の行が開いて数量の増減ボタンが表示されている"></a><figcaption>在庫一覧（行を開いたところ）</figcaption></figure>
+      <figure class="shot tall"><a href="images/zaiko-new.webp"><img src="images/zaiko-new.webp" width="390" height="1000" loading="lazy" alt="在庫を登録する画面。品名、カテゴリー、買う店、在庫個数、値段、買い物リスト追加閾値、毎日の自動消費の入力欄がある"></a><figcaption>在庫を登録</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="shopping">
+  <h2><span class="num">8</span>買い物リスト</h2>
+  <p>在庫の画面の上にある<span class="ui">買い物リスト</span>タブから開きます。買う物を店ごとにまとめて表示し、買った数をそのまま在庫に足せます。</p>
+  <div class="with-shot">
+    <div>
+      <h3>リストに入る条件</h3>
+      <ul>
+        <li><strong>自動</strong>：在庫の数が「買い物リスト追加閾値」以下になった品目は、自動で入ります。</li>
+        <li><strong>手動</strong>：<span class="ui">＋ 品目を追加</span>を押し、在庫に登録してある品目を選んで追加します。まだ十分にある物を買い足したいときに使います。</li>
+      </ul>
+      <div class="note">
+        <strong>在庫に無い物を買うときは</strong>
+        先に<a href="#zaiko">在庫</a>へ登録してから、買い物リストに追加してください。
+      </div>
+
+      <h3>お店で使う</h3>
+      <ol class="steps">
+        <li>買った品目の「購入数」を<span class="ui">−</span><span class="ui">＋</span>で合わせます。数を変えると、その行にチェックが付きます。数を変えずにチェックだけ付けることもできます。</li>
+        <li>買い終わったら、画面下の<span class="ui">購入を反映</span>を押します。</li>
+        <li>確認の画面で内容を確かめて確定します。</li>
+      </ol>
+      <p>反映すると、チェックした品目の購入数が在庫に加算されます。在庫が基準を上回った品目と、手動で追加した品目は、リストから外れます。</p>
+      <div class="warn">
+        <strong>「購入を反映」を押すまでは在庫に入りません</strong>
+        チェックや購入数は、反映するまでお使いの端末の中だけに保存されています。
+      </div>
+
+      <h3>そのほかの操作</h3>
+      <ul>
+        <li><strong>並び替え</strong>：買う店順・カテゴリー順・あいうえお順から選べます。</li>
+        <li><strong>検索</strong>：「商品を探す」に品名を入れます。</li>
+        <li><strong>詳細</strong>：品目の行を押すと、カテゴリー・店・参考の値段・現在の在庫を確認できます。買う予定の数の保存、小数（0.5 など）での購入数の入力、リストからの削除もここで行います。</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/shopping-checked.webp"><img src="images/shopping-checked.webp" width="390" height="1300" loading="lazy" alt="買い物リストの画面。店ごとに品目のカードが並び、チェックボックスと購入数の増減ボタンがある。画面下に購入を反映ボタンがある"></a><figcaption>買い物リスト（2品目にチェックを付けたところ）</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="kakeibo">
+  <h2><span class="num">9</span>家計簿（収入・支出）</h2>
+  <p>下のメニューの<span class="ui">家計簿</span>から開きます。ここに表示される収入・支出の明細は、<strong>自分が登録したものだけ</strong>です。ほかのメンバーの明細は表示されません。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>画面の構成</h3>
+      <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><th>今月の集計</th><td>今月の収入・支出・差額。その下に世帯合計対象額と、今月の固定費の予定額。</td></tr>
+          <tr><th>イベント支出</th><td>イベントごとの支出の合計（期間を選べます）。</td></tr>
+          <tr><th>未精算</th><td>割り勘で、これから支払う分と受け取る分。<span class="ui">精算一覧へ</span>で<a href="#warikan">割り勘の画面</a>へ移ります。</td></tr>
+          <tr><th>履歴</th><td>これまでの収入と支出。新しい順に並びます。</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3 id="expense">支出を登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">＋ 収支を登録</span>を押します。上の切り替えが「支出」になっていることを確かめます。</li>
+        <li>日時、金額、使用用途（任意）、カテゴリーを入力します。</li>
+        <li>支払いに使った口座やカードを「口座/カード」で選ぶと、その残高が自動で減ります（任意）。</li>
+        <li>必要に応じて<span class="ui">その他の設定</span>を開き、下の項目を設定します。</li>
+        <li><span class="ui">登録</span>を押します。</li>
+      </ol>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>その他の設定</th><th>説明</th></tr></thead>
+        <tbody>
+          <tr><th>世帯合計に含める</th><td>食費や日用品など、世帯全体の支出として合計に入れたいときにチェックします。金額の合計だけが世帯で共有されます。</td></tr>
+          <tr><th>イベント</th><td>旅行などの<a href="#events">イベント</a>に関する支出のときに選びます。イベントに「デフォルト金額」があると、金額欄に自動で入ります（書き換えできます）。</td></tr>
+          <tr><th>割り勘する</th><td>立て替えた支出を、ほかの人と分けるときにチェックします。詳しくは「<a href="#warikan">割り勘・精算</a>」をご覧ください。</td></tr>
+          <tr><th>メモ</th><td>自由に書けます（255文字まで）。</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>毎月決まって支払うものは、入力画面の下の<span class="ui">固定費で登録 ›</span>から<a href="#fixed">固定費</a>として登録すると、毎月の入力が要らなくなります。</p>
+
+      <h3 id="income">収入を登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">＋ 収支を登録</span>を押し、上の切り替えで<span class="ui">収入</span>を選びます。</li>
+        <li>日時、金額、内容、カテゴリー、入金先口座を入力します。</li>
+        <li><span class="ui">登録</span>を押します。入金先の口座の残高が自動で増えます。</li>
+      </ol>
+      <div class="note">
+        <strong>収入の登録には口座が必要です</strong>
+        入金先口座は必ず選びます。まだ口座が無いときは、先に<a href="#accounts">口座を登録</a>してください。
+      </div>
+
+      <h3>履歴を探す・直す・削除する</h3>
+      <ul>
+        <li>種類（すべて・支出・収入）、カテゴリー、キーワード、対象の月で絞り込めます。<span class="ui">検索・月を解除</span>で元に戻ります。</li>
+        <li>行を押すと詳細が開きます。<span class="ui">編集</span>で内容を直し、右上のごみ箱のボタンで削除します。口座やカードを選んでいた場合は、残高も自動で調整されます。</li>
+      </ul>
+      <div class="warn">
+        <strong>編集・削除できない明細</strong>
+        <ul>
+          <li>割り勘の請求を始めた支出（割り勘の状態が「未請求」以外になっているもの）</li>
+          <li>割り勘の精算で自動的に作られた「割り勘精算」の収入・支出</li>
+        </ul>
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/kakeibo.webp"><img src="images/kakeibo.webp" width="390" height="1500" loading="lazy" alt="家計簿の画面。今月の集計、イベント支出、未精算、収支を登録ボタン、絞り込み、履歴の一覧がある"></a><figcaption>家計簿</figcaption></figure>
+      <figure class="shot tall"><a href="images/kakeibo-new-more.webp"><img src="images/kakeibo-new-more.webp" width="390" height="1310" loading="lazy" alt="収支を登録する画面。支出と収入の切り替え、日時、金額、使用用途、カテゴリー、口座やカード、その他の設定の項目がある"></a><figcaption>収支を登録（その他の設定を開いたところ）</figcaption></figure>
+      <figure class="shot"><a href="images/kakeibo-detail.webp"><img src="images/kakeibo-detail.webp" width="390" height="900" loading="lazy" alt="支出の詳細。日付、内容、金額、カテゴリー、口座などが表示され、編集と閉じるのボタンがある"></a><figcaption>支出の詳細</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="accounts">
+  <h2><span class="num">10</span>口座・カード</h2>
+  <p>家計簿の画面の上にある<span class="ui">口座・カード管理</span>タブから開きます。登録した口座・カードと残高は、<strong>自分にだけ</strong>表示されます。</p>
+  <div class="warn">
+    <strong>銀行やカード会社とはつながりません</strong>
+    シェファミの残高は、家計簿に登録した収入・支出をもとに計算した「記録上の残高」です。実際の口座から自動で取り込むことはありません。口座番号や暗証番号を入力する欄もありません。
+  </div>
+  <div class="with-shot two">
+    <div>
+      <h3>口座を登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">口座・財布</span>タブで<span class="ui">＋ 口座を登録</span>を押します。</li>
+        <li>口座名（例：「生活費口座」）、種別（銀行・電子マネー）、いまの残高を入力して登録します。</li>
+      </ol>
+      <p>口座の行を押すと、その口座に紐づくカードと、<span class="ui">取引履歴</span>のボタンが表示されます。取引履歴では、入出金と、その時点の残高を確認できます。口座の削除も取引履歴の画面から行います。</p>
+
+      <h3>カードを登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">カード</span>タブで<span class="ui">＋ カードを登録</span>を押します。</li>
+        <li>紐づく口座、カード名、種別を選んで登録します。</li>
+      </ol>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>種別</th><th>動き</th></tr></thead>
+        <tbody>
+          <tr><th>クレジットカード</th><td>このカードで支出を登録すると、紐づく口座の残高から、その場で差し引かれます。</td></tr>
+          <tr><th>チャージ型カード</th><td>カード自身が残高を持ちます。カードの行を開いて<span class="ui">（カード名）にチャージ</span>を押し、金額を入れると、口座からカードへ残高が移ります。支出はカードの残高から差し引かれます。</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>残高が変わるとき</h3>
+      <ul>
+        <li>支出を登録する（口座/カードを選んだ場合）→ 減る</li>
+        <li>収入を登録する → 入金先の口座が増える</li>
+        <li>固定費が自動で計上される（引き落とし元を選んだ場合）→ 減る</li>
+        <li>割り勘を精算する（口座を選んだ場合）→ 支払った側は減り、受け取った側は増える</li>
+      </ul>
+      <div class="note">
+        <strong>削除できない口座・カード</strong>
+        固定費の引き落とし元になっている口座、残高の残っているチャージ型カードがある口座、すでに支出やチャージで使ったカードは削除できません。
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/accounts.webp"><img src="images/accounts.webp" width="390" height="760" loading="lazy" alt="口座・カード管理の画面。口座・財布タブに口座の一覧と残高があり、開いた行に紐づくカードと取引履歴ボタンがある"></a><figcaption>口座の一覧</figcaption></figure>
+      <figure class="shot"><a href="images/accounts-cards.webp"><img src="images/accounts-cards.webp" width="390" height="760" loading="lazy" alt="カードタブ。クレジットカードとチャージ型カードが、紐づく口座の名前と一緒に並ぶ"></a><figcaption>カードの一覧</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="fixed">
+  <h2><span class="num">11</span>固定費</h2>
+  <p>下のメニューの<span class="ui">その他</span> → <span class="ui">固定費</span>から開きます。家賃・光熱費・通信費など、毎月決まって支払うものを登録します。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>しくみ</h3>
+      <ul>
+        <li>登録した固定費は、毎月の支払日になると、家計簿の支出として自動で記録されます（毎日午前1時ごろに処理されます）。</li>
+        <li>支払日を31日にしていて、その月が30日までの場合などは、その月の最後の日に記録されます。</li>
+        <li>一覧の金額は「毎月の予定額」です。画面下の「登録額合計（参考）」は、表示中の固定費の月額を足したものです。</li>
+      </ul>
+
+      <h3>固定費を登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">＋ 固定費を登録</span>を押します。</li>
+        <li>固定費名（候補から選ぶか、自由に入力）、金額、支払日（1〜31）を入力します。</li>
+        <li>引き落とし元の口座・カードを選ぶと、記録のたびに残高が減ります（任意）。</li>
+        <li>必要に応じて<span class="ui">詳細設定</span>を開き、下の項目を設定します。</li>
+        <li><span class="ui">登録</span>を押します。</li>
+      </ol>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>詳細設定</th><th>説明</th></tr></thead>
+        <tbody>
+          <tr><th>公開範囲</th><td>「世帯共有」は世帯の全員に、「個人」は自分にだけ表示されます。</td></tr>
+          <tr><th>世帯合計に含める</th><td>世帯全体の支出の合計に入れるときにチェックします。</td></tr>
+          <tr><th>割り勘</th><td>毎月の記録のたびに、決めた割合や金額で<a href="#warikan">割り勘</a>の内訳を自動で作ります。</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>内容を確認する・直す・削除する</h3>
+      <p>一覧の行を押すと詳細が開きます。編集と削除ができるのは、<strong>登録した本人だけ</strong>です。ほかのメンバーが登録した世帯共有の固定費は、見るだけになります。引き落とし元や割り勘の内容は、登録した本人以外には「非公開」と表示されます。</p>
+      <div class="note">
+        <strong>知っておくと安心なこと</strong>
+        <ul>
+          <li>固定費を削除しても、すでに記録された過去の支出は家計簿に残ります。</li>
+          <li>自動で記録された支出を家計簿で削除した場合、その月の分がもう一度記録されることはありません。</li>
+          <li>金額などを変更すると、変更したあとに来る支払日の記録から新しい内容になります。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/fixed-costs.webp"><img src="images/fixed-costs.webp" width="390" height="1050" loading="lazy" alt="固定費管理の画面。固定費を登録ボタン、自動計上の説明、登録済みの固定費のカード、登録額合計がある"></a><figcaption>固定費管理</figcaption></figure>
+      <figure class="shot tall"><a href="images/fixed-new.webp"><img src="images/fixed-new.webp" width="390" height="1000" loading="lazy" alt="固定費を登録する画面。固定費名、金額、支払日、引き落とし元、詳細設定の項目がある"></a><figcaption>固定費を登録</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="warikan">
+  <h2><span class="num">12</span>割り勘・精算</h2>
+  <p>家計簿の画面の上にある<span class="ui">割り勘</span>タブから開きます。自分が立て替えた支出を相手と分け、お金のやり取りが済むまでの状況を管理します。内訳が見えるのは、立て替えた人と負担する人の2人だけです。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>割り勘を作る</h3>
+      <ol class="steps">
+        <li><a href="#expense">支出を登録</a>するときに、<span class="ui">その他の設定</span>を開いて<span class="ui">割り勘する</span>にチェックします。</li>
+        <li>入力方法を選びます。「割合」は％で、「金額」は円で、相手の負担分を入力します。</li>
+        <li>相手を選びます。
+          <ul>
+            <li><strong>世帯内</strong>：同じ世帯のメンバーから選びます。</li>
+            <li><strong>世帯外</strong>：友人など、シェファミを使っていない人の名前を入力します。</li>
+          </ul>
+        </li>
+        <li><span class="ui">相手を追加</span>で、相手を20人まで増やせます。残りが自分の負担として表示されます。</li>
+        <li>支出を<span class="ui">登録</span>すると、割り勘の一覧に内訳が作られます。</li>
+      </ol>
+
+      <h3>精算の流れ（相手が世帯内のメンバーのとき）</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>順番</th><th>だれが</th><th>押すボタン</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>立て替えた人</td><td><span class="ui">請求</span></td><td>未請求 → 請求中</td></tr>
+          <tr><td>2</td><td>負担する人</td><td><span class="ui">支払う</span>（実際にお金を渡したあと）</td><td>→ 受領確認待ち</td></tr>
+          <tr><td>3</td><td>立て替えた人</td><td><span class="ui">受け取りました</span></td><td>→ 精算済み</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <ul>
+        <li>「請求」を押さなくても、負担する人は先に「支払う」を押せます。</li>
+        <li>負担する人は、すぐに払えないとき<span class="ui">保留</span>を押して、保留中にできます。</li>
+        <li>「支払う」と報告されたのにまだ受け取っていないときは、立て替えた人が<span class="ui">まだ受け取っていない</span>を押すと、請求中に戻ります。</li>
+        <li><span class="ui">コメント</span>で、相手とメッセージをやり取りできます（500文字まで）。</li>
+      </ul>
+      <div class="warn">
+        <strong>シェファミは送金をしません</strong>
+        実際のお金の受け渡しは、現金や振込などで別に行ってください。シェファミは「払った」「受け取った」の記録だけを行います。
+      </div>
+
+      <h3>相手が世帯外の人のとき</h3>
+      <p>相手はシェファミを使えないので、お金を受け取ったら、立て替えた人が<span class="ui">精算済みにする</span>を押します。</p>
+
+      <h3>精算すると家計簿に記録されます</h3>
+      <p>「支払う」「受け取りました」「精算済みにする」を押すとき、使った口座を選べます（任意）。精算が済むと、受け取った人には収入、支払った人には支出として、「割り勘精算」というカテゴリーで家計簿に自動で記録されます。口座を選んでいた場合は、残高も増減します。</p>
+
+      <h3>一覧の見方・削除</h3>
+      <ul>
+        <li>上の<span class="ui">すべて</span><span class="ui">世帯内</span><span class="ui">世帯外</span>で、相手の種類を絞り込めます。</li>
+        <li>「受け取り予定」「支払い予定」は、まだ精算が済んでいない分の合計です。</li>
+        <li>行を押すと詳細が開きます。立て替えた人は、精算前の内訳を右上のごみ箱のボタンで削除できます。</li>
+        <li>世帯内の相手と精算済みになった内訳は、相手の家計簿にも記録があるため削除できません。</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/warikan.webp"><img src="images/warikan.webp" width="390" height="1010" loading="lazy" alt="割り勘・精算の画面。すべて、世帯内、世帯外の切り替え、受け取り予定と支払い予定の合計、内訳のカードが並ぶ"></a><figcaption>割り勘・精算</figcaption></figure>
+      <figure class="shot"><a href="images/warikan-detail.webp"><img src="images/warikan-detail.webp" width="390" height="900" loading="lazy" alt="割り勘の詳細。日付、用途、相手、負担額、状態が表示され、コメントと閉じるのボタン、右上に削除のボタンがある"></a><figcaption>割り勘の詳細</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="events">
+  <h2><span class="num">13</span>イベント</h2>
+  <p>家計簿の画面の上にある<span class="ui">イベント</span>タブから開きます。予定や記念日を登録すると、ホームのカレンダーに表示されます。支出をイベントに結び付けると、「旅行でいくら使ったか」などをまとめて確認できます。</p>
+  <div class="with-shot two">
+    <div>
+      <h3>イベントを登録する</h3>
+      <ol class="steps">
+        <li><span class="ui">＋ イベントを登録</span>を押します。</li>
+        <li>下の表の項目を入力します。</li>
+        <li><span class="ui">登録</span>を押します。</li>
+      </ol>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>項目</th><th>説明</th></tr></thead>
+        <tbody>
+          <tr><th>イベント名・日付</th><td>予定の名前と日付を入力します。</td></tr>
+          <tr><th>終日</th><td>オフにすると、開始と終了の時刻を入力できます。</td></tr>
+          <tr><th>繰り返し</th><td>単発・毎日・毎週・毎月・毎年から選びます。ごみ出しや誕生日などは繰り返しにすると便利です。</td></tr>
+          <tr><th>通知する</th><td>オンにすると、その予定がある日に、画面右上のベルに件数が表示されます。繰り返しのイベントだけで使えます。</td></tr>
+          <tr><th>公開範囲</th><td>「世帯共有」は世帯の全員に、「個人」は自分にだけ表示されます。</td></tr>
+          <tr><th>その他の設定</th><td><strong>デフォルト金額</strong>：支出の登録でこのイベントを選ぶと、金額欄に自動で入る金額です。<br><strong>サマリー表示</strong>：オンにすると、ホームと家計簿の「イベント別支出」に表示されます。</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="note">
+        <strong>通知について</strong>
+        通知は、シェファミを開いたときにベルの数字で知らせるものです。スマートフォンの通知（プッシュ通知）やメールは届きません。
+      </div>
+
+      <h3>内容を確認する・直す・削除する</h3>
+      <ul>
+        <li>一覧の行を押すと、自分が登録したイベントは編集の画面が、ほかのメンバーが登録したイベントは内容の確認の画面が開きます。</li>
+        <li>編集と削除ができるのは、登録した本人だけです。</li>
+        <li>イベントの画面では、そのイベントに結び付けた自分の支出の合計も確認できます。</li>
+      </ul>
+
+      <h3>支出をイベントに結び付ける</h3>
+      <p><a href="#expense">支出を登録</a>するときに、<span class="ui">その他の設定</span>の「イベント」で選びます。集計されるのは、自分が登録した支出だけです。</p>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/events.webp"><img src="images/events.webp" width="390" height="1120" loading="lazy" alt="イベント一覧の画面。イベントを登録ボタンと、日付、名前、繰り返し、公開範囲が書かれたカードが並ぶ"></a><figcaption>イベント一覧</figcaption></figure>
+      <figure class="shot tall"><a href="images/event-new.webp"><img src="images/event-new.webp" width="390" height="1100" loading="lazy" alt="イベントを登録する画面。イベント名、日付、終日、繰り返し、通知する、公開範囲、その他の設定の項目がある"></a><figcaption>イベントを登録</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="categories">
+  <h2><span class="num">14</span>カテゴリー管理</h2>
+  <p>下のメニューの<span class="ui">その他</span> → <span class="ui">カテゴリー管理</span>、または収支の登録画面の<span class="ui">カテゴリー管理 ›</span>から開きます。家計簿の支出と収入の分類を管理します。カテゴリーは世帯で共有されます。</p>
+  <div class="with-shot">
+    <div>
+      <ul>
+        <li><span class="ui">支出カテゴリー</span><span class="ui">収入カテゴリー</span>で、表示する種類を切り替えます。</li>
+        <li><span class="ui">支出カテゴリーを登録</span>（または収入カテゴリーを登録）で、独自のカテゴリーを追加できます。</li>
+        <li>自分たちで追加したカテゴリーは、名前の変更と削除ができます。</li>
+        <li>種別が「デフォルト」のカテゴリー（食費・日用品など、最初からあるもの）は、変更も削除もできません。</li>
+        <li>すでに収入・支出で使っているカテゴリーは削除できません。</li>
+      </ul>
+      <p>在庫のカテゴリーと買う店は、<a href="#zaiko">在庫の登録画面</a>の<span class="ui">＋カテゴリーを登録</span><span class="ui">＋店を登録</span>から追加します。</p>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/categories.webp"><img src="images/categories.webp" width="390" height="830" loading="lazy" alt="家計簿カテゴリー管理の画面。支出カテゴリーと収入カテゴリーの切り替え、カテゴリー名と種別の一覧がある"></a><figcaption>カテゴリー管理</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="settings">
+  <h2><span class="num">15</span>設定</h2>
+  <p>画面右上の歯車のボタンから開きます。「世帯設定」「表示設定」「アカウント設定」の3つがあります。</p>
+  <div class="with-shot">
+    <div>
+      <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><th>世帯設定</th><td>世帯グループの名前・招待コード・メンバーの確認と、世帯グループからの退出</td></tr>
+          <tr><th>表示設定</th><td>ホームに表示するカードと項目、並び順の変更</td></tr>
+          <tr><th>アカウント設定</th><td>表示名・パスワード・メールアドレスの変更と、退会</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/settings.webp"><img src="images/settings.webp" width="390" height="860" loading="lazy" alt="設定の画面。世帯設定、表示設定、アカウント設定のカードが並び、それぞれに開くボタンがある"></a><figcaption>設定</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="settings-household">15-1. 世帯設定</h3>
+  <div class="with-shot">
+    <div>
+      <ul>
+        <li>世帯グループ名、招待コード、メンバーの一覧を確認できます。</li>
+        <li><span class="ui">コピー</span>を押すと、招待コードをコピーできます。家族を招待するときに、メッセージなどに貼り付けて伝えてください。</li>
+      </ul>
+      <h4>世帯グループから退出する</h4>
+      <p><span class="ui">世帯グループから退出する</span>を押し、確認の画面で<span class="ui">退出する</span>を押します。</p>
+      <div class="danger">
+        <strong>退出の前にお読みください</strong>
+        <ul>
+          <li>退出すると、その世帯グループの共有データ（在庫・買い物リスト・レシピなど）を見られなくなります。</li>
+          <li>自分が<strong>最後の1人</strong>の場合、世帯グループと共有データはすべて削除され、元に戻せません。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot"><a href="images/settings-household.webp"><img src="images/settings-household.webp" width="390" height="900" loading="lazy" alt="世帯設定の画面。世帯グループ名、招待コードとコピーボタン、メンバーの一覧、世帯グループから退出するボタンがある。招待コードは伏せてある"></a><figcaption>世帯設定（招待コードは伏せてあります）</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="settings-display">15-2. 表示設定</h3>
+  <div class="with-shot">
+    <div>
+      <p>ホームの見え方を、自分用に変えられます。ほかのメンバーの画面には影響しません。</p>
+      <ol class="steps">
+        <li>カードごとのスイッチで、ホームに表示するかどうかを切り替えます。</li>
+        <li>カードの中の項目（例：「買い物リスト」「在庫リスト」）も、チェックで個別に切り替えます。</li>
+        <li>「カードの並び順」で、上下の矢印を押すかドラッグして、順番を入れ替えます。</li>
+        <li>最後に<span class="ui">保存</span>を押します。保存するとホームに戻り、変更が反映されます。</li>
+      </ol>
+      <div class="warn">
+        <strong>「保存」を押すまで反映されません</strong>
+        変更したあとは「未保存の変更があります」と表示されます。保存せずにほかの画面へ移ると、変更は取り消されます。
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/settings-display.webp"><img src="images/settings-display.webp" width="390" height="1900" loading="lazy" alt="表示設定の画面。カードごとの表示スイッチ、カード内の項目のチェック、カードの並び順、保存ボタンがある"></a><figcaption>表示設定</figcaption></figure>
+    </div>
+  </div>
+
+  <h3 id="settings-account">15-3. アカウント設定</h3>
+  <div class="with-shot">
+    <div>
+      <p>画面の上のボタン（表示名・パスワード・メール・退会）を押すと、その項目へ移動します。</p>
+      <dl class="terms">
+        <dt>表示名を変える</dt>
+        <dd>新しい表示名を入力して<span class="ui">保存</span>を押します。</dd>
+        <dt>パスワードを変える</dt>
+        <dd>現在のパスワードと新しいパスワード（確認を含む）を入力します。変更すると、ほかの端末でログインしていた場合は、そちらがログアウトされます。</dd>
+        <dt>メールアドレスを変える</dt>
+        <dd>現在のパスワードと新しいメールアドレスを入力します。変更後は、新しいメールアドレスでログインします。</dd>
+      </dl>
+      <h4 id="withdraw">退会する</h4>
+      <ol class="steps">
+        <li>「退会」の欄で現在のパスワードを入力し、<span class="ui">退会を申し込む</span>を押します。</li>
+        <li>確認の画面で<span class="ui">退会する</span>を押します。</li>
+      </ol>
+      <div class="danger">
+        <strong>退会について</strong>
+        <ul>
+          <li>申し込むとすぐにログアウトされ、<strong>30日後</strong>にアカウントと自分のデータ（収支・口座など）が削除されます。</li>
+          <li>30日以内であれば、同じメールアドレスとパスワードでログインすると、退会を取り消せます。</li>
+          <li>30日を過ぎると元に戻せません。</li>
+          <li>精算が済んでいない割り勘や、ほかの人が負担する設定の固定費が残っていると、退会を申し込めません。先に精算や固定費の整理を済ませてください。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="shots">
+      <figure class="shot tall"><a href="images/settings-account.webp"><img src="images/settings-account.webp" width="390" height="1900" loading="lazy" alt="アカウント設定の画面。表示名、パスワード、メールアドレス、退会の4つの欄がある"></a><figcaption>アカウント設定</figcaption></figure>
+    </div>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="faq">
+  <h2><span class="num">16</span>困ったときは</h2>
+
+  <details class="faq" id="faq-password" open>
+    <summary>パスワードを忘れました</summary>
+    <ol class="steps">
+      <li>ログイン画面の<span class="ui">パスワードを忘れた場合</span>を押します。</li>
+      <li>登録したメールアドレスを入力して送信します。</li>
+      <li>届いたメールのリンクを開き、新しいパスワードを設定します。リンクが使えるのは30分間です。</li>
+    </ol>
+    <p>画面に「現在、パスワード再設定メールを利用できません」と表示される間は、この手続きは使えません。ログインできている端末があれば、<a href="#settings-account">アカウント設定</a>からパスワードを変更できます。</p>
+    <p>メールが届かないときは、迷惑メールのフォルダと、入力したメールアドレスを確かめてください。続けて何度も申請すると、しばらく受け付けられなくなります。</p>
+  </details>
+
+  <details class="faq">
+    <summary>画面が古いまま・表示がおかしい</summary>
+    <p>ページを再読み込みしてください。ホーム画面に追加して使っている場合は、いったん閉じて開き直します。それでも直らないときは、ログアウトしてからログインし直してください。</p>
+  </details>
+
+  <details class="faq">
+    <summary>収入を登録できません</summary>
+    <p>収入の登録には、入金先の口座が必要です。先に<a href="#accounts">口座を登録</a>してください。</p>
+  </details>
+
+  <details class="faq">
+    <summary>ほかの家族の支出や口座が見えません</summary>
+    <p>収入・支出の明細と口座の残高は、登録した本人にだけ表示されるしくみです。世帯全体の金額を把握したい支出は、登録のときに「世帯合計に含める」にチェックしてください。合計だけが共有されます。</p>
+  </details>
+
+  <details class="faq">
+    <summary>買い物リストに品目が入りません／消えません</summary>
+    <ul>
+      <li><strong>入らない</strong>：在庫の数が「買い物リスト追加閾値」を上回っていると、自動では入りません。<span class="ui">＋ 品目を追加</span>で手動で追加できます。</li>
+      <li><strong>消えない</strong>：「購入を反映」をしても、在庫が基準以下のままの品目はリストに残ります。購入数を見直すか、在庫の基準を下げてください。</li>
+    </ul>
+  </details>
+
+  <details class="faq">
+    <summary>先週の献立が消えています</summary>
+    <p>献立表は、過ぎた週の分を自動で削除するしくみです。レシピそのものは<a href="#recipes">レシピ一覧</a>に残っています。</p>
+  </details>
+
+  <details class="faq">
+    <summary>支出を編集・削除できません</summary>
+    <p>割り勘の請求を始めた支出（割り勘の状態が「未請求」以外のもの）と、割り勘の精算で自動的に作られた「割り勘精算」の明細は、編集・削除できません。</p>
+  </details>
+
+  <details class="faq">
+    <summary>固定費が記録されません</summary>
+    <ul>
+      <li>記録されるのは、支払日の午前1時ごろです。支払日より前には記録されません。</li>
+      <li>記録されるのは、登録したあとに来る支払日の分からです。過去の月の分は、さかのぼって記録されません。必要な場合は、支出として手で登録してください。</li>
+      <li>その月の分を家計簿で削除した場合は、同じ月にもう一度記録されることはありません。</li>
+    </ul>
+  </details>
+
+  <details class="faq">
+    <summary>WEBのレシピを登録できません</summary>
+    <p>ページによっては、タイトルを取り込めないことがあります（ログインが必要なページ、アプリ専用のページなど）。その場合は「手動」タブでタイトルを入力し、手順の欄にURLを書いておく方法があります。同じURLがすでに登録されている場合も、登録できません。</p>
+  </details>
+
+  <details class="faq">
+    <summary>間違えて退会を申し込みました</summary>
+    <p>申し込みから30日以内であれば、同じメールアドレスとパスワードでログインすると、退会を取り消す案内が表示されます。</p>
+  </details>
+
+  <details class="faq">
+    <summary>別の世帯グループに移りたい</summary>
+    <p>いまの世帯グループを<a href="#settings-household">退出</a>してから、新しい世帯グループを作るか、招待コードで参加します。自分が最後の1人の場合、元の世帯グループの共有データは削除されるのでご注意ください。</p>
+  </details>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<!-- ============================================================ -->
+<section class="chapter" id="data">
+  <h2><span class="num">17</span>データの扱いについて</h2>
+  <ul>
+    <li>登録した内容はインターネット上のサーバーに保存され、どの端末からログインしても同じ内容が表示されます。</li>
+    <li>パスワードは、元の文字が分からない形に変換して保存しています。</li>
+    <li>手書きレシピの写真は、文字を読み取るためだけに使い、読み取りが終わると削除します。</li>
+    <li>WEBのレシピを登録すると、タイトルと画像を取り込むために、シェファミがそのページへ一度アクセスします。</li>
+    <li>一部の表示の状態（ホームのカードの折りたたみ、前回選んだ口座、買い物リストのチェック）は、お使いの端末の中にだけ保存されます。別の端末には引き継がれません。</li>
+    <li>共用の端末で使ったあとは、必ずログアウトしてください。</li>
+  </ul>
+  <div class="note">
+    <strong>安全に使うために</strong>
+    <ul>
+      <li>パスワードはほかのサービスと別のものにし、家族にも教えないでください。家族はそれぞれ自分のアカウントを登録します。</li>
+      <li>招待コードは、世帯に入ってほしい人にだけ伝えてください。</li>
+      <li>銀行の暗証番号やカード番号などは、メモ欄にも入力しないでください。</li>
+    </ul>
+  </div>
+  <a class="back-top" href="#top">▲ 目次へ戻る</a>
+</section>
+
+<footer>シェファミ 取扱説明書（2026年11月版）</footer>
+</main>
+</div>
+</body>
+</html>
