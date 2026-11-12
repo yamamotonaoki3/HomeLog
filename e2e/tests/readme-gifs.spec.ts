@@ -101,6 +101,29 @@ async function record(browser: Browser, name: string, scenario: (page: Page) => 
 
 const pause = (page: Page, ms = 900) => page.waitForTimeout(ms)
 
+// WEB 登録の録画に使う架空のレシピページ(#522)。recipe.example.com は予約ドメインで、実在のサイトではない。
+const WEB_RECIPE_URL = 'https://recipe.example.com/teriyaki-chicken'
+const WEB_RECIPE_THUMBNAIL = 'https://recipe.example.com/images/teriyaki-chicken.svg'
+// サムネイルは自作の絵(皿に盛った鶏の照り焼き)。詳細では中央を切り取って表示されるので、料理を中央に置く。
+const WEB_RECIPE_THUMBNAIL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="420" viewBox="0 0 800 420">
+<rect width="800" height="420" fill="#f6e7cf"/>
+<rect y="300" width="800" height="120" fill="#e9d2ad"/>
+<ellipse cx="400" cy="232" rx="250" ry="130" fill="#d9cbb7"/>
+<ellipse cx="400" cy="222" rx="250" ry="130" fill="#ffffff"/>
+<ellipse cx="400" cy="222" rx="196" ry="98" fill="#f4f1ec"/>
+<g fill="#5e9e3d"><circle cx="262" cy="214" r="34"/><circle cx="292" cy="178" r="30"/><circle cx="300" cy="246" r="28"/></g>
+<g fill="#7dbb55"><circle cx="276" cy="200" r="16"/><circle cx="300" cy="236" r="12"/></g>
+<g stroke="#5a2f12" stroke-width="3">
+<rect x="330" y="160" width="96" height="72" rx="26" fill="#a5582a"/>
+<rect x="408" y="176" width="96" height="72" rx="26" fill="#9a4f24"/>
+<rect x="356" y="220" width="96" height="66" rx="26" fill="#ab5e2d"/>
+</g>
+<g fill="#e7a56d" opacity="0.75"><rect x="346" y="172" width="44" height="10" rx="5"/><rect x="424" y="190" width="44" height="10" rx="5"/><rect x="372" y="234" width="44" height="10" rx="5"/></g>
+<g fill="#fff8e6"><circle cx="372" cy="200" r="3"/><circle cx="396" cy="186" r="3"/><circle cx="452" cy="214" r="3"/><circle cx="476" cy="200" r="3"/><circle cx="404" cy="258" r="3"/><circle cx="428" cy="248" r="3"/></g>
+<g fill="#f2c94c"><circle cx="530" cy="262" r="20"/><circle cx="552" cy="238" r="16"/></g>
+<path d="M512 262 a20 20 0 0 1 36 0" fill="none" stroke="#e0a91f" stroke-width="3"/>
+</svg>`
+
 async function scrollSlowly(page: Page, distance: number) {
   for (let moved = 0; moved < distance; moved += 120) {
     await page.mouse.wheel(0, 120)
@@ -222,6 +245,45 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
     await pause(p)
     await p.getByTestId('recipes-panel').getByText('肉じゃが').first().click()
     await pause(p, 2000)
+  })
+
+  // WEB タブで URL から登録する(#522)。外部サイトには接続しない: サーバーがページを読みに行く
+  // POST /api/recipes/from-url とサムネイル画像だけを、架空の応答に差し替える。一覧の取得は本物の API。
+  await record(browser, 'recipes-web', async (p) => {
+    const added: unknown[] = []
+    await p.route(WEB_RECIPE_THUMBNAIL, (route) => route.fulfill({ contentType: 'image/svg+xml', body: WEB_RECIPE_THUMBNAIL_SVG }))
+    await p.route('**/api/recipes/from-url', async (route) => {
+      const body = route.request().postDataJSON()
+      expect(body.url).toBe(WEB_RECIPE_URL)
+      const recipe = { id: 900001, title: '鶏の照り焼き', sourceType: 'web', url: body.url, memo: body.memo ?? null, ingredients: null, steps: null, thumbnailUrl: WEB_RECIPE_THUMBNAIL, isFavorite: false }
+      added.push(recipe)
+      await route.fulfill({ status: 201, json: recipe })
+    })
+    await p.route('**/api/recipes', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      const response = await route.fetch()
+      await route.fulfill({ response, json: [...await response.json(), ...added] })
+    })
+    await p.goto('/recipes')
+    await pause(p, 1200)
+    await p.getByRole('button', { name: 'レシピを登録' }).click()
+    await pause(p, 600)
+    await p.getByRole('tab', { name: 'WEB' }).click()
+    await pause(p)
+    await p.getByLabel('レシピURL').fill(WEB_RECIPE_URL)
+    await pause(p)
+    await p.getByLabel('メモ').pressSequentially('週末に作る', { delay: 150 })
+    await pause(p)
+    await p.getByRole('button', { name: '登録', exact: true }).click()
+    const card = p.getByRole('list', { name: 'レシピ' }).getByRole('button', { name: '鶏の照り焼き', exact: true })
+    await expect(card).toBeVisible()
+    await card.scrollIntoViewIfNeeded()
+    await pause(p, 1500)
+    await card.click()
+    const detail = p.getByRole('dialog', { name: 'レシピ詳細' })
+    await expect(detail.getByRole('img', { name: '鶏の照り焼きのサムネイル' })).toBeVisible()
+    await expect(detail).toContainText('週末に作る')
+    await pause(p, 2500)
   })
 
   await record(browser, 'menu', async (p) => {
