@@ -145,6 +145,32 @@ describe('RecipesPage', () => {
     renderRecipesPage(`/recipes/share?text=${encodeURIComponent('[E2E_TEST] https://recipe.example.com/text?q=1&b=2#steps')}`)
     expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/text?q=1&b=2#steps')
   })
+
+  // Androidの共有では、URLが url ではなく text に入り、url は空で届くことがある(#520)。
+  it.each([
+    ['urlが空の', `url=&text=${encodeURIComponent('https://recipe.example.com/android')}`],
+    ['urlが空白だけの', `url=${encodeURIComponent('  ')}&text=${encodeURIComponent('https://recipe.example.com/android')}`],
+    ['urlが空で、textにURL以外の文字もある', `title=&text=${encodeURIComponent('[E2E_TEST] おいしい肉じゃが https://recipe.example.com/android')}&url=`],
+  ])('%sときは、textのURLで登録画面を開く', async (_label, query) => {
+    const { calls } = setupApi()
+    renderRecipesPage(`/recipes/share?${query}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/android')
+    expect(screen.getByRole('tab', { name: 'WEB', selected: true })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+
+  it('urlに値があるときは、textよりurlを優先する', async () => {
+    setupApi()
+    renderRecipesPage(`/recipes/share?url=${encodeURIComponent('https://recipe.example.com/url')}&text=${encodeURIComponent('https://recipe.example.com/text')}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/url')
+  })
+
+  it('urlが空で、textにもURLが無いときは、登録画面を開かない', async () => {
+    setupApi()
+    renderRecipesPage(`/recipes/share?url=&text=${encodeURIComponent('[E2E_TEST] URLのない文章')}`)
+    expect(await screen.findByText('レシピはありません')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'レシピを登録' })).not.toBeInTheDocument()
+  })
   it('レシピがない場合はプレースホルダーを表示する', async () => {
     setupApi()
     renderRecipesPage()
@@ -446,6 +472,26 @@ describe('レシピ一覧の見た目に関わる構成 (#489)', () => {
     expect(pc.compareDocumentPosition(iphone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(pc).getByRole('link', { name: 'シェファミに登録' })).toBeInTheDocument()
     expect(within(iphone).getByRole('link', { name: 'ショートカットを追加する' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
+  })
+
+  it('iPhoneの案内の下に、Androidの共有メニューから登録する案内を同じ形のカードで表示する (#520)', async () => {
+    const { calls } = setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const iphone = within(panel).getByRole('region', { name: 'iPhoneからレシピを登録' })
+    const android = within(panel).getByRole('region', { name: 'Androidからレシピを登録' })
+    expect(android).toHaveClass('ui-card', 'recipe-guide')
+    expect(iphone.compareDocumentPosition(android) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const steps = within(android).getAllByRole('listitem').map((item) => item.textContent)
+    expect(steps).toHaveLength(3)
+    expect(steps[0]).toContain('Chrome')
+    expect(steps[0]).toContain('インストール')
+    expect(steps[1]).toContain('共有')
+    expect(steps[1]).toContain('「シェファミ」')
+    expect(steps[2]).toContain('「登録」')
+    // 使えないときの代わりの方法も案内する。
+    expect(android).toHaveTextContent('WEBタブにURLを貼り付けて')
+    expect(calls).toEqual([])
   })
 })
 

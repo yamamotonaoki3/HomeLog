@@ -54,12 +54,19 @@ for (const width of [1280, 390, 320]) {
     // 登録案内は同じ幅のカードで、一覧の下に並ぶ。
     const pc = panel.getByRole('region', { name: 'PCからレシピを登録', exact: true })
     const iphone = panel.getByRole('region', { name: 'iPhoneからレシピを登録', exact: true })
+    const android = panel.getByRole('region', { name: 'Androidからレシピを登録', exact: true })
     await expect(panel.getByText('ほかの登録方法', { exact: true })).toBeVisible()
     await expect(pc).toBeVisible()
     await expect(iphone).toBeVisible()
-    const [listBox, pcBox, iphoneBox] = await Promise.all([items.first().boundingBox(), pc.boundingBox(), iphone.boundingBox()])
+    await expect(android).toBeVisible()
+    const [listBox, pcBox, iphoneBox, androidBox] = await Promise.all([items.first().boundingBox(), pc.boundingBox(), iphone.boundingBox(), android.boundingBox()])
     expect(Math.abs(pcBox!.width - listBox!.width)).toBeLessThanOrEqual(1)
     expect(Math.abs(iphoneBox!.width - listBox!.width)).toBeLessThanOrEqual(1)
+    // Androidの案内(#520)は、iPhoneの案内の下に同じ幅で並び、手順の文が横にはみ出さない。
+    expect(Math.abs(androidBox!.width - listBox!.width)).toBeLessThanOrEqual(1)
+    expect(androidBox!.y).toBeGreaterThanOrEqual(iphoneBox!.y + iphoneBox!.height)
+    await expect(android.getByRole('listitem')).toHaveCount(3)
+    expect(await android.locator('li, p, h3').evaluateAll(elements => elements.some(el => el.scrollWidth > el.clientWidth))).toBe(false)
     expect((await iphone.getByRole('link', { name: 'ショートカットを追加する', exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44)
 
     if (process.env.RECIPES_SCREENSHOT_DIR) {
@@ -108,3 +115,17 @@ for (const width of [1280, 390, 320]) {
     await expect(detail).toHaveCount(0)
   })
 }
+
+// Androidの共有では、URLが text に入り url は空で届くことがある(#520)。保存は「登録」を押すまで行わない。
+test('共有のurlが空でも、textのURLを入れた登録画面を開く (#520)', async ({ page, consoleGuard }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  consoleGuard.watch(page)
+  await setupUserWithHousehold(page, 'recipes_share_empty_url')
+  const shared = 'https://recipe.example.com/android-share'
+  await page.goto(`/recipes/share?title=&text=${encodeURIComponent(`[E2E_TEST] 肉じゃが ${shared}`)}&url=`)
+  await expect(page.getByRole('heading', { name: 'レシピを登録', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'WEB', selected: true })).toBeVisible()
+  await expect(page.getByLabel('レシピURL', { exact: true })).toHaveValue(shared)
+  await page.getByRole('button', { name: 'キャンセル', exact: true }).click()
+  await expect(page.getByTestId('recipes-panel').getByText('レシピはありません', { exact: true })).toBeVisible()
+})
