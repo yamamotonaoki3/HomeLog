@@ -11,6 +11,7 @@ import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import { RecipeModal } from '../components/kondate/RecipeModal'
 import { RecipeBookmarkletGuide } from '../components/kondate/RecipeBookmarkletGuide'
 import { RecipeIphoneShortcutGuide } from '../components/kondate/RecipeIphoneShortcutGuide'
+import { RecipeAndroidShareGuide } from '../components/kondate/RecipeAndroidShareGuide'
 
 // 本文中のURLらしき文字列を1つ抽出する(Web Share Targetの`text`パラメータ用のフォールバック)。
 const URL_PATTERN = /https?:\/\/\S+/
@@ -20,9 +21,9 @@ const URL_PATTERN = /https?:\/\/\S+/
 export function RecipesPage() {
   const [searchParams] = useSearchParams()
   // 共有ボタン連携(`/recipes/share?url=...&text=...`)で渡されたURL。
-  // `url`が無ければ`text`からURLらしき文字列を正規表現で抽出する(アプリによっては
-  // urlパラメータを使わずtextにURLを含めて共有してくることがあるため)。
-  const sharedUrl = searchParams.get('url') ?? searchParams.get('text')?.match(URL_PATTERN)?.[0] ?? null
+  // `url`が無いか空(空白だけを含む)なら、`text`からURLらしき文字列を正規表現で抽出する。
+  // Androidの共有では、URLが`text`に入り`url`は空で届くことがあるため(#520)。
+  const sharedUrl = searchParams.get('url')?.trim() || searchParams.get('text')?.match(URL_PATTERN)?.[0] || null
   // レシピの一覧データ。`useState<Recipe[]>([])`は「Recipe型の配列を持つ状態、初期値は空配列」の意味。
   const [recipes, setRecipes] = useState<Recipe[]>([])
   // 初回のデータ取得中かどうか(trueの間は「読み込み中...」を表示する)。
@@ -200,6 +201,7 @@ export function RecipesPage() {
         <p className="ui-section-label">ほかの登録方法</p>
         <RecipeBookmarkletGuide />
         <RecipeIphoneShortcutGuide />
+        <RecipeAndroidShareGuide />
       </div>
       {/* 編集・削除は詳細モーダルから。押したら詳細を閉じて、編集モーダル/削除確認へ切り替える。 */}
       {detailTarget && (
