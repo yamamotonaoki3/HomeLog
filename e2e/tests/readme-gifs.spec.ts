@@ -2,7 +2,7 @@ import { mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { APIRequestContext, Browser, Page } from '@playwright/test'
 import { expect, test } from './console-guard'
-import { register, createHousehold, openInventoryDetails } from './support/flows'
+import { register, createHousehold } from './support/flows'
 import { E2E_PASSWORD } from './support/test-data'
 
 // README の GIF 用に、画面操作を動画で録画する(#306)。README_GIF_DIR を指定したときだけ動く。
@@ -55,14 +55,16 @@ async function seed(request: APIRequestContext, token: string) {
   await post('expenses', { expenseDate: today, amount: 2400, purpose: 'ピザの出前', categoryId: cat('食費'), accountId: bank.id, splitInputType: 'amount', splits: [{ debtorExternalName: 'たなかさん', amountDue: 1200 }] })
   await post('fixed-costs', { name: '家賃', amount: 80000, paymentDay: 27, personal: false, includeInHouseholdTotal: true, accountId: bank.id })
   await post('events', { name: '誕生日会', eventDate: dayOfThisMonth(20), isAllDay: true, recurrenceType: 'yearly', personal: false })
-  const zaikoCategories: { id: number; name: string }[] = await get('zaiko-categories')
-  for (const [name, quantity, threshold, price] of [
-    ['卵', 2, 3, 250],
-    ['牛乳', 1, 2, 220],
-    ['お米', 5, 1, 2500],
-    ['トイレットペーパー', 0, 1, 450],
+  // 在庫は品目に合うカテゴリーへ入れる。既定に無い「日用品」はその場で追加する。
+  const zaikoCategories: { id: number; name: string }[] = [...await get('zaiko-categories'), await post('zaiko-categories', { name: '日用品' })]
+  const zaikoCat = (name: string) => zaikoCategories.find((c) => c.name === name)?.id ?? zaikoCategories[0].id
+  for (const [name, category, quantity, threshold, price] of [
+    ['卵', '卵', 2, 3, 250],
+    ['牛乳', '乳製品', 1, 2, 220],
+    ['お米', '乾物', 5, 1, 2500],
+    ['トイレットペーパー', '日用品', 0, 1, 450],
   ] as const) {
-    await post('inventory-items', { name, categoryId: zaikoCategories[0].id, storeId: null, quantity, threshold, price })
+    await post('inventory-items', { name, categoryId: zaikoCat(category), storeId: null, quantity, threshold, price })
   }
   const nikujaga = await post('recipes', { title: '肉じゃが', ingredients: 'じゃがいも 3個\n牛肉 200g\n玉ねぎ 1個\nしょうゆ 大さじ3', steps: '1. 材料を切る\n2. 牛肉と玉ねぎを炒める\n3. じゃがいもと調味料を加えて煮る', sourceType: 'manual' })
   const curry = await post('recipes', { title: 'カレーライス', ingredients: 'カレールー 1箱\nにんじん 1本', steps: '1. 野菜を炒める\n2. 煮込んでルーを溶かす', sourceType: 'manual' })
@@ -184,19 +186,26 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
   await record(browser, 'zaiko', async (p) => {
     await p.goto('/zaiko')
     await pause(p, 1200)
-    const detail = await openInventoryDetails(p, p.getByRole('button', { name: '卵の詳細', exact: true }))
+    // 行を押すと、その場に数量の操作欄が開く。＋は押すたびに保存される。
+    const row = p.getByRole('button', { name: '卵の詳細', exact: true })
+    await row.click()
+    const operations = p.getByRole('region', { name: '卵の数量変更', exact: true })
+    await expect(operations).toBeVisible()
     await pause(p)
-    const plus = detail.getByRole('button', { name: /増やす/ }).first()
+    const plus = operations.getByRole('button', { name: '卵を増やす', exact: true })
     await plus.click()
-    await pause(p, 400)
+    await expect(row).toContainText('3.0')
+    await pause(p, 500)
     await plus.click()
-    await expect(detail.locator('.qty-value')).toHaveText('4.0')
-    await pause(p)
-    await detail.getByRole('button', { name: 'キャンセル', exact: true }).click()
-    await expect(detail).toBeHidden()
-    await expect(p.getByRole('button', { name: '卵の詳細', exact: true })).toContainText('4.0')
-    await pause(p)
+    await expect(row).toContainText('4.0')
+    await pause(p, 1200)
     await p.getByRole('navigation', { name: '在庫管理関連機能' }).getByRole('link', { name: '買い物リスト' }).click()
+    const shopping = p.getByTestId('shopping-panel')
+    await expect(shopping).toContainText('牛乳')
+    await pause(p, 1200)
+    // 買った数を＋で合わせると、その行にチェックが付く(在庫へは「購入を反映」で確定するまで入らない)。
+    await shopping.getByRole('button', { name: '牛乳の購入数を1増やす', exact: true }).click()
+    await expect(shopping.getByRole('group', { name: '牛乳の購入数', exact: true })).toContainText('2')
     await pause(p, 1800)
   })
 
