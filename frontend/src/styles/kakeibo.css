@@ -250,6 +250,14 @@
 .transaction-kind-tabs .btn[aria-selected="true"] { background: var(--ui-surface); color: var(--ui-primary-strong); font-weight: 800; box-shadow: 0 1px 3px #cbd5e1; }
 .transaction-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; }
 .transaction-pair > div { min-width: 0; }
+/* #526: 日付系のネイティブ入力を親幅に収める。狭い画面では隣の操作と行を分ける。 */
+.transaction-modal input[type="date"],
+.transaction-filters input[type="month"] { min-width: 0; max-width: 100%; appearance: none; -webkit-appearance: none; }
+@media (max-width: 480px) {
+  .transaction-modal .transaction-pair { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .transaction-filters label[for="transaction-month"] { flex-basis: 100%; }
+}
+
 .transaction-modal :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
 @media(max-width:480px) { .transaction-detail-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } }
 
