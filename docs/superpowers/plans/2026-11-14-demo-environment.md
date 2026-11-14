@@ -247,6 +247,27 @@ Issue は3つに分ける：バックエンド（Task 1〜5）、フロントエ
 - [ ] **Step 3: 実行** — `cd e2e && npm test -- --config playwright.demo.config.ts` PASS、通常の `npm test` も PASS
 - [ ] **Step 4: コミットとフロントエンドの PR** — 品質チェック、Codex レビュー、PR、CI 成功でマージ。ユーザーにローカルで確かめる URL を伝える
 
+### Task 8.5: PCではスマホの枠の中に表示する入口ページ `/demo`（#536、設計書 5-5）
+
+**Files:**
+- Create: `frontend/src/pages/DemoFramePage.tsx`、`frontend/src/styles/demo-frame.css`（または既存の共通 CSS に追加）
+- Modify: `frontend/src/App.tsx`（ログイン不要のルート `/demo`）、`frontend/public/_headers`、`e2e/tests/static-assets.spec.ts`（画面の CSP・`X-Frame-Options` の期待値）、`docs/details/api-design.md`（画面の安全設定の表）、`e2e/tests/demo.spec.ts`
+- Test: `frontend/src/test/pages/DemoFramePage.test.tsx`
+
+**Interfaces:**
+- Consumes: Task 6 の `fetchDemoAvailability()`
+- Produces: ルート `/demo`。定数 `DEMO_FRAME_MIN_WIDTH = 601`（これ未満は枠を出さない）、枠の大きさ 390×844
+
+- [ ] **Step 1: テストを書く**
+  - `GET /api/demo が true で、画面幅が 601px 以上なら、title「シェファミのデモ（スマホ表示）」の iframe（src が /login）と、見どころの4行・「最初の画面に戻す」が出る`
+  - `画面幅が 600px 以下なら /login へ移る`（`window.matchMedia('(min-width: 601px)')` をテストで切り替える）
+  - `GET /api/demo が false・失敗なら /login へ移る`
+  - `「最初の画面に戻す」で iframe の src が /login に戻る`（再読み込みされる）
+- [ ] **Step 2: 失敗を確認**
+- [ ] **Step 3: 実装** — 判定中は何も出さない（ちらつき防止）。枠は角丸の端末風（幅390・高さ844、PCの高さが足りないときは縦に縮めず、ページ全体をスクロール）。右の説明は設計書 5-5 の内容、見どころは `DemoBanner` と同じ4行（定数を共有する）。`_headers` の画面用 CSP の `frame-ancestors 'none'` を `'self'` に、`X-Frame-Options: DENY` を `SAMEORIGIN` に変え、コメントも直す。API 側（`backend-workers/src/index.ts` の `secureHeaders`）は変えない。
+- [ ] **Step 4: E2E** — `e2e/tests/demo.spec.ts` に追加：1280px で `/demo` を開くと iframe（幅390）が出て、`page.frameLocator('iframe[title="シェファミのデモ（スマホ表示）"]')` の中で「デモを試す」→ 帯にデモ太郎 → 花子に切り替え → 帯にデモ花子、枠の中で下のメニュー（スマホ用の表示）が見える。390px で `/demo` を開くと `/login` に移り iframe が無い。`static-assets.spec.ts` の画面ヘッダーの期待値を新しい値に、API のヘッダーは従来どおり `DENY` のまま。
+- [ ] **Step 5: 検証** — frontend の lint / `tsc -b` / vitest / build、`cd e2e && npm test -- --config playwright.demo.config.ts`、`npm test -- --config playwright.static-assets.config.ts`、通常の `npm test`
+
 ### Task 9: デモ環境の作成・公開と文書（ユーザーの指示を受けてから）
 
 **Files:**
