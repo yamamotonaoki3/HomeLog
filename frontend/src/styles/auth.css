@@ -109,3 +109,14 @@
 .deletion-pending p {
   line-height: 1.6;
 }
+
+/* デモを試す(#534)。デモ環境のときだけ表示する。 */
+.auth-demo-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+.auth-demo .btn {
+  min-height: 44px;
+}

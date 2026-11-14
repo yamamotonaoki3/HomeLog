@@ -121,3 +121,62 @@ describe('LoginPage', () => {
     expect(screen.getByRole('link', { name: '新規登録はこちら' })).toHaveAttribute('href', '/register')
   })
 })
+
+describe('LoginPage のデモ(#534)', () => {
+  afterEach(() => {
+    clearTokens()
+  })
+
+  it('GET /api/demo が enabled: true のときだけデモのボタンと説明を出す', async () => {
+    server.use(http.get('/api/demo', () => HttpResponse.json({ enabled: true })))
+    renderLoginPage()
+    expect(await screen.findByRole('button', { name: 'デモを試す（登録不要）' })).toBeVisible()
+    expect(screen.getByText('架空の2人の世帯で、24時間お試しできます')).toBeVisible()
+  })
+
+  it('enabled: false ではデモのボタンを出さない', async () => {
+    let called = false
+    server.use(http.get('/api/demo', () => { called = true; return HttpResponse.json({ enabled: false }) }))
+    renderLoginPage()
+    await waitFor(() => expect(called).toBe(true))
+    expect(screen.queryByRole('button', { name: /デモを試す/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/お試しできます/)).not.toBeInTheDocument()
+  })
+
+  it('GET /api/demo が失敗してもボタンを出さず、ログインは使える', async () => {
+    let called = false
+    server.use(http.get('/api/demo', () => { called = true; return HttpResponse.json({ message: 'x' }, { status: 500 }) }))
+    renderLoginPage()
+    await waitFor(() => expect(called).toBe(true))
+    expect(screen.queryByRole('button', { name: /デモを試す/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ログイン' })).toBeEnabled()
+  })
+
+  it('押すと /demo/start を呼び、トークンを保存してホームへ進む', async () => {
+    server.use(
+      http.get('/api/demo', () => HttpResponse.json({ enabled: true })),
+      http.post('/api/demo/start', () => HttpResponse.json({ accessToken: 'demo-access', refreshToken: 'demo-refresh', expiresIn: 900 }, { status: 201 })),
+    )
+    const user = userEvent.setup()
+    renderLoginPage()
+    await user.click(await screen.findByRole('button', { name: 'デモを試す（登録不要）' }))
+    await waitFor(() => expect(screen.getByText('ダッシュボード')).toBeInTheDocument())
+    expect(getAccessToken()).toBe('demo-access')
+  })
+
+  it.each([
+    [429, 'TOO_MANY_REQUESTS', 'リクエストが多すぎます。時間をおいて試してください'],
+    [503, 'DEMO_CAPACITY_REACHED', '混み合っています。時間をおいて試してください'],
+  ])('%i のときはサーバーの文言を表示し、ログインしない', async (status, code, message) => {
+    server.use(
+      http.get('/api/demo', () => HttpResponse.json({ enabled: true })),
+      http.post('/api/demo/start', () => HttpResponse.json({ code, message }, { status })),
+    )
+    const user = userEvent.setup()
+    renderLoginPage()
+    await user.click(await screen.findByRole('button', { name: 'デモを試す（登録不要）' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    expect(screen.queryByText('ダッシュボード')).not.toBeInTheDocument()
+    expect(getAccessToken()).toBeNull()
+  })
+})

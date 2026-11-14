@@ -3,6 +3,7 @@ import { useId, useRef, useState } from 'react'
 import { useAuth } from '../context/useAuth'
 import { NotificationAlarm } from './NotificationAlarm'
 import { useDialog } from '../hooks/useDialog'
+import { DemoBanner } from './DemoBanner'
 
 const kakeiboPaths = ['/kakeibo', '/warikan', '/accounts', '/events', '/fixed-costs', '/categories']
 const menuPaths = ['/menu', '/recipes']
@@ -147,6 +148,8 @@ export function AppLayout() {
           </nav>
         )}
       </div>
+
+      <DemoBanner />
 
       <main className="app-content">
         <Outlet />

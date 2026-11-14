@@ -11,7 +11,7 @@ import { AuthContext, type AuthContextValue } from '../../context/authContextVal
 import type { Event } from '../../api/eventTypes'
 import type { Account, Expense, FixedCost, Income } from '../../api/kakeiboTypes'
 
-const testAuth: AuthContextValue = { isAuthenticated: true, user: { id: 909, displayName: 'testuser_page' }, userStatus: 'ready', login: vi.fn(), cancelDeletion: vi.fn(), logout: vi.fn(), updateDisplayName: vi.fn() }
+const testAuth: AuthContextValue = { isAuthenticated: true, user: { id: 909, displayName: 'testuser_page' }, userStatus: 'ready', login: vi.fn(), cancelDeletion: vi.fn(), logout: vi.fn(), startDemo: vi.fn(), switchDemo: vi.fn(), updateDisplayName: vi.fn() }
 afterEach(() => localStorage.clear())
 
 const defaultCategories = [
