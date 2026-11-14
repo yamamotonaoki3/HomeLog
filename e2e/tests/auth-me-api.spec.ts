@@ -20,12 +20,13 @@ for (const width of [1280, 390, 320]) {
         const headers = { Authorization: `Bearer ${accessToken}` }
         const me = await request.get('/api/auth/me?userId=2147483647', { headers })
         expect(me.status()).toBe(200)
-        expect(await me.json()).toEqual({ id, displayName: user.displayName })
+        // デモでない利用者(本番)では demo は null(#532)。メールなどの項目は返さない。
+        expect(await me.json()).toEqual({ id, displayName: user.displayName, demo: null })
         const refreshed = await request.post('/api/auth/refresh', { data: { refreshToken } })
         expect(refreshed.status()).toBe(200)
         const refreshedMe = await request.get('/api/auth/me', { headers: { Authorization: `Bearer ${(await refreshed.json()).accessToken}` } })
         expect(refreshedMe.status()).toBe(200)
-        expect(await refreshedMe.json()).toEqual({ id, displayName: user.displayName })
+        expect(await refreshedMe.json()).toEqual({ id, displayName: user.displayName, demo: null })
       }
       for (const headers of [{}, { Authorization: 'Bearer invalid' }]) {
         const denied = await request.get('/api/auth/me', { headers })
