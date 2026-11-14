@@ -19,6 +19,8 @@ export const RATE_LIMITS = {
   registerAddress: { scope: 'register_address', limit: 5, windowSeconds: 60 * 60 },
   // ログイン済みの利用者が、現在のパスワードで再認証する操作(パスワード変更・メールアドレス変更・退会の申し込み)。
   reauthUser: { scope: 'reauth_user', limit: 10, windowSeconds: 15 * 60 },
+  // デモの開始(#532)。同じ接続元から1時間に5回まで。
+  demoStartAddress: { scope: 'demo_start_address', limit: 5, windowSeconds: 60 * 60 },
   // 画像解析は外部サービスの利用料がかかるため、利用者ごとに1日の上限を置く。
   ocrUploadUser: { scope: 'ocr_upload_user', limit: 20, windowSeconds: 24 * 60 * 60 },
   ocrAnalyzeUser: { scope: 'ocr_analyze_user', limit: 20, windowSeconds: 24 * 60 * 60 },

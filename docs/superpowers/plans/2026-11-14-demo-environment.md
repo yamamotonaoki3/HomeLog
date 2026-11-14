@@ -67,17 +67,19 @@ Issue は3つに分ける：バックエンド（Task 1〜5）、フロントエ
   - `export const DEMO_LIFETIME_HOURS = 24`、`export const DEMO_MAX_ACTIVE = 300`
   - `export function isDemoMode(env: { DEMO_MODE?: string }): boolean`（`=== 'true'` のときだけ true）
   - `export async function findDemoMembership(db: D1Database, userId: number): Promise<{ householdId: number; primaryUserId: number; partnerUserId: number; expiresAt: string } | null>`
-  - `schema.ts` の `demoHouseholds`（`householdId` PK→`households.id`、`primaryUserId`→`users.id`、`partnerUserId`→`users.id`、`expiresAt` text not null、`createdAt` default current_timestamp）
+  - `schema.ts` の `demoHouseholds`（`householdId` integer PK、`primaryUserId` integer not null、`partnerUserId` integer not null、`expiresAt` text not null、`createdAt` default current_timestamp）。**外部キーは付けない**：削除の batch で、この表を「消す対象の目印」として最後まで使い、親（`households`・`users`）より後に消すため（外部キーがあると親の削除で失敗する）。設計書 3-1 の「参照」は、値として同じ ID を持つという意味で扱う
 
 - [ ] **Step 1: テストを書く**（`auth-demo.test.ts`。利用者・世帯・`demo_households` は SQL で直接作る）
   - `期限切れのデモ利用者は DEMO_MODE で 401`：`expires_at` を過去にして `GET /api/auth/me` → 401、`code: 'UNAUTHORIZED'`
   - `期限内のデモ利用者は 200`
   - `DEMO_MODE なしでは期限切れの行があっても 200`（本番では判定しない）
+  - `期限切れのデモ利用者の POST /api/auth/refresh は DEMO_MODE で 401`（`requireAuth` を通らないため、refresh 側にも同じ判定を入れる）、`DEMO_MODE なしでは従来どおり 200`
   - `findDemoMembership はどちらの利用者からも同じ行を返し、通常の利用者では null`
 - [ ] **Step 2: 実行して失敗を確認** — `cd backend-workers && npx vitest run src/test/middleware/auth-demo.test.ts` → テーブルが無いため FAIL
 - [ ] **Step 3: 実装**
   - マイグレーション：`CREATE TABLE demo_households (...)` と `CREATE INDEX demo_households_expires_at_idx ON demo_households (expires_at)`。
   - `requireAuth`：`isDemoMode(c.env)` のときだけ、既存の有効確認の SQL に `AND NOT EXISTS (SELECT 1 FROM demo_households d WHERE (d.primary_user_id = users.id OR d.partner_user_id = users.id) AND d.expires_at <= ?)` を足す（クエリは1本のまま）。`DEMO_MODE` なしでは SQL を変えない。
+  - `POST /api/auth/refresh`：`isDemoMode(c.env)` のときだけ、トークンの持ち主が期限切れのデモ利用者なら 401（既存の無効トークンと同じ応答）。判定は `lib/demo.ts` の `export async function isExpiredDemoUser(db: D1Database, userId: number, now: Date): Promise<boolean>` にまとめる。
 - [ ] **Step 4: 実行して成功を確認** — 同じコマンドで PASS。`npm test` 全体も PASS
 - [ ] **Step 5: コミット** — `feat(backend): デモ世帯の表と期限切れの判定を追加する (#<BE Issue>)`
 
@@ -178,13 +180,15 @@ Issue は3つに分ける：バックエンド（Task 1〜5）、フロントエ
 - [ ] **Step 1: テストを書く**
   - `期限切れのデモだけを全テーブルから消す`：通常の世帯（利用者・支出など）と期限内のデモを作り、全テーブル（`sqlite_master` から `d1_migrations`・`rate_limit_counters`・`_cf_%`・`sqlite_%` を除く）の件数を記録 → 期限切れのデモを1つ作り、そのデモで割り勘コメント・世帯外の相手・店・リフレッシュトークンを API で足す → `purgeExpiredDemos` → 全テーブルの件数が記録と同じ、戻り値が 1
   - `期限内のデモは消さない`（戻り値 0）
+  - `期限切れが複数（3件）あっても1回の batch で全部消える`（`db.batch` の呼び出し回数を `vi.spyOn` で数えて1回。D1 の無料プランは1回の実行で50クエリまでのため、世帯ごとに呼ばない）
   - scheduled：`cron: '0 * * * *'` のとき `purgeExpiredDemos` だけが動き、在庫の自動消費・固定費の計上・献立の削除が動かない（既存の `scheduled.test.ts` の確かめ方に合わせる）
   - scheduled：`0 15`・`0 16` の動きは従来どおり。`RECIPE_IMAGES` が無い環境で `0 16` を実行しても、エラーが記録されない
 - [ ] **Step 2: 実行して失敗を確認**
-- [ ] **Step 3: 実装** — 期限切れのデモ世帯ごとに、`schema.ts` の外部キーの順（子→親）で、世帯の ID と2人の利用者 ID に関わる行を1つの `batch` で削除する。最後に `demo_households`・`household_members`・`households`・`users`。`scheduled` は Cron 式ごとに分岐し、`DEMO_CLEANUP_CRON` では `purgeExpiredDemos` だけを行う。`deleteStaleOcrImages` は `env.RECIPE_IMAGES` があるときだけ呼ぶ。
+- [ ] **Step 3: 実装** — 期限切れのデモ**すべて**を、1回の `batch` で集合として削除する。各 DELETE は対象を副問い合わせで指定する（世帯：`household_id IN (SELECT household_id FROM demo_households WHERE expires_at <= ?)`、利用者：同じ条件の `primary_user_id` と `partner_user_id`）。ID を bind で並べない（D1 の100パラメータ上限）。`schema.ts` の外部キーの順（子→親）に並べ、最後に `household_members`・`households`・`users`、いちばん最後に `demo_households` を消す（`demo_households` は外部キーを持たないので、親より後に消せる）。期限の基準時刻は全文で同じ値を bind する。戻り値は先に数えた期限切れの件数。`scheduled` は Cron 式ごとに分岐し、`DEMO_CLEANUP_CRON` では `purgeExpiredDemos` だけを行う。`deleteStaleOcrImages` は `env.RECIPE_IMAGES` があるときだけ呼ぶ。
 - [ ] **Step 4: 実行して成功を確認**（`npm test`・lint・typecheck）
 - [ ] **Step 5: コミット** — `feat(backend): 期限切れのデモを1時間ごとに削除する (#<BE Issue>)`
-- [ ] **Step 6: バックエンドの PR** — 品質チェック、Codex レビュー（`codex review --base main < /dev/null`）、PR、CI 成功でマージ
+- [ ] **Step 6: API 層の E2E** — `e2e/playwright.demo.config.ts` を作る（`playwright.menu-cleanup.config.ts` と同じ形で、1つ目の webServer の `wrangler dev` に `--var DEMO_MODE:true` を足し、`workers: 1`、`testMatch: '**/demo*.spec.ts'`）。`e2e/playwright.config.ts` の `testIgnore` に `**/demo*.spec.ts` を足す。`e2e/tests/demo-api.spec.ts`（`request` だけを使う）：`GET /api/demo` が true → `start` が 201 → 太郎と花子で口座が違い在庫が同じ → `switch` → 古いリフレッシュトークンの refresh が 401 → `POST /api/auth/register` が 403 `DEMO_DISABLED`。`.github/workflows/e2e.yml` に `npm test -- --config playwright.demo.config.ts` の手順を足す。`cd e2e && npm test -- --config playwright.demo.config.ts` が PASS
+- [ ] **Step 7: バックエンドの PR** — 品質チェック、Codex レビュー（`codex review --base main < /dev/null`）、PR、CI 成功でマージ
 
 ### Task 6: ログイン画面の「デモを試す」と切り替えの土台
 
@@ -232,11 +236,10 @@ Issue は3つに分ける：バックエンド（Task 1〜5）、フロントエ
 ### Task 8: デモの E2E と CI
 
 **Files:**
-- Create: `e2e/playwright.demo.config.ts`、`e2e/tests/demo.spec.ts`
-- Modify: `e2e/playwright.config.ts`（`testIgnore` に `**/demo.spec.ts`）、`e2e/tests/` の既存ログイン系 spec のどれか（デモボタンが出ないこと）、`.github/workflows/e2e.yml`（`npm test -- --config playwright.demo.config.ts` の手順を追加）
+- Create: `e2e/tests/demo.spec.ts`（設定 `playwright.demo.config.ts` と CI の手順は Task 5 で作成済み）
+- Modify: `e2e/tests/` の既存ログイン系 spec のどれか（デモボタンが出ないこと）
 
-- [ ] **Step 1: 設定を書く** — `playwright.menu-cleanup.config.ts` と同じ形で、1つ目の webServer のコマンドの `wrangler dev` に `--var DEMO_MODE:true` を足す。`workers: 1`。
-- [ ] **Step 2: spec を書く**（`consoleGuard.watch(page)` を最初に呼ぶ。1280 / 390 / 320px）
+- [ ] **Step 1〜2: spec を書く**（`consoleGuard.watch(page)` を最初に呼ぶ。1280 / 390 / 320px）
   - デモを試す → 帯に「デモ太郎」→ 口座に「みどり銀行」があり「さくら銀行」が無い → 「デモ花子に切り替える」→ 帯に「デモ花子」、口座に「さくら銀行」 → 在庫に「卵」（2人で同じ）→ 割り勘に「スーパー」の負担 → 見どころが開く
   - 帯とボタンが横にはみ出さない（各幅で `scrollWidth <= clientWidth`）
   - アカウント設定でパスワード変更を送ると「デモでは使えません」

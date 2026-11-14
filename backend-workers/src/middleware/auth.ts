@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
 import { errorResponse } from '../lib/errors'
+import { isDemoMode } from '../lib/demo'
 import { verifyAccessToken } from '../lib/jwt'
 import type { AppEnv } from '../index'
 
@@ -26,9 +27,17 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   // 退会の申し込み中・退会済みのアカウントは、未失効のアクセストークンでも拒否する(F01_auth.md 8-2章)。
+  // デモ環境(DEMO_MODE)だけ、期限切れのデモ利用者も拒否する(削除までの最大1時間の間)。本番ではSQLを変えない。
+  const demo = isDemoMode(c.env)
   const active = await c.env.DB
-    .prepare('SELECT 1 AS ok FROM users WHERE id = ? AND deletion_requested_at IS NULL AND deleted_at IS NULL')
-    .bind(c.get('userId'))
+    .prepare(
+      `SELECT 1 AS ok FROM users WHERE id = ? AND deletion_requested_at IS NULL AND deleted_at IS NULL${
+        demo
+          ? ' AND NOT EXISTS (SELECT 1 FROM demo_households d WHERE (d.primary_user_id = users.id OR d.partner_user_id = users.id) AND d.expires_at <= ?)'
+          : ''
+      }`,
+    )
+    .bind(...(demo ? [c.get('userId'), new Date().toISOString()] : [c.get('userId')]))
     .first()
   if (!active) {
     return c.json(errorResponse('UNAUTHORIZED', UNAUTHORIZED_MESSAGE), 401)
