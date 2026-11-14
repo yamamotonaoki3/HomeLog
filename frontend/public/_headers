@@ -6,11 +6,12 @@
 # - スクリプト・スタイルシート・通信先は自サイトだけに限定する(外部のスクリプトを読み込まない)。
 # - style-src の 'unsafe-inline' は、Reactのstyle属性のために必要。<script>のインライン実行は許可しない。
 # - 画像は、WEBレシピのサムネイル(外部サイトの https 画像)と、CSS内のdata:画像を許可する。
-# - frame-ancestors 'none' と X-Frame-Options で、他サイトの枠内に表示させない。
+# - frame-ancestors 'self' と X-Frame-Options: SAMEORIGIN で、他サイトの枠内には表示させない。
+#   同じサイトの枠だけ許可するのは、PCのデモ入口ページ(/demo)が自サイトの画面を枠(iframe)に入れるため(#536)。
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
   X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
+  X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000
   Permissions-Policy: geolocation=(), microphone=(), payment=(), usb=()

@@ -100,15 +100,16 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 | ヘッダー | 値 |
 | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'` |
 | `X-Content-Type-Options` | `nosniff` |
-| `X-Frame-Options` | `DENY` |
+| `X-Frame-Options` | `SAMEORIGIN` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Strict-Transport-Security` | `max-age=31536000` |
 | `Permissions-Policy` | `geolocation=(), microphone=(), payment=(), usb=()` |
 
 - スクリプト・スタイルシート・通信先は自サイトだけに限定する。インラインの `<script>` は実行されない。外部のスクリプトや外部への通信を追加するときは、この方針の変更が必要になる。
 - `style-src` の `'unsafe-inline'` は React の style 属性のために必要。画像は WEB レシピのサムネイル（外部の https 画像）と CSS 内の data: 画像を許可する。
+- `frame-ancestors 'self'`・`X-Frame-Options: SAMEORIGIN` は、PC のデモ入口ページ（`/demo`、#536）が自サイトの画面を枠（iframe）に入れるための設定で、他サイトの枠内への表示は引き続き拒否する。APIの応答（上表）は `DENY` / `frame-ancestors 'none'` のまま変えない。
 - 開発用サーバー（Vite）はこのヘッダーを付けない。実際の付与は Workers の静的配信の E2E（`e2e/tests/static-assets.spec.ts`）で確かめる。
 
 ---

@@ -99,3 +99,47 @@ test.describe('デモでは止める機能 (#534)', () => {
     await expect(passwordArea.getByRole('alert')).toHaveText('デモでは使えません')
   })
 })
+
+// PCでスマホ表示のデモを見せる入口ページ /demo (#536)。枠(iframe)の中の要求にも接続元の差し替えが効く。
+const FRAME_TITLE = 'シェファミのデモ（スマホ表示）'
+
+test.describe('PCの入口ページ /demo 1280px (#536)', () => {
+  test.use({ viewport: { width: 1280, height: 900 } })
+
+  test('スマホ幅の枠の中でデモを始め、2人を切り替えられる', async ({ page, consoleGuard }) => {
+    // 枠の中のコンソールエラーも page の console イベントに届くので、consoleGuard が拾う。
+    consoleGuard.watch(page)
+    await useClientAddress(page, '203.0.113.30')
+
+    await page.goto('/demo')
+    const iframe = page.locator(`iframe[title="${FRAME_TITLE}"]`)
+    await expect(iframe).toBeVisible()
+    expect((await iframe.boundingBox())?.width).toBe(390)
+    await expect(page.getByRole('heading', { name: 'シェファミのデモ' })).toBeVisible()
+    await expect(page.getByRole('listitem')).toHaveCount(4)
+    await expectNoOverflow(page)
+
+    const frame = page.frameLocator(`iframe[title="${FRAME_TITLE}"]`)
+    await frame.getByRole('button', { name: 'デモを試す（登録不要）' }).click()
+    const frameBanner = frame.getByRole('region', { name: 'デモのご案内' })
+    await expect(frameBanner.getByText(/^デモ中：デモ太郎として表示しています/)).toBeVisible()
+    // 枠の幅はスマホ幅なので、下のメニュー(スマホ用の表示)が見える。
+    await expect(frame.getByRole('navigation', { name: '主要機能' })).toBeVisible()
+    await frameBanner.getByRole('button', { name: 'デモ花子に切り替える' }).click()
+    await expect(frameBanner.getByText(/^デモ中：デモ花子として表示しています/)).toBeVisible()
+
+    await page.getByRole('button', { name: '最初の画面に戻す' }).click()
+    await expect(frame.getByRole('button', { name: 'デモを試す（登録不要）' })).toBeVisible()
+  })
+})
+
+test.describe('PCの入口ページ /demo 390px (#536)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('スマホ幅では枠を出さずログイン画面へ移る', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    await page.goto('/demo')
+    await expect(page).toHaveURL(/\/login$/)
+    await expect(page.locator('iframe')).toHaveCount(0)
+  })
+})

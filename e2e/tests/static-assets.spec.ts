@@ -169,7 +169,7 @@ test('Service Worker登録後もオンラインAPIと深部URLが動く', async 
 
 // ---- 画面(静的ファイル)の応答の安全用ヘッダー (#513) ----
 // frontend/public/_headers の内容。値を変えるときは、ここと docs/details/api-design.md も合わせる。
-const PAGE_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+const PAGE_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 
 test('画面・スクリプト・Service Workerの応答に安全用ヘッダーが付く (#513)', async ({ page, request, consoleGuard }) => {
   consoleGuard.watch(page)
@@ -181,7 +181,7 @@ test('画面・スクリプト・Service Workerの応答に安全用ヘッダー
     const headers = (await request.get(path)).headers()
     expect(headers['content-security-policy'], path).toBe(PAGE_CSP)
     expect(headers['x-content-type-options'], path).toBe('nosniff')
-    expect(headers['x-frame-options'], path).toBe('DENY')
+    expect(headers['x-frame-options'], path).toBe('SAMEORIGIN')
     expect(headers['referrer-policy'], path).toBe('strict-origin-when-cross-origin')
     expect(headers['strict-transport-security'], path).toBe('max-age=31536000')
     expect(headers['permissions-policy'], path).toBe('geolocation=(), microphone=(), payment=(), usb=()')

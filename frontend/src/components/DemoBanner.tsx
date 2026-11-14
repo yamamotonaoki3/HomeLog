@@ -1,13 +1,7 @@
 import { useId, useState } from 'react'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
-
-const HIGHLIGHTS = [
-  '家計簿・口座：太郎と花子で中身がまったく違う（本人だけのデータ）',
-  '割り勘：自分の立替は、相手の画面で「支払う分」として見える',
-  '在庫・買い物リスト・献立・レシピ：どちらから見ても同じ。片方が追加すると、もう片方にも出る',
-  '予定・固定費：「世帯」のものは2人に、「個人」のものは本人だけに見える',
-]
+import { DEMO_HIGHLIGHTS } from '../lib/demoHighlights'
 
 // 残り時間は切り上げ、期限後は0時間にする。
 function remainingHours(expiresAt: string): number {
@@ -53,7 +47,7 @@ export function DemoBanner() {
       {error && <p className="demo-banner-error">{error}</p>}
       {open && (
         <ul id={highlightsId} className="demo-banner-highlights">
-          {HIGHLIGHTS.map((line) => <li key={line}>{line}</li>)}
+          {DEMO_HIGHLIGHTS.map((line) => <li key={line}>{line}</li>)}
         </ul>
       )}
     </section>
