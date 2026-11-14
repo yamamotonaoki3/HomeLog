@@ -608,7 +608,7 @@ describe('DashboardPage', () => {
 describe('ホームのカードの折りたたみ (#493)', () => {
   const titles = ['今日の状況', '買い物・在庫', '個人の財政', '今月のお金', 'イベント別支出']
   const summary = { shoppingListCount: 0, lowStockCount: 0, householdExpenseTotal: 0 }
-  const auth = (id: number): AuthContextValue => ({ isAuthenticated: true, user: { id, displayName: 'testuser_' + id }, userStatus: 'ready', login: async () => {}, cancelDeletion: async () => {}, logout: async () => {}, updateDisplayName: () => {} })
+  const auth = (id: number): AuthContextValue => ({ isAuthenticated: true, user: { id, displayName: 'testuser_' + id }, userStatus: 'ready', login: async () => {}, cancelDeletion: async () => {}, logout: async () => {}, startDemo: async () => {}, switchDemo: async () => {}, updateDisplayName: () => {} })
   const renderAs = (id: number) => render(
     <AuthContext.Provider value={auth(id)}>
       <MemoryRouter initialEntries={['/']}><DashboardPage /></MemoryRouter>

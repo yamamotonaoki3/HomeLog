@@ -14,12 +14,12 @@ function HeaderName() {
   return <p data-testid="header-name">{user?.displayName}</p>
 }
 
-function setup() {
+function setup(demo: { expiresAt: string; partnerName: string } | null = null) {
   setTokens('access-token', 'testuser-refresh-token')
   const calls: { method: string; path: string; body: unknown }[] = []
   const account = { id: 1, email: 'testuser_001@example.com', displayName: 'テスト太郎' }
   server.use(
-    http.get('/api/auth/me', () => HttpResponse.json({ id: account.id, displayName: account.displayName })),
+    http.get('/api/auth/me', () => HttpResponse.json({ id: account.id, displayName: account.displayName, demo })),
     http.get('/api/auth/account', () => HttpResponse.json(account)),
     http.patch('/api/auth/account', async ({ request }) => {
       const body = (await request.json()) as { displayName: string }
@@ -212,5 +212,18 @@ describe('アカウント設定の構成とページ内の移動 (#505)', () => 
     expect(deletionArea).toHaveTextContent('退会を申し込むと、すぐにログインできなくなります。30日以内に同じメールアドレスとパスワードでログインすると取り消せます。')
     expect(deletionArea).toHaveTextContent('世帯のメンバーがあなただけの場合は、世帯とそのデータもすべて削除されます。')
     expect(within(deletionArea).getByLabelText('現在のパスワード')).toBeInTheDocument()
+  })
+})
+
+describe('AccountSettingsPage のデモ注記(#534)', () => {
+  it('デモ中だけ「デモでは表示名以外は変更できません」を表示する', async () => {
+    setup({ expiresAt: '2099-01-01T00:00:00.000Z', partnerName: 'デモ花子' })
+    expect(await screen.findByText('デモでは表示名以外は変更できません')).toBeVisible()
+  })
+
+  it('デモでなければ注記を出さない', async () => {
+    setup()
+    await region('表示名')
+    expect(screen.queryByText('デモでは表示名以外は変更できません')).not.toBeInTheDocument()
   })
 })

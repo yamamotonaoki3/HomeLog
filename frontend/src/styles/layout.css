@@ -334,3 +334,13 @@
 .header-account a:focus-visible, .header-account button:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
 @media (max-width:800px) { .nav-inner { column-gap:8px; } }
 @media (max-width:480px) { .nav-inner { padding-left:8px; padding-right:8px; column-gap:6px; } .nav-logo { gap:3px; font-size:14px; } .nav-logo small { display:none; } }
+
+/* デモ中の帯(#534)。ヘッダーの下に置き、狭い幅ではボタンを折り返す。 */
+.demo-banner { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 16px; background:#fef3c7; border-bottom:1px solid #fcd34d; color:#78350f; font-size:13px; line-height:1.5; }
+.demo-banner-text { flex:1 1 240px; min-width:0; margin:0; overflow-wrap:anywhere; font-weight:700; }
+.demo-banner-actions { display:flex; flex-wrap:wrap; gap:8px; min-width:0; max-width:100%; }
+.demo-banner-button { min-height:44px; max-width:100%; padding:6px 12px; border:1px solid #d97706; border-radius:8px; background:#fff; color:#78350f; font:inherit; font-size:13px; cursor:pointer; overflow-wrap:anywhere; }
+.demo-banner-button:disabled { opacity:.6; cursor:not-allowed; }
+.demo-banner-error { flex:1 1 100%; margin:0; color:#b91c1c; }
+.demo-banner-highlights { flex:1 1 100%; margin:0; padding-left:20px; overflow-wrap:anywhere; }
+@media (max-width:480px) { .demo-banner { padding-left:8px; padding-right:8px; } }

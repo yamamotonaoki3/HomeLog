@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import { PasswordField } from '../components/PasswordField'
 import { formatDeletionDate } from '../lib/accountDeletion'
+import { fetchDemoAvailability } from '../api/demo'
 
 interface LocationState {
   from?: string
@@ -26,7 +27,7 @@ function pendingDeletionDate(error: unknown): string | null {
 }
 
 export function LoginPage() {
-  const { login, cancelDeletion } = useAuth()
+  const { login, cancelDeletion, startDemo } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as LocationState | null
@@ -35,6 +36,13 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [pendingUntil, setPendingUntil] = useState<string | null>(null)
+  const [demoEnabled, setDemoEnabled] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchDemoAvailability().then((enabled) => { if (!cancelled) setDemoEnabled(enabled) })
+    return () => { cancelled = true }
+  }, [])
 
   const goNext = () => navigate(state?.from ?? '/', { replace: true })
 
@@ -55,6 +63,19 @@ export function LoginPage() {
       } else {
         setError(getApiErrorMessage(err, 'ログインに失敗しました。時間をおいて再度お試しください'))
       }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleStartDemo = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      await startDemo()
+      goNext()
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'デモを始められませんでした。時間をおいて再度お試しください'))
     } finally {
       setSubmitting(false)
     }
@@ -115,6 +136,14 @@ export function LoginPage() {
               ログイン
             </button>
           </form>
+        )}
+        {demoEnabled && !pendingUntil && (
+          <div className="auth-demo">
+            <button type="button" className="btn btn-secondary btn-block" disabled={submitting} onClick={() => void handleStartDemo()}>
+              デモを試す（登録不要）
+            </button>
+            <p className="auth-demo-note">架空の2人の世帯で、24時間お試しできます</p>
+          </div>
         )}
         <p className="error">{error}</p>
         <div className="auth-links">

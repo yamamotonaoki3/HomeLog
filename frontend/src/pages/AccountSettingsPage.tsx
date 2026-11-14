@@ -63,7 +63,7 @@ function AccountSection({ id, title, description, icon, danger = false, result, 
 // アカウント設定画面(#292)。表示名・パスワード・メールアドレスを変更する。
 // メール送信サービス未導入のため、メールアドレスは確認メールなしで即時に変わる(F01_auth.md 8-1章)。
 export function AccountSettingsPage() {
-  const { updateDisplayName } = useAuth()
+  const { updateDisplayName, user } = useAuth()
   const [account, setAccount] = useState<Account | null>(null)
   const [loadError, setLoadError] = useState('')
 
@@ -180,6 +180,7 @@ export function AccountSettingsPage() {
             <a key={headingId} href={'#' + headingId} onClick={jumpToSection(headingId)}>{label}</a>
           ))}
         </nav>
+        {user?.demo && <p className="ui-note">デモでは表示名以外は変更できません</p>}
         {loadError && <p className="error" role="alert">{loadError}</p>}
 
         <AccountSection id="account-name-heading" title="表示名" description="サービス内で表示される名前です。" icon="account" result={nameResult}>
