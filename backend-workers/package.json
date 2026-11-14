@@ -11,7 +11,7 @@
     "deploy": "wrangler deploy",
     "deploy:dry-run": "wrangler deploy --dry-run",
     "test": "npm run wrangler-types && vitest run",
-    "wrangler-types": "wrangler types",
+    "wrangler-types": "wrangler types --strict-vars=false",
     "typecheck": "npm run wrangler-types && tsc --noEmit",
     "lint": "eslint ."
   },

@@ -47,3 +47,30 @@ remote = true
 [triggers]
 # 献立の期限切れ削除はJST 00:00。JST 01:00の既存処理でも再試行する。
 crons = ["0 15 * * *", "0 16 * * *"]
+
+# ---------------------------------------------------------------------------
+# デモ環境(#529、docs/superpowers/specs/2026-11-14-demo-environment-design.md)。
+# 公開・更新: npx wrangler d1 migrations apply DB --remote --env demo && npx wrangler deploy --env demo
+# プログラムと画面は本番と共通で、DEMO_MODE="true" のときだけ「デモを試す」・機能の停止・期限切れの判定が働く。
+# vars・D1・triggers は名前付き環境に引き継がれないため、ここで書き直す。R2(画像)とWorkers AIはつながない。
+# JWT_SECRET は本番と別の値を wrangler secret put JWT_SECRET --env demo で設定する(値はリポジトリに書かない)。
+[env.demo]
+name = "homelog-demo"
+
+[env.demo.vars]
+DEMO_MODE = "true"
+JWT_ACCESS_EXPIRATION_SECONDS = "900"
+JWT_REFRESH_EXPIRATION_SECONDS = "604800"
+APP_PASSWORD_RESET_LOG_TOKEN_ENABLED = "false"
+PASSWORD_RESET_MAIL_ENABLED = "false"
+
+# デモ専用D1(homelog-demo-db)のID。秘密情報ではない。本番D1とは別。
+[[env.demo.d1_databases]]
+binding = "DB"
+database_name = "homelog-demo-db"
+database_id = "07f9d40b-f6ac-4b58-8689-4464e5f05fca"
+migrations_dir = "drizzle"
+
+# 既存の2本に加え、毎時(0 * * * *)に期限切れのデモを削除する。
+[env.demo.triggers]
+crons = ["0 15 * * *", "0 16 * * *", "0 * * * *"]

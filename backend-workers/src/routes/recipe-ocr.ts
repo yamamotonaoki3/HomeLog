@@ -49,6 +49,10 @@ recipeOcrRoute.post('/upload', bodyLimit({
   maxSize: MAX_UPLOAD_BODY_BYTES,
   onError: (c) => c.json(errorResponse('VALIDATION_ERROR', INVALID_IMAGE_MESSAGE), 413),
 }), async (c) => {
+  // デモ環境(R2・AIなし)では demoGuard が先に止めるが、念のため
+  if (!c.env.RECIPE_IMAGES) {
+    return c.json(errorResponse('EXTERNAL_SERVICE_ERROR', '現在、画像の解析を利用できません'), 503)
+  }
   let file: unknown
   try {
     file = (await c.req.formData()).get('file')
@@ -85,6 +89,10 @@ recipeOcrRoute.post('/upload', bodyLimit({
 // POST /api/recipes/ocr/analyze: 一時保存した画像を解析し、構造化した結果を返す。
 // 結果はDBに保存しない(利用者が確認フォームで編集してから POST /api/recipes で保存する)。
 recipeOcrRoute.post('/analyze', async (c) => {
+  // デモ環境(R2・AIなし)では demoGuard が先に止めるが、念のため
+  if (!c.env.RECIPE_IMAGES || !c.env.AI) {
+    return c.json(errorResponse('EXTERNAL_SERVICE_ERROR', '現在、画像の解析を利用できません'), 503)
+  }
   const parsed = analyzeSchema.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)

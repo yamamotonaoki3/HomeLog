@@ -1,3 +1,4 @@
+import { testImages } from '../helpers/bindings'
 import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
@@ -32,8 +33,8 @@ async function registeredUser(email = EMAIL): Promise<{ id: number; headers: Rec
 }
 
 async function resetDb() {
-  const images = await env.RECIPE_IMAGES.list({ prefix: 'ocr/' })
-  if (images.objects.length > 0) await env.RECIPE_IMAGES.delete(images.objects.map((object) => object.key))
+  const images = await testImages().list({ prefix: 'ocr/' })
+  if (images.objects.length > 0) await testImages().delete(images.objects.map((object) => object.key))
   await env.DB.batch([
     env.DB.prepare('DELETE FROM recipes'),
     env.DB.prepare('DELETE FROM household_members'),
@@ -219,7 +220,7 @@ describe('画像解析の回数制限', () => {
     const blocked = await upload(user.headers)
     expect(blocked.status).toBe(429)
     expect(await blocked.json()).toEqual(OCR_LIMITED)
-    expect((await env.RECIPE_IMAGES.list({ prefix: `ocr/${user.householdId}/` })).objects).toHaveLength(limit)
+    expect((await testImages().list({ prefix: `ocr/${user.householdId}/` })).objects).toHaveLength(limit)
     // 同じ世帯でも、ほかの利用者は影響を受けない。
     const other = await registeredUser('hanako@example.com')
     await env.DB.prepare('INSERT INTO household_members (household_id, user_id) VALUES (?, ?)').bind(user.householdId, other.id).run()
@@ -239,7 +240,7 @@ describe('画像解析の回数制限', () => {
   it('解析は1日の上限を超えると429を返し、外部の解析サービスを呼ばない', async () => {
     const user = await memberWithHousehold(EMAIL)
     const key = `ocr/${user.householdId}/00000000-0000-4000-8000-000000000001.png`
-    await env.RECIPE_IMAGES.put(key, new Uint8Array(PNG_HEADER))
+    await testImages().put(key, new Uint8Array(PNG_HEADER))
     // 上限まで使い切った状態を作る。
     for (let i = 0; i < RATE_LIMITS.ocrAnalyzeUser.limit; i += 1) {
       expect(await consumeRateLimits(env.DB, [{ rule: RATE_LIMITS.ocrAnalyzeUser, key: String(user.id) }])).toBe(true)
@@ -253,13 +254,13 @@ describe('画像解析の回数制限', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(run).not.toHaveBeenCalled()
     // 画像は残し、次の窓でもう一度解析できるようにする(24時間後の清掃で消える)。
-    expect(await env.RECIPE_IMAGES.head(key)).not.toBeNull()
+    expect(await testImages().head(key)).not.toBeNull()
   })
 
   it('解析は上限ちょうどの回数目までは実行する(境界値)', async () => {
     const user = await memberWithHousehold(EMAIL)
     const key = `ocr/${user.householdId}/00000000-0000-4000-8000-000000000002.png`
-    await env.RECIPE_IMAGES.put(key, new Uint8Array(PNG_HEADER))
+    await testImages().put(key, new Uint8Array(PNG_HEADER))
     for (let i = 0; i < RATE_LIMITS.ocrAnalyzeUser.limit - 1; i += 1) {
       await consumeRateLimits(env.DB, [{ rule: RATE_LIMITS.ocrAnalyzeUser, key: String(user.id) }])
     }

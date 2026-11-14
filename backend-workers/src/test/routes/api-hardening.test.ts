@@ -1,3 +1,4 @@
+import { testImages } from '../helpers/bindings'
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
@@ -9,8 +10,8 @@ const MAX_JSON_BODY_BYTES = 100 * 1024
 const MAX_RECIPE_TEXT = 10_000
 
 async function resetDb() {
-  const images = await env.RECIPE_IMAGES.list({ prefix: 'ocr/' })
-  if (images.objects.length > 0) await env.RECIPE_IMAGES.delete(images.objects.map((object) => object.key))
+  const images = await testImages().list({ prefix: 'ocr/' })
+  if (images.objects.length > 0) await testImages().delete(images.objects.map((object) => object.key))
   await env.DB.batch([
     env.DB.prepare('DELETE FROM recipes'),
     env.DB.prepare('DELETE FROM household_members'),
