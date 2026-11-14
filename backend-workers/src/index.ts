@@ -5,6 +5,7 @@ import { errorResponse } from './lib/errors'
 import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
+import { demoRoute } from './routes/demo'
 import { dashboardRoute } from './routes/dashboard'
 import { eventsRoute } from './routes/events'
 import { expenseSplitsRoute } from './routes/expense-splits'
@@ -12,6 +13,7 @@ import { expensesRoute } from './routes/expenses'
 import { fixedCostsRoute } from './routes/fixed-costs'
 import { postDueFixedCosts } from './lib/fixed-cost-posting'
 import { purgeExpiredAccounts } from './lib/account-deletion'
+import { DEMO_CLEANUP_CRON, purgeExpiredDemos } from './lib/demo-cleanup'
 import { purgePasswordResetAttempts } from './lib/password-reset-mail'
 import { purgeRateLimits } from './lib/rate-limit'
 import { deleteStaleOcrImages } from './lib/recipe-ocr'
@@ -23,6 +25,7 @@ import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
 import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
+import { demoGuard } from './middleware/demo-guard'
 import { menuEntriesRoute } from './routes/menu-entries'
 import { recipeOcrRoute } from './routes/recipe-ocr'
 import { recipesRoute } from './routes/recipes'
@@ -36,7 +39,8 @@ import { userSettingsRoute } from './routes/user-settings'
 // GOOGLE_VISION_API_KEYはwrangler secret put / .dev.varsで設定するシークレットで、
 // 未設定の環境(CI等)では型が生成されないため、任意項目として明示的に足す。
 // PASSWORD_RESET_GAS_URL / PASSWORD_RESET_GAS_SECRET も同様の任意のsecret(#401)。
-export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string; PASSWORD_RESET_GAS_URL?: string; PASSWORD_RESET_GAS_SECRET?: string }
+// DEMO_MODEは "true" のときだけデモ環境として動く(#532)。本番では未設定。
+export type Bindings = Env & { GOOGLE_VISION_API_KEY?: string; PASSWORD_RESET_GAS_URL?: string; PASSWORD_RESET_GAS_SECRET?: string; DEMO_MODE?: string }
 
 // requireAuthミドルウェアがJWT検証後にセットするコンテキスト変数。
 export type Variables = {
@@ -100,9 +104,12 @@ for (const path of API_PATHS) {
   })
 }
 app.use('/api/*', (c, next) => (c.req.path === UPLOAD_PATH ? next() : jsonBodyLimit(c, next)))
+// デモ環境(DEMO_MODE)だけ、費用・画像・アカウント管理のAPIを処理の前に止める(#532)。
+app.use('/api/*', demoGuard)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 app.route('/api/auth', authRoute)
+app.route('/api/demo', demoRoute)
 app.route('/api/households', householdRoute)
 app.route('/api/zaiko-categories', zaikoCategoriesRoute)
 app.route('/api/stores', storesRoute)
@@ -130,6 +137,15 @@ app.route('/api/user-settings', userSettingsRoute)
 // wrangler.toml側のcron式はUTC 16:00固定 = JST 01:00で問題ない)。
 const appWithScheduled = Object.assign(app, {
   async scheduled(controller: ScheduledController, env: Bindings): Promise<void> {
+    // 1時間ごとのCron(デモ環境のみ)は、期限切れのデモの削除だけを行う。在庫の自動消費・固定費の計上などは動かさない(#532)。
+    if (controller.cron === DEMO_CLEANUP_CRON) {
+      try {
+        await purgeExpiredDemos(env.DB, new Date())
+      } catch (error) {
+        console.error('期限切れのデモの削除に失敗しました', error)
+      }
+      return
+    }
     // JST 0時は献立だけ。既存のJST 1時にも再試行し、取りこぼしを回収する。
     const cleanup = purgePastMenuEntries(env.DB, new Date())
     // 一方が失敗しても、ほかの日次処理は実行する。
@@ -138,7 +154,8 @@ const appWithScheduled = Object.assign(app, {
       ...(controller.cron === '0 15 * * *' ? [] : [
         consumeInventoryForDate(env.DB, consumptionDate(controller.scheduledTime)),
         postDueFixedCosts(env.DB, getJstToday()),
-        deleteStaleOcrImages(env.RECIPE_IMAGES, new Date()),
+        // R2が無い環境(デモ)では画像の削除を行わない。
+        ...(env.RECIPE_IMAGES ? [deleteStaleOcrImages(env.RECIPE_IMAGES, new Date())] : []),
         // 退会の申し込みから30日を過ぎたアカウントの削除(#297)。
         purgeExpiredAccounts(env.DB, new Date()),
         // 保持期間を過ぎたパスワード再設定の回数制限の行を削除する(#401)。

@@ -459,3 +459,18 @@ export const fixedCosts = sqliteTable('fixed_costs', {
     .default(sql`(current_timestamp)`),
 })
 
+// デモ環境(#532)。デモ世帯・デモ太郎(primary)・デモ花子(partner)の対応と期限。
+// 期限切れのデモを削除する batch で最後まで「消す対象の目印」として使うため、外部キーは付けない。
+export const demoHouseholds = sqliteTable(
+  'demo_households',
+  {
+    householdId: integer('household_id').primaryKey(),
+    primaryUserId: integer('primary_user_id').notNull(),
+    partnerUserId: integer('partner_user_id').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [index('demo_households_expires_at_idx').on(table.expiresAt)],
+)

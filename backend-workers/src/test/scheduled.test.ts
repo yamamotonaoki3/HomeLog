@@ -1,6 +1,10 @@
 ﻿import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import app from '../index'
+import * as accountDeletion from '../lib/account-deletion'
+import * as demoCleanup from '../lib/demo-cleanup'
+import { createDemoHousehold } from '../lib/demo-seed'
+import * as fixedCostPosting from '../lib/fixed-cost-posting'
 import * as consumption from '../lib/inventory-consumption'
 import * as menuCleanup from '../lib/menu-entry-cleanup'
 import * as passwordResetMail from '../lib/password-reset-mail'
@@ -115,4 +119,57 @@ it('認証・画像解析の回数制限の清掃は、JST 1時の日次処理�
   await app.scheduled({ cron: '0 16 * * *', scheduledTime: Date.parse('2024-12-31T16:00:00Z') } as ScheduledController, bindings)
   expect(purge).toHaveBeenCalledTimes(1)
   expect(purge).toHaveBeenCalledWith(bindings.DB)
+})
+
+// ---- デモ環境の毎時Cron(#532) ----
+const HOURLY_CRON = '0 * * * *'
+
+it('毎時のCron(0 * * * *)は期限切れのデモの削除だけを行い、日次処理は動かさない', async () => {
+  const purge = vi.spyOn(demoCleanup, 'purgeExpiredDemos').mockResolvedValue(0)
+  const consume = vi.spyOn(consumption, 'consumeInventoryForDate')
+  const posting = vi.spyOn(fixedCostPosting, 'postDueFixedCosts')
+  const accounts = vi.spyOn(accountDeletion, 'purgeExpiredAccounts')
+  const resetAttempts = vi.spyOn(passwordResetMail, 'purgePasswordResetAttempts')
+  const limits = vi.spyOn(rateLimit, 'purgeRateLimits')
+  const list = vi.fn().mockResolvedValue({ objects: [], truncated: false })
+  const prepare = vi.fn(() => { throw new Error('他の処理がDBに触れてはいけない') })
+  const bindings = { ...env, DB: { prepare } as unknown as D1Database, RECIPE_IMAGES: { list } as unknown as R2Bucket }
+  await app.scheduled({ cron: HOURLY_CRON, scheduledTime: Date.parse('2026-11-14T05:00:00Z') } as ScheduledController, bindings)
+  expect(purge).toHaveBeenCalledTimes(1)
+  expect(purge.mock.calls[0][0]).toBe(bindings.DB)
+  for (const other of [consume, posting, accounts, resetAttempts, limits]) expect(other).not.toHaveBeenCalled()
+  expect(menuCleanup.purgePastMenuEntries).not.toHaveBeenCalled()
+  expect(list).not.toHaveBeenCalled()
+  expect(prepare).not.toHaveBeenCalled()
+})
+
+it('毎時のCronで削除が失敗しても例外にせず、ログだけ残す', async () => {
+  const failure = new Error('[E2E_TEST] demo cleanup failure')
+  vi.spyOn(demoCleanup, 'purgeExpiredDemos').mockRejectedValue(failure)
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  await app.scheduled({ cron: HOURLY_CRON, scheduledTime: Date.now() } as ScheduledController, { ...env })
+  expect(log).toHaveBeenCalledWith('期限切れのデモの削除に失敗しました', failure)
+})
+
+it('毎時のCronで、期限切れのデモが実際にDBから消え、期限内のデモは残る', async () => {
+  await env.DB.batch(['demo_households', 'household_members', 'households', 'users'].map((table) => env.DB.prepare(`DELETE FROM ${table}`)))
+  const expired = await createDemoHousehold(env.DB, new Date(Date.now() - 25 * 3_600_000))
+  const active = await createDemoHousehold(env.DB, new Date())
+  await app.scheduled({ cron: HOURLY_CRON, scheduledTime: Date.now() } as ScheduledController, { ...env })
+  const rows = await env.DB.prepare('SELECT household_id AS id FROM demo_households').all<{ id: number }>()
+  expect(rows.results).toEqual([{ id: active.householdId }])
+  expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?)').bind(expired.primaryUserId, expired.partnerUserId).first()).toEqual({ n: 0 })
+  expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM households').first()).toEqual({ n: 1 })
+})
+
+it('R2(RECIPE_IMAGES)が無いデモ環境で毎日の処理(0 16)を実行しても、エラーが記録されない', async () => {
+  vi.spyOn(consumption, 'consumeInventoryForDate').mockResolvedValue(undefined)
+  vi.spyOn(passwordResetMail, 'purgePasswordResetAttempts').mockResolvedValue(0)
+  vi.spyOn(rateLimit, 'purgeRateLimits').mockResolvedValue(0)
+  const all = vi.fn().mockResolvedValue({ results: [] })
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const bindings = { ...env, DB: { prepare: () => ({ bind: () => ({ all }) }), batch: vi.fn().mockResolvedValue([]) } as unknown as D1Database, RECIPE_IMAGES: undefined }
+  await app.scheduled({ cron: '0 16 * * *', scheduledTime: Date.parse('2026-11-14T16:00:00Z') } as ScheduledController, bindings as unknown as typeof env)
+  expect(log).not.toHaveBeenCalled()
+  expect(all).toHaveBeenCalledTimes(2)
 })

@@ -16,7 +16,7 @@ const DUPLICATE_MESSAGE = '同じ名前のカテゴリーが既に登録され�
 const NAME_WHITESPACE = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
 const HOUSEHOLD_NOT_FOUND_MESSAGE = '世帯グループが見つかりません'
 
-const DEFAULT_CATEGORY_NAMES = ['野菜', '肉', '魚介', '乳製品', '卵', '調味料', '飲料', '冷凍食品', '乾物', 'その他']
+export const DEFAULT_CATEGORY_NAMES = ['野菜', '肉', '魚介', '乳製品', '卵', '調味料', '飲料', '冷凍食品', '乾物', 'その他']
 
 const categoryNameSchema = z.object({
   name: z.string().trim().min(1, { message: 'カテゴリー名を入力してください' }).max(50),
