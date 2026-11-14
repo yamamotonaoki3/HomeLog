@@ -457,6 +457,20 @@ erDiagram
 
 保持期間は2日。日次Cronで`window_start`が古い行を削除する（#510）。上限と対象のAPIは[api-design.md](api-design.md)の「認証・画像解析の回数制限」を参照。
 
+### demo_households（デモ世帯、#529）
+
+デモ環境（`DEMO_MODE`）で、来た人ごとに作る専用の世帯と2人の利用者を管理する。本番では空のまま使われない。「この利用者はデモか」は、`primary_user_id` または `partner_user_id` に一致する行があるかで判定し、`users` には列を足さない。
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| household_id | INTEGER | ○ | PK。デモ世帯（`households.id` の値） |
+| primary_user_id | INTEGER | ○ | デモ太郎（`users.id` の値） |
+| partner_user_id | INTEGER | ○ | デモ花子（`users.id` の値） |
+| expires_at | TEXT | ○ | 期限（ISO 8601、UTC）。作成から24時間。索引 `demo_households_expires_at_idx` |
+| created_at | TEXT | ○ | 作成日時（既定は現在時刻） |
+
+外部キーは付けない。期限切れのデモを削除する `batch` で、この表を「消す対象の目印」として最後まで使い、親（`households`・`users`）より後に消すため。値として同じIDを持つという意味で参照する。毎時の Cron が期限切れの行と関連する全テーブルの行を削除する。
+
 ### user_settings（ユーザー設定）
 
 | カラム名 | 型 | 必須 | 備考 |

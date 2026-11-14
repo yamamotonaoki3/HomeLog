@@ -120,7 +120,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | --- | --- | --- |
 | POST | `/api/auth/register` | ユーザー登録 |
 | POST | `/api/auth/login` | ログイン（アクセストークン・リフレッシュトークン発行） |
-| GET | `/api/auth/me` | 認証済み本人のID・表示名取得（Workers、#258） |
+| GET | `/api/auth/me` | 認証済み本人のID・表示名取得（Workers、#258）。デモ環境では `demo` も返す（#529） |
 | POST | `/api/auth/refresh` | リフレッシュトークンでアクセストークン再発行 |
 | POST | `/api/auth/logout` | ログアウト（リフレッシュトークンを失効） |
 | POST | `/api/auth/password-reset/request` | パスワードリセット申請（メール送信サービス未導入のため、現在はトークンを発行するだけでメールは送らない） |
@@ -194,6 +194,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | `PUT /api/auth/password`・`PUT /api/auth/email`・`POST /api/auth/account/deletion`（合算） | 利用者 | 15分に10回 |
 | `POST /api/recipes/ocr/upload` | 利用者 | 1日に20回 |
 | `POST /api/recipes/ocr/analyze` | 利用者 | 1日に20回 |
+| `POST /api/demo/start`（デモ環境のみ、#529） | 接続元 | 1時間に5回 |
 
 - パスワードの検証より前に数える。成功した要求も1回に数え、上限を超えた後は正しいパスワードでも窓が替わるまで 429 になる。
 - メールアドレスの登録有無によって、応答と数え方は変わらない。
@@ -235,6 +236,26 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 契約・エラーは [F01_auth.md](features/F01_auth.md) 8-1章（アカウント設定）・8-2章（退会）を参照。メール送信サービスが未導入のため、要件で想定していた「新アドレスの確認リンク」「削除申請メールのワンタイム資格情報による取り消し」は採用せず、取り消しはメールアドレスとパスワードで本人確認する。
 
 ---
+
+## デモ環境（#529）
+
+`DEMO_MODE` が `"true"` の環境（デモ用の Worker）でだけ動く API。構成は[deployment.md](../deployment.md#デモ環境)を参照。
+
+| メソッド | パス | 認証 | 説明 |
+| --- | --- | --- | --- |
+| GET | `/api/demo` | 不要 | `{ "enabled": boolean }`。デモ環境なら `true`。本番でも 200 で `false` を返す（画面が「デモを試す」の出し分けに使う） |
+| POST | `/api/demo/start` | 不要 | 専用の世帯「デモ家」・デモ太郎・デモ花子・見本データを作り、デモ太郎のトークンをログインと同じ形で返す（201）。同じ接続元から1時間に5回まで（超えたら 429 `TOO_MANY_REQUESTS`）。同時に存在するデモ世帯が300件に達していれば 503 `DEMO_CAPACITY_REACHED`（「混み合っています。時間をおいて試してください」） |
+| POST | `/api/demo/switch` | 必要 | リクエスト `{ "refreshToken": "..." }`。今の利用者がデモ利用者で、同じデモ世帯のもう1人へ切り替える。今のリフレッシュトークンを失効させ、相手のトークンをログインと同じ形で返す（200）。デモ利用者でない場合・トークンが本人の有効なものでない場合は 404 |
+| GET | `/api/auth/me`（既存への追加） | 必要 | デモ利用者なら `demo: { "expiresAt": "<ISO 8601>", "partnerName": "デモ花子" }`、それ以外（本番を含む）は `demo: null` を返す |
+
+- `DEMO_MODE` が無いとき、`/api/demo/start` と `/api/demo/switch` は存在しないパスと同じ 404（`RESOURCE_NOT_FOUND`）を返す。
+- デモ世帯は作成から24時間で期限切れ。期限後はデモ利用者の認証が 401 になり、毎時の Cron で関連する全データが削除される。
+- デモで止める API は、処理の前に 403 `DEMO_DISABLED`（「デモでは使えません」）を返す。対象：`POST /api/auth/register`、`PUT /api/auth/password`、`PUT /api/auth/email`、`POST /api/auth/account/deletion`、`POST /api/auth/account/deletion/cancel`、`POST /api/auth/password-reset/request`、`POST /api/auth/password-reset/confirm`、`POST /api/households`、`POST /api/households/join`、`POST /api/households/leave`、`POST /api/households/invite-code/regenerate`、`POST /api/recipes/ocr/upload`、`POST /api/recipes/ocr/analyze`。表示名の変更・レシピの URL 登録などは使える。
+
+| コード | ステータス | 意味 |
+| --- | --- | --- |
+| `DEMO_DISABLED` | 403 | デモ環境で止めている操作 |
+| `DEMO_CAPACITY_REACHED` | 503 | デモ世帯が同時300件に達している |
 
 ## 3. 世帯グループ（F-02）
 
@@ -545,6 +566,7 @@ interface DashboardDayDetail {
 
 | 機能 | エンドポイント | 詳細 |
 | --- | --- | --- |
+| デモ環境（#529） | `GET demo` `POST demo/start` `POST demo/switch` | 「デモ環境」 |
 | 認証・アカウント | `POST auth/register` `POST auth/login` `POST auth/refresh` `POST auth/logout` `GET auth/me` `POST auth/password-reset/request` `POST auth/password-reset/confirm` `GET/PATCH auth/account` `PUT auth/password` `PUT auth/email` `GET auth/account/deletion-check` `POST auth/account/deletion` `POST auth/account/deletion/cancel` | [F01](features/F01_auth.md) |
 | 世帯グループ | `POST households` `POST households/join` `GET households/me` `POST households/invite-code/regenerate` `POST households/leave` | [F02](features/F02_household.md) |
 | 支出 | `GET/POST expenses` `PUT/DELETE expenses/:id` | [F03](features/F03_kakeibo_expense.md) |

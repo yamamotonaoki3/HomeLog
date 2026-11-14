@@ -81,3 +81,11 @@ flowchart TD
 - 管理者権限の変更は本人確認を伴う操作とし、変更者・対象者・日時を記録する。実装時にはサーバー側認可を必須とする。唯一の世帯管理者を解除・降格する場合は、後任管理者への引継ぎと同一操作でなければならない。
 - 世帯から退出する管理者は、他の管理者がいれば管理体制を維持した状態で退出できる。最後の管理者は先に後任を指定する。
 - 退会者が作成した世帯共有データの保持・表示、および最後の管理者が後任を設定できない場合の世帯の扱いは、[common-notes.md](../common-notes.md) 12章にある未決事項を実装着手前に確定する。
+
+## 8. デモ環境での扱い（#529）
+
+デモ環境（`DEMO_MODE="true"`）では、利用者ごとに専用の世帯「デモ家」とデモ太郎・デモ花子の2人を作って始める（`POST /api/demo/start`。データモデルは[data-model.md](../data-model.md)の `demo_households`）。
+
+- **止める操作**：次の API は 403 `DEMO_DISABLED`（「デモでは使えません」）を返す。`POST /api/households`（作成）、`POST /api/households/join`（参加）、`POST /api/households/leave`（退出）、`POST /api/households/invite-code/regenerate`（招待コードの再発行）。世帯の取得（`GET /api/households/me`）は使える。
+- **世帯の寿命**：デモ世帯は作成から24時間で期限切れになり、毎時の Cron で世帯・2人・関連する全データが削除される。通常の世帯・利用者には触れない。
+- 本番（`DEMO_MODE` なし）では、これらの API は従来どおり動く。

@@ -71,6 +71,55 @@ Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01
 
 OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方式）とGoogle Vision側の利用準備、およびWorkers AIの利用準備が別途必要。ローカルE2Eではリモートバインディングを無効にする。
 
+## デモ環境（#529）
+
+README から誰でも試せるデモ環境。本番とは別の Worker・D1 で動かし、プログラムと画面は本番と同じビルドを使う。設計は [2026-11-14-demo-environment-design.md](superpowers/specs/2026-11-14-demo-environment-design.md)、API は [api-design.md](details/api-design.md) の「デモ環境」を参照。
+
+### 構成
+
+| 項目 | 本番 | デモ |
+| --- | --- | --- |
+| Worker | `homelog-backend-workers` | `homelog-demo` |
+| URL | `https://homelog-backend-workers.nyproducts.workers.dev` | `https://homelog-demo.nyproducts.workers.dev`（入口は `/demo`） |
+| D1 | `homelog-db` | `homelog-demo-db`（本番とは別） |
+| R2・Workers AI・Google Vision | あり | つながない |
+| メール | — | 送らない（`PASSWORD_RESET_MAIL_ENABLED = "false"`） |
+| `DEMO_MODE` | 未設定 | `"true"` |
+| `JWT_SECRET` | 本番の値 | 本番と別の値（デモの Worker にだけ登録） |
+| Cron | `0 15 * * *`・`0 16 * * *` | 同じ2本 ＋ `0 * * * *`（期限切れのデモの削除） |
+| 自動デプロイ（Workers Builds） | `production` ブランチ | つないでいない（手元から公開する） |
+
+設定は `backend-workers/wrangler.toml` の `[env.demo]`。`vars`・D1・Cron は名前付き環境に引き継がれないため、デモ側に書き直している。`DEMO_MODE` が `"true"` のときだけ `/api/demo/start` などのデモ用の動作、止める機能、期限切れの判定が働く。本番では `/api/demo/start` と `/api/demo/switch` は 404 を返す。
+
+### 公開・更新の手順
+
+本番と同じタイミング（ユーザーの「本番に出して」）で更新する。デモ専用の D1 に対してマイグレーションを適用してから公開する。
+
+```sh
+cd frontend && npm run build
+cd ../backend-workers
+npx wrangler d1 migrations apply DB --remote --env demo
+npx wrangler deploy --env demo
+```
+
+`--env demo` を付け忘れると本番の D1・Worker が対象になるため、必ず付ける。
+
+### 初回作成の手順（実施済み・作り直す場合の参考）
+
+以下は `backend-workers/` で行う。値は書かず、対話入力で登録する。
+
+1. `npx wrangler d1 create homelog-demo-db` で D1 を作成し、表示された `database_id` を `wrangler.toml` の `[[env.demo.d1_databases]]` に設定する（D1 の ID は秘密情報ではない）。
+2. `npx wrangler secret put JWT_SECRET --env demo` で、本番とは別の十分な強度の値を対話入力する。コマンド引数・vars・Issue・ログへ実値を書かない。
+3. 上の「公開・更新の手順」でマイグレーションの適用と公開を行う。初回は Worker が未作成のため、作成の確認が出る。
+
+`wrangler secret put` は既存の Worker でも新しいバージョンを即時にデプロイする。
+
+### 確認方法
+
+- `GET https://homelog-demo.nyproducts.workers.dev/api/demo` が `{ "enabled": true }` を返す。本番の同じ API は `{ "enabled": false }` を返す。
+- `https://homelog-demo.nyproducts.workers.dev/demo` を PC で開くとスマホの枠の中にログイン画面が出て、「デモを試す（登録不要）」でデモ太郎として始まる。
+- 期限切れのデモは毎時の Cron で削除される。Cloudflare のダッシュボードで `homelog-demo` の Cron の実行を確認できる。
+
 ## 公開後の確認・残作業
 
 - HTTPS公開URLで`/`、`/login`、`/recipes/iphone-shortcut`への直接アクセスとreloadを確認する。
