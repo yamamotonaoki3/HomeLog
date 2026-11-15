@@ -1,13 +1,20 @@
 import { isAxiosError } from 'axios'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Category, InventoryItem, Store } from '../../api/zaikoTypes'
 import { InventoryModal } from './InventoryModal'
 import { InventoryDeleteDialog } from './InventoryDeleteDialog'
 import { filterByKeyword } from '../../lib/keyword'
+import type { Recipe } from '../../api/kondateTypes'
+import type { InventoryMenuLinkUpdate } from '../../api/zaikoTypes'
+import { PurchaseIdentityError } from '../../api/shoppingPurchases'
+import { captureMenuCredentials, menuCredentialsMatch, updateInventoryMenuLink } from '../../api/menuInventory'
+import { useMenuInventoryOperation } from '../../hooks/useMenuInventoryOperation'
 
 interface Props {
+  actorUserId?: number
+  onScopeDetached?: () => void
   inventory: InventoryItem[]
   categories: Category[]
   onCategoriesChange: (categories: Category[]) => void
@@ -17,7 +24,12 @@ interface Props {
   onNotify: (message: string) => void
 }
 
-export function InventoryPanel({ inventory, categories, onCategoriesChange, stores, onStoresChange, onRefresh, onNotify }: Props) {
+export function InventoryPanel({ inventory, categories, onCategoriesChange, stores, onStoresChange, onRefresh, onNotify, actorUserId, onScopeDetached }: Props) {
+  const [recipes, setRecipes] = useState<Recipe[]>([]), [recipeError, setRecipeError] = useState(''), [recipesLoaded, setRecipesLoaded] = useState(false)
+  const [linkSyncFailed, setLinkSyncFailed] = useState(false)
+  const life = useRef({ alive: true, generation: 0, actorUserId })
+  life.current.actorUserId = actorUserId
+  useEffect(() => { life.current.alive = true; return () => { life.current.alive = false; life.current.generation++ } }, [])
   const [selectedId, setSelectedId] = useState<number>()
   const [formOpen, setFormOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<number>()
@@ -37,6 +49,54 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   const pending = useRef(false)
   const origin = useRef<HTMLButtonElement | null>(null)
   const register = useRef<HTMLButtonElement>(null)
+  const everVerified = useRef(false), previousActor = useRef(actorUserId), actorChanged = useRef(false)
+  if (previousActor.current !== actorUserId) { actorChanged.current = true; previousActor.current = actorUserId }
+  const detachInventory = () => {
+    if (!everVerified.current && !actorChanged.current) return
+    life.current.generation++; setFormOpen(false); setSelectedId(undefined); setRecipes([]); setRecipesLoaded(false); onScopeDetached?.()
+  }
+  const operation = useMenuInventoryOperation({ actorUserId, onDetached: detachInventory })
+  const initialLinkUnverified = !everVerified.current && !actorChanged.current && !operation.verifiedScope && !operation.pending && (operation.outcome === null || operation.outcome.kind === 'detached' || operation.outcome.kind === 'blocked')
+  useEffect(() => { if (operation.verifiedScope) everVerified.current = true }, [operation.verifiedScope])
+  const loadRecipes = useCallback(async (force = false) => {
+    if (recipesLoaded && !force) return
+    const generation = life.current.generation, actor = life.current.actorUserId, credentials = captureMenuCredentials()
+    try {
+      const { data } = await apiClient.get<Recipe[]>('/recipes')
+      if (!life.current.alive || generation !== life.current.generation || actor !== life.current.actorUserId || !credentials || !menuCredentialsMatch(credentials)) return
+      setRecipes(data); setRecipesLoaded(true); setRecipeError('')
+    } catch { if (life.current.alive && generation === life.current.generation) setRecipeError('レシピを取得できません。新しい料理名の入力は利用できます。') }
+  }, [recipesLoaded])
+  const requestRecipes = useCallback(() => { void loadRecipes() }, [loadRecipes])
+  const refreshLinked = async () => {
+    try { await onRefresh(); setLinkSyncFailed(false) }
+    catch { setLinkSyncFailed(true); throw new Error('記録済みです。一覧の再取得をやり直してください') }
+  }
+  const recoverLinked = async () => {
+    const result = await operation.recover()
+    if (result.kind !== 'success') return
+    setFormOpen(false); setSelectedId(undefined)
+    try { await refreshLinked(); onNotify('前回の結果を確認しました') }
+    catch { onNotify('記録済みです。一覧の再取得をやり直してください') }
+  }
+  const saveLink = async (id: number, body: InventoryMenuLinkUpdate) => {
+    const scope = operation.verifiedScope, credentials = captureMenuCredentials(), generation = life.current.generation, actor = actorUserId
+    const valid = () => life.current.alive && life.current.generation === generation && life.current.actorUserId === actor && !!credentials && menuCredentialsMatch(credentials)
+    if (!scope || !credentials || operation.pending || linkSyncFailed) throw new Error('本人と世帯・一覧を再確認してください')
+    try {
+      const result = await updateInventoryMenuLink(id, body, scope, credentials, valid)
+      if (!valid()) throw new Error('本人と世帯を再確認してください')
+      try { await refreshLinked() } catch { onNotify('連携設定は保存済みです。一覧を再取得してください') }
+      return result
+    } catch (error) {
+      if (!valid() || error instanceof PurchaseIdentityError) { detachInventory(); throw error }
+      if (valid()) {
+        try { await onRefresh() } catch { setLinkSyncFailed(true) }
+        if (!isAxiosError(error) || error.response?.status !== 409) setLinkSyncFailed(true)
+      }
+      throw error
+    }
+  }
   const selected = inventory.find((item) => item.id === selectedId)
   const inCategory = categoryId === '' ? inventory : inventory.filter(item => String(item.categoryId) === categoryId)
   const visible = filterByKeyword(inCategory, keyword, (item) => item.name)
@@ -132,7 +192,11 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
         </label>)}
       </div>
     </fieldset>
-    <button ref={register} type="button" className="ui-action" onClick={() => { origin.current = register.current; setFormOpen(true) }}><span aria-hidden="true">＋</span>在庫を登録</button>
+    {!formOpen && operation.message && <p className={initialLinkUnverified ? 'hint' : undefined} role={initialLinkUnverified ? undefined : 'alert'}>{operation.message}</p>}
+    {!formOpen && operation.pending && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={() => void recoverLinked()}>前回の結果を確認</button>}
+    {!formOpen && !operation.verifiedScope && !operation.busy && <button type="button" className="btn btn-secondary" onClick={() => void operation.recheck()}>献立連携の本人と世帯を再確認</button>}
+    {linkSyncFailed && <div><p role="alert">記録済みです。一覧を再取得してから次の操作をしてください。</p><button type="button" className="btn btn-secondary" onClick={() => void refreshLinked().catch(() => onNotify('一覧の再取得に失敗しました'))}>一覧を再取得</button></div>}
+    <button ref={register} type="button" className="ui-action" disabled={!!operation.pending || linkSyncFailed} onClick={() => { origin.current = register.current; setFormOpen(true) }}><span aria-hidden="true">＋</span>在庫を登録</button>
     <div className="inventory-list-head">
       <h3 className="ui-section-label">商品一覧</h3>
       {/* 行の「！」の意味を示す凡例。読み上げでは各行の説明(在庫が閾値以下)で伝える。 */}
@@ -196,15 +260,20 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
       catch { onNotify('削除しました。一覧の再取得に失敗しました') }
     }} />}
     {formOpen && <InventoryModal item={selected} categories={categories} onCategoriesChange={onCategoriesChange} stores={stores} onStoresChange={onStoresChange}
-      busy={busy} quantityStopped={selected ? uncertainIds.has(selected.id) : false} quantityNotice={selected && uncertainIds.has(selected.id) ? uncertainMessage : undefined}
+      recipes={recipes} recipeError={recipeError} onRecipesRequest={requestRecipes} onRecipesRetry={() => void loadRecipes(true)}
+      linkedReady={!!operation.verifiedScope && !operation.busy} linkedBlocked={!!operation.pending || linkSyncFailed} linkedMessage={linkSyncFailed ? '保存済みです。閉じて一覧を再取得してください' : operation.message}
+      linkedMessageAlert={!initialLinkUnverified || linkSyncFailed} onLinkedRecheck={() => void operation.recheck()}
+      onLinkedCreate={(body, menus) => operation.run({ kind: 'register', inventory: body, menus })} onLinkedRecover={operation.pending ? recoverLinked : undefined}
+      onLinkSave={saveLink}
+      busy={busy || operation.busy} quantityStopped={selected ? uncertainIds.has(selected.id) : false} quantityNotice={selected && uncertainIds.has(selected.id) ? uncertainMessage : undefined}
       step={selected ? steps[selected.id] ?? 1 : 1}
       onStep={step => { if (selected) setSteps(previous => ({ ...previous, [selected.id]: step })) }}
-      onAdjust={sign => { if (selected) adjustStep(selected, sign) }} onClose={closeForm} onSaved={async () => {
+      onAdjust={sign => { if (selected) adjustStep(selected, sign) }} onClose={closeForm} onSaved={async (linked = false) => {
         pending.current = true
         setBusy(true)
         const message = selected ? '在庫を編集しました' : '在庫を登録しました'
         try { await onRefresh(); onNotify(message) }
-        catch { onNotify(`${message}。一覧の再取得に失敗しました`) }
+        catch { if (linked) setLinkSyncFailed(true); onNotify(`${message}。一覧の再取得に失敗しました`) }
         finally { pending.current = false; setBusy(false); closeForm() }
       }} />}
   </div>

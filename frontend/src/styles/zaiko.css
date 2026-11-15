@@ -788,3 +788,17 @@
 .shopping-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .shopping-detail-heading h2 { flex: 1; min-width: 0; margin: 0; }
 .shopping-detail-heading .shopping-detail-close { flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 24px; line-height: 1; }
+
+/* #548: 登録・編集フォーム内のレシピ連携。既存フォームと同じ操作領域を保つ。 */
+.inventory-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.inventory-menu-registration,
+.inventory-menu-drafts,
+.inventory-menu-draft { display: grid; min-width: 0; gap: 12px; }
+.inventory-menu-registration { margin-top: 16px; padding: 14px; box-shadow: none; }
+.inventory-menu-draft { padding: 12px; box-shadow: none; }
+.inventory-menu-draft-list { display: grid; min-width: 0; gap: 12px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.inventory-form-modal .inventory-menu-check { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; overflow-wrap: anywhere; }
+.inventory-form-modal .inventory-menu-check input { flex: 0 0 24px; width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; accent-color: var(--ui-primary); }
+.inventory-menu-draft input[type="number"] { min-width: 0; min-height: 44px; font-size: 16px; }
+.inventory-form-modal .inventory-menu-drafts .ui-segmented label { margin: 0; }
+.inventory-menu-drafts .menu-recipe-picker { gap: 4px; }

@@ -814,7 +814,7 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 
 ## 在庫別メニュー・実食・継続の物理モデル（#547）
 
-D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_menu_entry_recipe_title_snapshot.sql`と`schema.ts`を正とする。後続画面#548は未実装。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
+D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_menu_entry_recipe_title_snapshot.sql`と`schema.ts`を正とする。画面#548はこの契約を利用し、追加のDB変更は行わない。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
 
 | 対象 | 追加内容 |
 | --- | --- |
