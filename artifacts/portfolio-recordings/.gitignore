@@ -1,0 +1,9 @@
+# 直接取得した連続画像と補助録画はローカルだけに保存する。
+**/*_frames/
+**/*.webm
+**/attempts/
+**/06_registration-result.json
+
+# 初回確認・中断テイク。完成版MP4と代表PNGは別フォルダに保存済み。
+2026-11-15/shefami-b720a0d8/
+2026-11-15/shefami-optional-2a23b2b7/

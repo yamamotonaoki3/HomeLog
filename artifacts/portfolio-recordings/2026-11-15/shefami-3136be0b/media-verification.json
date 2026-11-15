@@ -1,0 +1,29 @@
+[
+  {
+    "name": "01_inventory",
+    "label": "在庫",
+    "duration": "11.840000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "frames": 195
+  },
+  {
+    "name": "02_meal_plan",
+    "label": "献立",
+    "duration": "11.400000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "frames": 201
+  },
+  {
+    "name": "03_household_budget",
+    "label": "家計",
+    "duration": "14.080000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "frames": 238
+  }
+]
