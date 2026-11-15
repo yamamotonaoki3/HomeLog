@@ -61,7 +61,7 @@ app.onError((err, c) => {
   while (cause instanceof Error && !seen.has(cause)) {
     seen.add(cause)
     if (isMenuPlanWriteConflict(cause)) {
-      return c.json(errorResponse('RESOURCE_CONFLICT', '?????????????????????????'), 409)
+      return c.json(errorResponse('RESOURCE_CONFLICT', '献立または在庫が変更されました。再取得してください'), 409)
     }
     if (/\bHOMELOG_ACCOUNT_DELETED\b/.test(cause.message)) {
       return c.json(errorResponse('VALIDATION_ERROR', '指定された口座が見つかりません'), 400)

@@ -56,3 +56,9 @@
 常時割当割れ拒否（品目OFF含む）/一覧±は先に予定減量案内、OFFは計画保持・新consume/carry停止・undo可、carryは残のみ/0行非生成、unlinkは残割当解放/stock不変/原本保持・解除後undoはstockのみ返却でlink復活なし。技術/テストはこの一組に従う。production refはb453258で0028/29・BE547/FE548未包含、旧小数は本番利用者移行の追加質問ではなくlocalデータを壊さないversion付き互換として扱う。FE複数API順送は部分保存リスクにより採用しない。
 
 builder補足: cancel不変更はinventory/link/回数/memo draftの範囲。カテゴリー/店舗の独立新規作成は既存どおり別保存であることを明示し、同batch化しない。検索GETを禁止しない。残予定>0ならitemOFFでもdaily ON不可、既daily ONなら新割当不可の理由を表示し、既存設定を勝手にOFFへ変更しない。
+
+## 最新ユーザー効率化指示 / root実行手順ruling（2026-11-16）
+
+本節は上記Task分割・全体反復記述より優先する。承認業務仕様は不変。API/hook・在庫modal・献立画面をfresh単一implementerの1統合タスクへまとめる。元Task1/2/3は振舞のチェックリストとして用い、中間の型handoff/別レビューゲートを繰り返さない。opsはCSS/共有fixture/E2E/環境を窓調整して担当する。BE#554のmerge後だけFE productを開始する。
+
+TDDは重要なobservable振舞単位、stock/count/atomic/replay/unlink/tenantを守る最小focused unit/E2Eを用いる。修正のたびにlocal全unit/無関係全E2E/専用3設定を回さず、最終静的lint/type/buildと既存CIの全体結果を採用する。一つのfresh reviewerの同一diff1回でtask spec/qualityとwholebranch両verdictを得る。正式PR CLIreview指摘0と既存CI成功は維持し、本番は別指示を待つ。統合dispatch要件はscratchのissue555-integrated-brief.mdに具体化した。

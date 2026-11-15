@@ -98,7 +98,20 @@ flowchart TD
 - 献立リストの「作った/まだ」のチェック（消し込み）機能の要否
 - 献立リストから買い物リストへの材料連携の要否（現時点では連携なし、[common-notes.md](../common-notes.md) 6章）
 
-## 在庫別メニューの実食・取消・持ち越し（バックエンド #547・画面 #548）
+## 予定回数の食事・取消・持越し（バックエンド #554・画面 #555）
+
+バックエンド実装済み、新画面#555は未実装。[承認仕様](../../superpowers/specs/2026-11-15-inventory-menu-plan-design.md)を正とする。planned食事は1回で当該remainingCount/stockを1ずつ減らし、旧mealState=eatenでも残数>0なら反復できる。取消は当週のtop eventだけをLIFOで一度返し、前eventが残ればeatenのまま。確認量はGET undoQuantity（実event量）を使い、旧週行usageで推定しない。
+
+品目OFFは計画保持・新食事/持越し停止、取消可。解除後の旧取消は在庫だけ返し、再追加linkの予定は戻さない。予定0後dailyONで、元planned linkに予定を戻す取消は不可（自動OFFせず、先にdailyOFFを案内）。能力はcanConsume/canUndoを正とする。過去・未来週に現在残数/memoを過去実績として表示せずnull、操作不可。
+
+carryONかつ品目ON/残数>0だけ当週に持ち越し、残数はリセットしない。0やOFFでは新行を生成せず、週cleanupでも計画残数/memoを変更しない。解除/原本改名・削除後も週名snapshotを維持し、通常手動レシピlive名/削除null・自由メモは従来どおり。
+
+#555では「カレー×2｜辛口」の一行要約と詳細展開を実装する。count/memo/carry等の編集は在庫の全集合保存へまとめ、独立連携保存を新plannedに残さない。
+
+## legacy互換と現行画面（バックエンド #547・画面 #548）
+
+以下の旧使用数・週一回食済・個別carry設定はremainingCount=NULLのlegacy向け。planned新画面は#555で置き換える。
+
 
 在庫登録からの連携は今週に限定する。通常のレシピ・自由メモの手動追加や過去・未来週の操作は維持する。連携行の食事・取消・持ち越しは#548の画面から操作する。APIと状態の正本は[承認仕様](../../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。
 

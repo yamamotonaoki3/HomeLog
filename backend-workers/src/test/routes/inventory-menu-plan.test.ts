@@ -96,6 +96,34 @@ it('dailyONから明示OFFの同保存で未精算分と数量差分を反映し
  expect(saved.quantity).toBe(4)
  expect(await env.DB.prepare('SELECT daily_consumption_tenths,auto_consumption_enabled FROM inventory_items WHERE id=?').bind(ordinary.id).first()).toEqual({daily_consumption_tenths:10,auto_consumption_enabled:0})
 })
+it('daily未精算後の実効在庫を超える割当は全状態を変更せず拒否する',async()=>{
+ const clock=vi.spyOn(Date,'now').mockReturnValue(Date.UTC(2026,10,15,6))
+ try {
+  const actor=(await env.DB.prepare('SELECT user_id FROM household_members WHERE household_id=?').bind(householdId).first<{user_id:number}>())!
+  headers.Authorization='Bearer '+await signAccessToken(actor.user_id,env.JWT_SECRET,900)
+  const planned=await create({...body([line(1)]),name:'[E2E_TEST] independent planned'})
+  await env.DB.prepare("INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id) VALUES('testuser_overdue_event',?,?,?,?,1,?)").bind(householdId,planned.linkedMenuEntries[0].id,planned.id,10,planned.menuLinks[0].id).run()
+  const created=await request('POST','inventory-items',{...body(),name:'[E2E_TEST] ordinary daily',threshold:5,menuPlan:undefined,dailyConsumption:1,autoConsumptionEnabled:true})
+  expect(created.status).toBe(201)
+  const ordinary=await created.json<{id:number}>()
+  await env.DB.prepare("UPDATE inventory_items SET last_consumed_on='2026-11-13' WHERE id=?").bind(ordinary.id).run()
+  const current=(await env.DB.prepare('SELECT * FROM inventory_items WHERE id=?').bind(ordinary.id).first<{quantity_tenths:number;threshold_tenths:number;daily_consumption_tenths:number;auto_consumption_enabled:number;last_consumed_on:string;menu_plan_revision:number}>())!
+  expect(current).toMatchObject({quantity_tenths:50,threshold_tenths:50,daily_consumption_tenths:10,auto_consumption_enabled:1,last_consumed_on:'2026-11-13'})
+  const tables=['inventory_items','recipes','inventory_menu_links','menu_entries','shopping_list_items','menu_consumption_events','menu_operation_requests']
+  const snapshot=async()=>Promise.all(tables.map(table=>env.DB.prepare('SELECT * FROM '+table+' WHERE household_id=? ORDER BY rowid').bind(householdId).all().then(result=>result.results)))
+  const before=await snapshot()
+  for(const rows of before) expect(rows.length).toBeGreaterThan(0)
+  expect(await env.DB.prepare('SELECT id FROM shopping_list_items WHERE household_id=? AND inventory_item_id=?').bind(householdId,ordinary.id).first()).not.toBeNull()
+  const manualTitle='[E2E_TEST] overdue rejected original'
+  const data={...body([{...line(2),memo:'[E2E_TEST] attempted memo',carryEnabled:true},{newRecipeTitle:manualTitle,remainingCount:3,memo:'[E2E_TEST] new memo',carryEnabled:true}]),name:'[E2E_TEST] attempted rename',quantity:6,threshold:2,price:456,dailyConsumption:1,autoConsumptionEnabled:false,expectedMenuPlanRevision:current.menu_plan_revision}
+  const response=await request('PUT','inventory-items/'+ordinary.id,data)
+  expect(response.status).toBe(400)
+  expect(await response.json()).toMatchObject({code:'VALIDATION_ERROR',message:'予定回数を減らしてから在庫数量を変更してください'})
+  expect(await snapshot()).toEqual(before)
+  expect(await env.DB.prepare('SELECT id FROM recipes WHERE household_id=? AND title=?').bind(householdId,manualTitle).first()).toBeNull()
+  expect(await env.DB.prepare('SELECT request_id FROM menu_operation_requests WHERE household_id=? AND request_id=?').bind(householdId,data.menuPlan.requestId).first()).toBeNull()
+ } finally {clock.mockRestore()}
+})
 it.each([
  ['count fraction',{remainingCount:0.5}],['count max',{remainingCount:100000}],['memo max',{memo:'a'.repeat(256)}],['two discriminators',{newRecipeTitle:'[E2E_TEST] invalid'}],['missing discriminator',{recipeId:undefined}],['extra key',{enabled:false}],
 ] as const)('%sを400で拒否する',async(_name,change)=>{

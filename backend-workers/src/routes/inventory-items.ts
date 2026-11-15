@@ -210,7 +210,7 @@ const replaceItemSchema = z.object({
 inventoryItemsRoute.put('/:id', async c => {
   const parsed = replaceItemSchema.safeParse(await parseJsonBody(c))
   const itemId = Number(c.req.param('id'))
-  if (!parsed.success || !Number.isSafeInteger(itemId) || itemId <= 0) return c.json(errorResponse('VALIDATION_ERROR', '?????????????'), 400)
+  if (!parsed.success || !Number.isSafeInteger(itemId) || itemId <= 0) return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   const householdId = await resolveHouseholdId(drizzle(c.env.DB), c.get('userId'))
   if (householdId === null) return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
   const result = await saveInventoryMenuPlan(c.env.DB, c.get('userId'), householdId, { ...parsed.data, normalizedName: normalizeName(parsed.data.name) }, itemId)
