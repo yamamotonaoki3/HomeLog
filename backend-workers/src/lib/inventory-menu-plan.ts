@@ -86,6 +86,8 @@ export async function saveInventoryMenuPlan(db:D1Database, actorUserId:number, h
         'NOT EXISTS(SELECT 1 FROM inventory_items WHERE household_id=? AND normalized_name=?'+(current?' AND id<>?':'')+') AND EXISTS(SELECT 1 FROM zaiko_categories WHERE id=? AND household_id=?)'+(input.storeId===null?'':' AND EXISTS(SELECT 1 FROM stores WHERE id=? AND household_id=?)'),
         [...(current?[itemId!,householdId,input.expectedMenuPlanRevision!]:[]),householdId,input.normalizedName,...(current?[itemId!]:[]),input.categoryId,householdId,...(input.storeId===null?[]:[input.storeId,householdId])])]
       if(current){
+        // An unused plan row has no history to retain after unlink. Event-bearing rows remain undo anchors.
+        statements.push(db.prepare('DELETE FROM menu_entries WHERE household_id=? AND inventory_menu_link_id IN (SELECT id FROM inventory_menu_links WHERE inventory_item_id=? AND household_id=?'+(kept.length?' AND id NOT IN ('+kept.map(()=>'?').join(',')+')':'')+') AND NOT EXISTS(SELECT 1 FROM menu_consumption_events e WHERE e.menu_entry_id=menu_entries.id)').bind(householdId,itemId!,householdId,...kept))
         // Leave historical weekly snapshots/events intact. FK SET NULL retains the undo authority on the event.
         statements.push(db.prepare('DELETE FROM inventory_menu_links WHERE inventory_item_id=? AND household_id=?'+(kept.length?' AND id NOT IN ('+kept.map(()=>'?').join(',')+')':'')).bind(itemId!,householdId,...kept))
         // Release every retained reservation before changing absolute stock/daily settings.

@@ -40,6 +40,8 @@ it('全件置換は省略linkを解除、同原本の再追加は新ID、順序�
  const second=await removed.json<Aggregate>()
  expect(second.menuLinks).toHaveLength(1)
  expect(second.menuLinks[0]).toMatchObject({remainingCount:1,memo:' untouched text '})
+ expect(second.quantity).toBe(first.quantity)
+ expect(await env.DB.prepare('SELECT id FROM menu_entries WHERE id=?').bind(first.linkedMenuEntries[0].id).first()).toBeNull()
  expect(await env.DB.prepare('SELECT id FROM recipes WHERE id=?').bind(recipeId).first()).toEqual({id:recipeId})
  const added=await request('PUT','inventory-items/'+first.id,edit(second,[line(3),{linkId:second.menuLinks[0].id,remainingCount:1,memo:null,carryEnabled:false}]))
  expect(added.status).toBe(200)

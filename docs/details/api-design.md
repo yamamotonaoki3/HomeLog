@@ -622,7 +622,7 @@ interface DashboardDayDetail {
 
 ## 在庫の予定回数・一括保存API（バックエンド #554 / 画面 #555）
 
-バックエンド実装済み。新しい画面は後続#555で実装する。正本は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-plan-design.md)。以下plannedはremainingCountが整数の関連、legacyはNULLの旧関連を指す。
+バックエンドと画面#555を実装済み。正本は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-plan-design.md)。以下plannedはremainingCountが整数の関連、legacyはNULLの旧関連を指す。
 
 | メソッド・パス | planned契約 |
 | --- | --- |
@@ -635,15 +635,15 @@ interface DashboardDayDetail {
 
 linksは0〜20行、各行は`{linkId}`/`{recipeId}`/`{newRecipeTitle}`のいずれか一つ＋required`{remainingCount,memo,carryEnabled}`。count整数0〜99999、memo null/255文字以内。新規タイトル1〜100文字。既存原本を複製せず、入力順を保持する。stockは既存0.1単位、常時合計予定≦stock（品目OFFも同じ）。超過/不正400、他世帯/不存在404、CAS/書込競合409で全未反映。
 
-品目OFFは計画を保持し新consume/carryだけ停止、undoは可能。残予定>0ならdailyON不可。旧dailyONからの割当には明示autoConsumptionEnabled:falseが必要で、設定量を勝手に消さない。未精算分を旧設定で精算し、CAS元quantityに対する入力差分を適用した実効stockで検証する。応答quantityは実効値、menuPlanRevisionは複数trigger後の実値。予定0後dailyONで、undoが元planned countを復元する場合は409（自動OFFしない）。
+品目OFFは計画を保持し新consume/carryだけ停止、undoは可能。残予定>0ならdailyON不可。旧dailyONからの割当には明示autoConsumptionEnabled:falseが必要で、設定量を勝手に消さない。dailyConsumption未指定は既存値を保持し、明示nullと明示auto OFFでは意図的なクリアを反映する。未精算分を旧設定で精算し、CAS元quantityに対する入力差分を適用した実効stockで検証する。応答quantityは実効値、menuPlanRevisionは複数trigger後の実値。予定0後dailyONで、undoが元planned countを復元する場合は409（自動OFFしない）。
 
-新consume/undo成功は旧fields＋remainingCount（legacy/解除済みnull）/menuPlanEnabled/menuPlanRevision。undoQuantityはGET専用で、取消可能な当週top event実量/10、上限・失効・daily排他等で不可ならnull。週名snapshotはunlink後も献立/dashboard/日詳細で維持する。inventory側関連名は現在名/削除時fallback。通常献立はlive名/削除後nullを維持する。
+新consume/undo成功は旧fields＋remainingCount（legacy/解除済みnull）/menuPlanEnabled/menuPlanRevision。undoQuantityはGET専用で、取消可能な当週top event実量/10、上限・失効・daily排他等で不可ならnull。unlinkではイベントのない週行を同batchで削除し、イベント参照行は取消のため保持する。保持した週名snapshotはunlink後も献立/dashboard/日詳細で維持する。inventory側関連名は現在名/削除時fallback。通常献立はlive名/削除後nullを維持する。
 
 認証・現在所属確認後、同UUID/body保存成功を存在/週/CAS検査より先に再現する。集約はversion2、旧consume/undoのversion1/成功JSONは不変。異body同UUIDは409 RESOURCE_CONFLICT＋details requestId/PAYLOAD_MISMATCHで結果不明。未知結果は旧body/IDを保ち、成功後GET失敗でmutationを再送しない。
 
-### legacy互換（#547 / 現行画面 #548）
+### legacy互換（#547 / 旧画面 #548）
 
-以下はremainingCount=NULLの旧関連向け。新plannedの個別PATCHは409で、全集合保存を使う。新UI一括modal/一行表示は#555未実装。
+以下はremainingCount=NULLの旧関連向け。新plannedの個別PATCHは409で、現行画面#555は在庫モーダルの全集合保存と献立の一行表示を使う。旧未解決要求は変換せず元のAPIで回復する。
 
 
 詳細な入力・返却型と原子性は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)を参照。全操作は認証と現在の世帯所属が必要。他世帯404、不正入力400、状態・残量・revision競合409。新規consume/undoはJST当週のみ。保存成功の同requestId/body再送は認証・所属確認後、当週/存在検査より先に再現し、異bodyは409とする。未知応答で新しい要求IDへ切り替えない。
