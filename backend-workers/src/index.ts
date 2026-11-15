@@ -20,10 +20,12 @@ import { deleteStaleOcrImages } from './lib/recipe-ocr'
 import { consumeInventoryForDate, consumptionDate } from './lib/inventory-consumption'
 import { getJstToday } from './lib/date'
 import { purgePastMenuEntries } from './lib/menu-entry-cleanup'
+import { carryMenuEntries } from './lib/menu-carryover'
 import { householdRoute } from './routes/household'
 import { incomeCategoriesRoute } from './routes/income-categories'
 import { incomesRoute } from './routes/incomes'
 import { inventoryItemsRoute } from './routes/inventory-items'
+import { inventoryMenuLinksRoute } from './routes/inventory-menu-links'
 import { kakeiboCategoriesRoute } from './routes/kakeibo-categories'
 import { demoGuard } from './middleware/demo-guard'
 import { menuEntriesRoute } from './routes/menu-entries'
@@ -114,6 +116,7 @@ app.route('/api/households', householdRoute)
 app.route('/api/zaiko-categories', zaikoCategoriesRoute)
 app.route('/api/stores', storesRoute)
 app.route('/api/inventory-items', inventoryItemsRoute)
+app.route('/api/inventory-menu-links', inventoryMenuLinksRoute)
 app.route('/api/shopping-list-items', shoppingListItemsRoute)
 app.route('/api/kakeibo-categories', kakeiboCategoriesRoute)
 app.route('/api/income-categories', incomeCategoriesRoute)
@@ -147,7 +150,9 @@ const appWithScheduled = Object.assign(app, {
       return
     }
     // JST 0時は献立だけ。既存のJST 1時にも再試行し、取りこぼしを回収する。
-    const cleanup = purgePastMenuEntries(env.DB, new Date())
+    const now = new Date()
+    // 持越しが失敗した場合は旧週を消さず、次回Cronでまとめて再試行する。
+    const cleanup = carryMenuEntries(env.DB, now).then(() => purgePastMenuEntries(env.DB, now))
     // 一方が失敗しても、ほかの日次処理は実行する。
     const results = await Promise.allSettled([
       cleanup,

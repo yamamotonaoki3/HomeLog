@@ -1,3 +1,4 @@
+﻿import { createLinkedInventory, inventoryMenuLinksByInventory, menuLinkageSchema } from '../lib/inventory-menu-links'
 import { and, eq } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
@@ -25,6 +26,7 @@ const quantityValueSchema = z
   .refine(isOneDecimalPlace, { message: '数量は小数点第一位までで入力してください' })
 
 const createItemSchema = z.object({
+  menuLinkage: menuLinkageSchema.optional(),
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: '品名を入力してください' }),
   categoryId: z.number().int(),
   storeId: z.number().int().nullable(),
@@ -123,7 +125,8 @@ inventoryItemsRoute.get('/', async (c) => {
   }
 
   const rows = await db.select().from(inventoryItems).where(eq(inventoryItems.householdId, householdId)).all()
-  return c.json(rows.map(toResponse))
+  const links=await inventoryMenuLinksByInventory(c.env.DB,householdId)
+  return c.json(rows.map(item => ({ ...toResponse(item), menuLinks: links.get(item.id)??[] })))
 })
 
 inventoryItemsRoute.post('/', async (c) => {
@@ -138,6 +141,10 @@ inventoryItemsRoute.post('/', async (c) => {
   const householdId = await resolveHouseholdId(db, c.get('userId'))
   if (householdId === null) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+  if (parsed.data.menuLinkage) {
+    const linked = await createLinkedInventory(c.env.DB, c.get('userId'), householdId, { ...parsed.data, menuLinkage: parsed.data.menuLinkage, normalizedName: normalizeName(name) })
+    return new Response(JSON.stringify(linked.body), { status: linked.status, headers: { 'Content-Type': 'application/json' } })
   }
   if (!(await validateCategory(db, householdId, categoryId))) {
     return c.json(errorResponse('VALIDATION_ERROR', CATEGORY_NOT_FOUND_MESSAGE), 400)
@@ -241,7 +248,11 @@ inventoryItemsRoute.patch('/:id', async (c) => {
           deduction, daily, enabled ? 1 : 0, baseline, current.consumptionRevision + (changed ? 1 : 0),
           itemId, householdId, current.consumptionRevision, current.lastConsumedOn, householdId, normalizedName, itemId),
       ...inventoryShoppingSync(c.env.DB, itemId, householdId),
-    ])
+    ]).catch(error => {
+      if (error instanceof Error && error.message.includes('menu_link_daily_conflict')) return null
+      throw error
+    })
+    if (results === null) return c.json(errorResponse('VALIDATION_ERROR', '献立連携をOFFにしてから日次自動消費をONにしてください'), 400)
     if (results[0].meta.changes > 0) {
       const updated = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).get()
       if (!updated) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)

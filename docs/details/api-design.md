@@ -619,3 +619,20 @@ interface DashboardDayDetail {
 - 単一D1 batchの全件guard、相対在庫更新、削除/残数/revision、成功台帳を原子的に確定する。末尾SQLはresponse更新件数1・PK1行・status200・要求順snapshot完全一致をassertし、不成立をSQL例外で全rollbackする。既知named CHECKだけ409候補として拒否INSERT調停へ進み、その他の障害を未反映保証へ変換しない。
 
 #421の画面は送信前にactor/世帯別pendingへ元requestId/bodyを保存する。成功200または一致したmarker付き保存拒否だけでpendingを解決し、MISMATCH/未知応答では元body回復を行う。logoutでも未解決記録を保持し、同user同世帯の認証確認後に利用者操作で回復する。別user/別世帯へ表示・送信せず、401refresh後の再送直前にもscope/sessionを照合する。200後のGET失敗は反映済みとして一覧再取得だけを行う。画面仕様は[F08](features/F08_zaiko_shoppinglist.md) 9章を参照。
+
+## 在庫別メニュー・実食連携API（バックエンド #547 / 画面 #548は未実装）
+
+詳細な入力・返却型と原子性は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)を参照。全操作は認証と現在の世帯所属が必要。他世帯404、不正入力400、状態・残量・revision競合409。新規consume/undoはJST当週のみ。保存成功の同requestId/body再送は認証・所属確認後、当週/存在検査より先に再現し、異bodyは409とする。未知応答で新しい要求IDへ切り替えない。
+
+| メソッド・パス | 入力・応答の追加契約 |
+| --- | --- |
+| `POST /api/inventory-items` | 任意`menuLinkage:{requestId,menus:[{newRecipeTitle?,recipeId?,usageQuantity?,carryEnabled?}]}`。menus1〜20、新規名/既存ID排他。今週へ追加、使用数初期1、持越し初期OFF。既存応答へ任意`linkedMenuEntries`を追加。通常bodyは従来どおり |
+| `GET /api/inventory-items` | 各要素に`menuLinks:[{id,recipeId,recipeTitle,usageQuantity,enabled,carryEnabled,revision}]`を追加。無関連は空配列 |
+| `PATCH /api/inventory-menu-links/:id` | `{expectedRevision,usageQuantity,enabled,carryEnabled}`全置換。CAS成功で同値でもrevision+1。再ONは在庫>0・原本あり・dailyOFFが条件。既存食済行を未食へ復活させない |
+| `GET /api/menu-entries` | 各要素へ`inventoryLinkage`を追加。通常行null、連携行は関連ID・在庫ID/名/現在量・週行使用数・有効/持越し・link/meal revision・mealState・canConsume/canUndo・unavailableReasonを返す |
+| `POST /api/menu-entries/:id/consume` | `{requestId,expectedRevision}`。量は週行設定値。未食→食済、在庫相対減算と買い物同期・イベント・台帳を一つのbatchで確定 |
+| `POST /api/menu-entries/:id/undo-consumption` | `{requestId,expectedRevision}`。食済→未食、イベント量の相対返却。連携OFF/原本削除後も在庫ありなら可能。在庫削除済み409、行削除済み404 |
+
+消費/取消200は`{menuEntryId,mealState,mealRevision,inventoryItemId,quantity,carryEnabled}`。確定時snapshotであり最新一覧ではない。在庫不足・取消時上限超過は全未反映。通常レシピ・自由メモの既存操作は維持する。
+
+連携行の`GET /api/menu-entries.recipeTitle`と登録応答`linkedMenuEntries[].recipeTitle`は週行生成時の原本名snapshot。登録・明示再ON・持ち越しの新行生成で取得し、既存行の設定編集・食事状態更新・原本改名/削除では変更しない。通常手動行は現在のJOIN名、削除後nullを維持する。在庫一覧の`menuLinks[].recipeTitle`は現在名/削除時の関連snapshotで別契約。保存済み操作要求の成功JSONは書き換えない。

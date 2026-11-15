@@ -1,3 +1,4 @@
+﻿import { consumeMenuEntry,undoMenuConsumption,menuMealInputSchema,menuInventoryLinkagesForWeek } from '../lib/menu-inventory-consumption'
 import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
@@ -47,8 +48,7 @@ function toResponse(entry: typeof menuEntries.$inferSelect, recipeTitle: string 
     recipeId: entry.recipeId,
     // レシピ選択(確定登録)のエントリを一覧表示する際、呼び出し側が別途
     // GET /api/recipesと突き合わせなくてもレシピ名を表示できるようにする
-    // (F10_kondate_menu.md「週の表示・切り替え」参照。recipeIdはあるがrecipeTitleが
-    // nullの場合は、レシピが削除済みであることを意味する)。
+    // (F10_kondate_menu.md「週の表示・切り替え」参照)。連携行は生成時の名前を渡す。
     recipeTitle,
     freeTextMemo: entry.freeTextMemo,
     weekStartDate: entry.weekStartDate,
@@ -73,8 +73,7 @@ menuEntriesRoute.get('/', async (c) => {
 
   // 献立表は世帯メンバー全員が自由に編集可能(common-notes.md 2章)なため、
   // 所有者チェックは行わず世帯所属のみを確認する(recipes.ts/stores.tsと同じパターン)。
-  // leftJoinでrecipesテーブルのtitleも一緒に取得する(recipeIdがNULLの行、あるいは
-  // 参照先のレシピが既に削除された行はrecipeTitleがNULLになる)。
+  // 通常行は現在の原本名、連携行は原本削除後も週行生成時の名前を返す。
   const rows = await db
     .select({ entry: menuEntries, recipeTitle: recipes.title })
     .from(menuEntries)
@@ -83,7 +82,8 @@ menuEntriesRoute.get('/', async (c) => {
     .orderBy(menuEntries.id)
     .all()
 
-  return c.json(rows.map((row) => toResponse(row.entry, row.recipeTitle)))
+  const linkages=await menuInventoryLinkagesForWeek(c.env.DB,householdId,weekStartDate)
+  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.entry.inventoryMenuLinkId===null?row.recipeTitle:row.entry.recipeTitleSnapshot), inventoryLinkage: linkages.get(row.entry.id)??null })))
 })
 
 menuEntriesRoute.post('/', async (c) => {
@@ -147,7 +147,23 @@ menuEntriesRoute.delete('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  await db.delete(menuEntries).where(eq(menuEntries.id, entryId))
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE inventory_menu_links SET carry_enabled=0,revision=revision+1 WHERE id=(SELECT inventory_menu_link_id FROM menu_entries WHERE id=? AND household_id=?) AND household_id=? AND carry_enabled=1').bind(entryId,householdId,householdId),
+    c.env.DB.prepare('DELETE FROM menu_entries WHERE id=? AND household_id=?').bind(entryId,householdId),
+  ])
 
   return c.body(null, 204)
 })
+
+
+for (const operation of ['consume','undo-consumption'] as const) {
+  menuEntriesRoute.post('/:id/'+operation,async c=>{
+    const parsed=menuMealInputSchema.safeParse(await parseJsonBody(c))
+    const id=Number(c.req.param('id'))
+    if(!parsed.success||!Number.isSafeInteger(id)||id<1)return c.json(errorResponse('VALIDATION_ERROR','入力内容を確認してください'),400)
+    const householdId=await resolveHouseholdId(drizzle(c.env.DB),c.get('userId'))
+    if(householdId===null)return c.json(errorResponse('RESOURCE_NOT_FOUND',HOUSEHOLD_NOT_FOUND_MESSAGE),404)
+    const result=await (operation==='consume'?consumeMenuEntry:undoMenuConsumption)(c.env.DB,{householdId,actorUserId:c.get('userId')},id,parsed.data)
+    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}})
+  })
+}
