@@ -167,7 +167,7 @@ flowchart LR
 | バックエンド | Cloudflare Workers / Hono / TypeScript / zod |
 | データベース | Cloudflare D1（SQLite 互換）/ drizzle-orm |
 | ファイル・AI | Cloudflare R2（手書きレシピ画像の一時保存）/ Google Cloud Vision（文字認識）/ Workers AI（レシピの構造化） |
-| 定期処理 | Cron Trigger（毎日 JST 1:00）：固定費の自動計上、画像の後片付け、退会アカウントの削除 |
+| 定期処理 | Cron Trigger：毎日 JST 0:00 に過去週の献立を削除。JST 1:00 に固定費の自動計上、在庫の自動消費、画像・退会アカウント・回数制限データの清掃と献立削除の再試行 |
 | テスト | Vitest（`@cloudflare/vitest-pool-workers` / Testing Library / msw）/ Playwright |
 | 品質 | ESLint / oxlint / TypeScript / GitHub Actions / gitleaks |
 | デプロイ | Cloudflare Workers Builds（`production` ブランチへの push で自動デプロイ） |
@@ -206,12 +206,15 @@ cd frontend && npm install && cd ..
 cp backend-workers/.dev.vars.example backend-workers/.dev.vars
 #   → JWT_SECRET などを設定する
 
-# 3. ローカルの D1 にマイグレーションを適用して API を起動する（http://localhost:8787）
+# 3. Workers が参照する画面の静的アセットをビルドする（画面変更後は再実行）
+cd frontend && npm run build && cd ..
+
+# 4. ローカルの D1 にマイグレーションを適用して API を起動する（http://localhost:8787）
 cd backend-workers
 npx wrangler d1 migrations apply DB --local
 npx wrangler dev --local --port 8787
 
-# 4. 別のターミナルで画面を起動する（http://localhost:5181）
+# 5. 別のターミナルで画面を起動する（http://localhost:5181）
 cd frontend
 VITE_API_PROXY_TARGET=http://localhost:8787 npx vite --port 5181
 ```
@@ -223,6 +226,9 @@ VITE_API_PROXY_TARGET=http://localhost:8787 npx vite --port 5181
 ## テスト
 
 ```bash
+# Workers のテスト前に静的アセットをビルドする
+cd frontend && npm run build && cd ..
+
 # バックエンド（本物の D1 を使う単体テスト）
 cd backend-workers && npm run lint && npm run typecheck && npm test
 
@@ -230,8 +236,12 @@ cd backend-workers && npm run lint && npm run typecheck && npm test
 cd frontend && npm run lint && npx tsc -b && npx vitest run && npm run build
 
 # E2E（API と画面を自動で起動し、1280 / 390 / 320px で確認）
-cd e2e && npm install && npm test
+cd e2e && npm install
+npx playwright install chromium # 初回のみ
+npm test
 ```
+
+各ブロックの `cd` はリポジトリルートから実行します。`npm test` は通常E2Eを実行します。献立削除・デモ・Workers静的配信の専用E2Eは、[e2e/README.md](e2e/README.md)の手順で順番に実行してください。
 
 README の GIF は `e2e/tests/readme-gifs.spec.ts` で録画し、ffmpeg で GIF に変換しています。
 
