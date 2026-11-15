@@ -119,3 +119,9 @@ link PATCHは別の`updateInventoryMenuLink(id, body, verifiedScope, credentials
 - 専用設定とdeliveryの結果は完了後に追記。本番反映・ユーザーの最終ブラウザ確認は未実施。
 
 専用E2E最終結果: `npm test -- --config playwright.menu-cleanup.config.ts` は1pass、demo設定は7pass、static-assets設定は11pass。各runner終了時に専用D1残数0を確認。既存5173（PID6664）は停止せず、今回使用8787/画面空きportだけ後始末する。frontend以外の実行コード/DB/migration差分なし。
+
+### PR #551 正式CLIレビュー対応
+
+`codex review --base main` の初回正式レビューで、期限切れaccessを「本人と世帯を再確認」から更新できないP2を採用。hookの実401/refresh経路で3ケースredを確認し、利用者の明示再確認だけ既存GET refresh→新credential固定の本人/世帯再検証へつなぐ最小修正を行った。自動checkはrefreshせず、mutationを自動再送しない。元pendingは元scope/id/bodyで保持し、refresh中のsession変更では旧応答を適用しない。同期invalidateの追加通信不要保証も維持。
+
+caller最終検証: API/hook/献立34件pass、frontend全体lint/typecheckを含むbuild成功・75ファイル1093テストpass、新UI実Workers5件pass（27.3秒）。D1残数0・今回8787/画面空きport閉鎖、既存5173 PID6664は不操作。最新修正headの正式CLI再レビューとCI全成功をマージ条件とする。

@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
-import { setTokens } from '../../api/tokenStorage'
+import { getAccessToken, getRefreshToken, setAccessToken, setTokens } from '../../api/tokenStorage'
 import { useMenuInventoryOperation } from '../../hooks/useMenuInventoryOperation'
 import { readMenuPending } from '../../lib/menuOperationPending'
 const scope={actorUserId:1,householdId:10}
@@ -10,6 +10,92 @@ const input={kind:'consume' as const,entryId:11,mealRevision:2}
 const success={menuEntryId:11,mealState:'eaten',mealRevision:3,inventoryItemId:21,quantity:2,carryEnabled:false}
 beforeEach(()=>{localStorage.clear();setTokens('testuser_access','testuser_refresh');vi.stubGlobal('isSecureContext',true);vi.stubGlobal('navigator',{locks:{request:async(_n:string,_o:unknown,cb:()=>unknown)=>cb()}});server.use(http.get('/api/auth/me',()=>HttpResponse.json({id:1})),http.get('/api/households/me',()=>HttpResponse.json({id:10})))})
 afterEach(()=>vi.unstubAllGlobals())
+function setupExpiredAccess(){
+ const state={expired:false,refreshes:0,refreshBodies:[] as unknown[],bodies:[] as unknown[],authHeaders:[] as (string|null)[],householdHeaders:[] as (string|null)[]}
+ server.use(http.get('/api/auth/me',({request})=>{
+  const authorization=request.headers.get('Authorization');state.authHeaders.push(authorization)
+  return state.expired&&authorization==='Bearer testuser_expired_access'?HttpResponse.json({code:'UNAUTHORIZED'},{status:401}):HttpResponse.json({id:1})
+ }),http.get('/api/households/me',({request})=>{state.householdHeaders.push(request.headers.get('Authorization'));return HttpResponse.json({id:10})}),http.post('/api/auth/refresh',async({request})=>{state.refreshes++;state.refreshBodies.push(await request.json());return HttpResponse.json({accessToken:'testuser_refreshed_access',expiresIn:3600})}),http.post('/api/menu-entries/11/consume',async({request})=>{state.bodies.push(await request.json());return HttpResponse.json(success)}))
+ return state
+}
+it('期限切れで操作を止め明示再確認だけrefreshし新たなrunまでmutationを送らない',async()=>{
+ const state=setupExpiredAccess()
+ const {result}=renderHook(()=>useMenuInventoryOperation({actorUserId:1}))
+ await waitFor(()=>expect(result.current.verifiedScope).toEqual(scope))
+ state.expired=true;setAccessToken('testuser_expired_access')
+ await act(async()=>{expect((await result.current.run(input)).kind).toBe('blocked')})
+ expect(state.bodies).toHaveLength(0);expect(state.refreshes).toBe(0)
+ act(()=>window.dispatchEvent(new Event('focus')))
+ await waitFor(()=>expect(result.current.busy).toBe(false))
+ expect(state.refreshes).toBe(0);expect(state.bodies).toHaveLength(0)
+ await act(async()=>{await result.current.recheck()})
+ expect(state.refreshes).toBe(1)
+ expect(state.refreshBodies).toEqual([{refreshToken:'testuser_refresh'}])
+ expect(getAccessToken()).toBe('testuser_refreshed_access')
+ expect(state.authHeaders.slice(-2)).toEqual(['Bearer testuser_refreshed_access','Bearer testuser_refreshed_access'])
+ expect(state.householdHeaders.at(-1)).toBe('Bearer testuser_refreshed_access')
+ expect(result.current.verifiedScope).toEqual(scope)
+ expect(state.bodies).toHaveLength(0)
+ await act(async()=>{await result.current.run(input)})
+ expect(state.bodies).toHaveLength(1)
+ expect(result.current.outcome?.kind).toBe('success')
+})
+it('pending中の期限切れは明示再確認で元envelopeを復元しrecoverだけ同ID/bodyを再送する',async()=>{
+ const state=setupExpiredAccess()
+ server.use(http.post('/api/menu-entries/11/consume',async({request})=>{state.bodies.push(await request.json());return state.bodies.length===1?HttpResponse.error():HttpResponse.json(success)}))
+ const {result}=renderHook(()=>useMenuInventoryOperation({actorUserId:1}))
+ await waitFor(()=>expect(result.current.verifiedScope).toEqual(scope))
+ await act(async()=>{await result.current.run(input)})
+ const original=readMenuPending(scope)
+ expect(original.kind).toBe('pending');expect(result.current.outcome?.kind).toBe('unknown')
+ state.expired=true;setAccessToken('testuser_expired_access')
+ await act(async()=>{await result.current.recover()})
+ expect(state.bodies).toHaveLength(1);expect(state.refreshes).toBe(0)
+ expect(readMenuPending(scope)).toEqual(original)
+ await act(async()=>{await result.current.recheck()})
+ expect(state.refreshes).toBe(1)
+ expect(result.current.verifiedScope).toEqual(scope)
+ expect(result.current.pending).toEqual(original.kind==='pending'?original.pending:undefined)
+ expect(readMenuPending(scope)).toEqual(original)
+ expect(state.bodies).toHaveLength(1)
+ await act(async()=>{await result.current.recover()})
+ expect(state.bodies).toHaveLength(2)
+ expect(state.bodies[1]).toEqual(state.bodies[0])
+ expect(result.current.outcome?.kind).toBe('success')
+ expect(readMenuPending(scope).kind).toBe('empty')
+})
+it('明示再確認のrefresh中にsessionが替わっても旧tokenとscopeを適用せず元pendingを保持する',async()=>{
+ const state=setupExpiredAccess();let release!:()=>void
+ const gate=new Promise<void>(r=>{release=r})
+ server.use(http.post('/api/menu-entries/11/consume',async({request})=>{state.bodies.push(await request.json());return HttpResponse.error()}),http.post('/api/auth/refresh',async()=>{state.refreshes++;await gate;return HttpResponse.json({accessToken:'testuser_old_refreshed_access',expiresIn:3600})}),http.get('/api/auth/me',({request})=>{
+  const authorization=request.headers.get('Authorization')
+  if(authorization==='Bearer testuser_expired_access')return HttpResponse.json({code:'UNAUTHORIZED'},{status:401})
+  return HttpResponse.json({id:authorization==='Bearer testuser_b_access'?2:1})
+ }),http.get('/api/households/me',({request})=>HttpResponse.json({id:request.headers.get('Authorization')==='Bearer testuser_b_access'?20:10})))
+ const {result}=renderHook(()=>useMenuInventoryOperation())
+ await waitFor(()=>expect(result.current.verifiedScope).toEqual(scope))
+ await act(async()=>{await result.current.run(input)})
+ const original=readMenuPending(scope)
+ expect(original.kind).toBe('pending')
+ setAccessToken('testuser_expired_access')
+ let rechecking!:Promise<void>
+ act(()=>{rechecking=result.current.recheck()})
+ try{
+  await waitFor(()=>expect(state.refreshes).toBe(1))
+  act(()=>{setTokens('testuser_b_access','testuser_b_refresh');window.dispatchEvent(new Event('storage'))})
+ }finally{await act(async()=>{release();await rechecking})}
+ expect(getAccessToken()).toBe('testuser_b_access');expect(getRefreshToken()).toBe('testuser_b_refresh')
+ expect(result.current.verifiedScope).toBeNull();expect(result.current.pending).toBeNull()
+ expect(state.bodies).toHaveLength(1)
+ expect(readMenuPending(scope)).toEqual(original)
+ expect(readMenuPending({actorUserId:2,householdId:20}).kind).toBe('empty')
+ await act(async()=>{await result.current.recheck()})
+ expect(result.current.verifiedScope).toEqual({actorUserId:2,householdId:20})
+ await act(async()=>{await result.current.recover()})
+ expect(state.bodies).toHaveLength(1)
+ expect(readMenuPending(scope)).toEqual(original)
+ expect(readMenuPending({actorUserId:2,householdId:20}).kind).toBe('empty')
+})
 it('同じtokenでもfocusで世帯変更を検出したら隔離し明示再確認で新世帯へ復帰する',async()=>{
  let householdId=10
  const onDetached=vi.fn()

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { captureMenuCredentials, menuCredentialsMatch, sendMenuOperation, verifyMenuScope, type MenuOperationOutcome } from '../api/menuInventory'
 import type { InventoryCreateBody, MenuLinkDraft } from '../api/zaikoTypes'
 import { PurchaseIdentityError } from '../api/shoppingPurchases'
+import { isAxiosError } from 'axios'
+import { apiClient } from '../api/client'
 import { menuPendingAvailable, readMenuPending, removeMenuPending, saveMenuPending, type MenuOperationEnvelope, type MenuScope } from '../lib/menuOperationPending'
 export type MenuOperationInput = {kind:'register';inventory:InventoryCreateBody;menus:MenuLinkDraft[]} | {kind:'consume'|'undo';entryId:number;mealRevision:number}
 interface Options { actorUserId?:number; onDetached?:()=>void }
@@ -20,15 +22,28 @@ export function useMenuInventoryOperation(options:Options = {}) {
   const result:MenuOperationOutcome={kind:'detached',message:'ログイン状態が変更されました。本人と世帯を再確認してください'}
   setOutcome(result);setMessage(result.message);return result
  },[])
- const recheck=useCallback(async()=>{
+ const recheck=useCallback(async(explicit=true)=>{
   if(running.current) return
-  const epoch=++generation.current,credentials=captureMenuCredentials(),expected=scope.current
+  const epoch=++generation.current,expected=scope.current,expectedActor=callbacks.current.actorUserId
+  let credentials=captureMenuCredentials()
+  const refreshToken=credentials?.refreshToken
   running.current=true;setBusy(true)
-  const valid=()=>alive.current&&generation.current===epoch&&!!credentials&&menuCredentialsMatch(credentials)&&(callbacks.current.actorUserId===undefined||callbacks.current.actorUserId===actor.current)
+  const sessionValid=()=>alive.current&&generation.current===epoch&&callbacks.current.actorUserId===expectedActor&&captureMenuCredentials()?.refreshToken===refreshToken
+  const valid=()=>sessionValid()&&!!credentials&&menuCredentialsMatch(credentials)
   try{
    if(!credentials) {detached();return}
    if(session.current && session.current!==credentials.refreshToken){detached();return}
-   const verified=await verifyMenuScope(credentials,expected,valid)
+   let verified:MenuScope
+   try{verified=await verifyMenuScope(credentials,expected,valid)}catch(error){
+    if(!explicit || !isAxiosError(error) || error.response?.status!==401 || !valid())throw error
+    // 明示再確認だけ既存GETのrefreshを許し、その結果は固定credentialで再検証する。
+    try{await apiClient.get('/auth/me')}finally{
+     const refreshed=captureMenuCredentials()
+     if(!sessionValid() || !refreshed)throw new PurchaseIdentityError('本人と世帯を再確認してください')
+     credentials=refreshed
+    }
+    verified=await verifyMenuScope(credentials,expected,valid)
+   }
    if(!valid() || (callbacks.current.actorUserId!==undefined&&callbacks.current.actorUserId!==verified.actorUserId)){if(generation.current===epoch)detached();return}
    session.current=credentials.refreshToken;scope.current=verified;setVerifiedScope(verified)
    const stored=readMenuPending(verified)
@@ -42,8 +57,8 @@ export function useMenuInventoryOperation(options:Options = {}) {
   }}
   finally{if(generation.current===epoch&&alive.current){running.current=false;setBusy(false)}}
  },[detached])
- useEffect(()=>{alive.current=true;void recheck();return()=>{alive.current=false;generation.current++;running.current=false}},[options.actorUserId,recheck])
- useEffect(()=>{const check=()=>{if(!running.current)void recheck()};window.addEventListener('storage',check);window.addEventListener('focus',check);return()=>{window.removeEventListener('storage',check);window.removeEventListener('focus',check)}},[recheck])
+ useEffect(()=>{alive.current=true;void recheck(false);return()=>{alive.current=false;generation.current++;running.current=false}},[options.actorUserId,recheck])
+ useEffect(()=>{const check=()=>{if(!running.current)void recheck(false)};window.addEventListener('storage',check);window.addEventListener('focus',check);return()=>{window.removeEventListener('storage',check);window.removeEventListener('focus',check)}},[recheck])
  const execute=useCallback(async(input:MenuOperationInput|null):Promise<MenuOperationOutcome>=>{
   const blocked:MenuOperationOutcome={kind:'blocked',message:'前回の結果と本人・世帯を確認してください'}
   if(running.current||!scope.current) return blocked
