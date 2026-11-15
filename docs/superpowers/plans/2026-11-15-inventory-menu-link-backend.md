@@ -102,3 +102,9 @@ InventoryModalに連携toggleと1〜20メニュー、新規/既存検索（keywo
 - 専用E2Eはmenu-cleanup 1pass、demo 7pass、static-assets 11pass。各実行前後に専用D1を削除し残数0、今回起動したサーバーのポート閉鎖をrunnerで確認した。既存5173は操作せず空き5174を使用。
 - API E2Eは登録同ID並行・既存原本非複製・食事/取消/再送・0停止・補充後未再開・明示再ON/CAS・食済非復活・世帯分離を実Workersで確認した。
 - 元checkoutの#545文書20件を取り込まず保持。#548画面と外部deliveryは未着手。本番未反映。個別手順の未実行コマンドや将来工程は、この実行記録から成功を推測して完了扱いにしない。
+### PR #550のCLIレビュー対応
+
+- 在庫0・enabled OFF→ON・carryOFFの再有効化が成功するP2を確認した。追加HTTP回帰は在庫0とbatch直前1→0の2件が200!=409でred。
+- Codex execで、UPDATE時の実際のenabled/carry遷移だけを対象に同世帯在庫>0の原子guardを追加。既存CHECKでbatchをrollbackし、0028/schemaは変更していない。初回stock0登録と既有効usage編集は維持した。
+- 依頼側の最終確認: 対象16件green、backend全体lint/typecheck成功・66ファイル1020件pass、実Workers API E2E 1件pass（stock0/carryOFF再ON409と全値不変を追加）。
+- Codex execのsandboxではテストがspawn EPERMだったため、redと最終greenは依頼側の制限外環境で確認した。ローカル通常全体282pass/4skipはこのguard修正前の結果で、修正後はAPI E2Eと最新headのCI全件を確認する。

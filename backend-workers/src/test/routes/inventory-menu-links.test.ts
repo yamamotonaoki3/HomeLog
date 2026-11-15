@@ -1,5 +1,5 @@
 ﻿import { env } from 'cloudflare:test'
-import {beforeEach,expect,it} from 'vitest'
+import {beforeEach,expect,it,vi} from 'vitest'
 import app from '../../index'
 import {signAccessToken} from '../../lib/jwt'
 let headers:Record<string,string>,categoryId:number,recipeId:number,householdId:number
@@ -13,6 +13,44 @@ beforeEach(async()=>{
  headers={'Content-Type':'application/json',Authorization:'Bearer '+await signAccessToken(u.id,env.JWT_SECRET,900)}
 })
 const body=()=>({name:'[E2E_TEST] chicken',categoryId,storeId:null,quantity:3,threshold:1,menuLinkage:{requestId:crypto.randomUUID(),menus:[{newRecipeTitle:'[E2E_TEST] ham',carryEnabled:true},{recipeId,usageQuantity:1},{newRecipeTitle:'[E2E_TEST] teriyaki',usageQuantity:1}]}})
+it.each([false,true])('在庫0の持越しOFF再ONは409全未反映（batch直前の0更新=%s）',async race=>{
+ const data={...body(),menuLinkage:{requestId:crypto.randomUUID(),menus:[{recipeId,carryEnabled:false}]}}
+ const created=await (await request('POST','inventory-items',data)).json<{id:number}>()
+ const link=(await env.DB.prepare('SELECT id FROM inventory_menu_links WHERE inventory_item_id=?').bind(created.id).first<{id:number}>())!
+ expect((await request('PATCH','inventory-menu-links/'+link.id,{expectedRevision:0,usageQuantity:1,enabled:false,carryEnabled:false})).status).toBe(200)
+ // Keep one current row to detect usage/revision writes and leave another link without a row to detect INSERTs.
+ const snapshot=async()=>({link:await env.DB.prepare('SELECT * FROM inventory_menu_links WHERE id=?').bind(link.id).first(),meals:(await env.DB.prepare('SELECT * FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).all()).results})
+ for(const keepRow of [true,false]){
+  if(!keepRow)await env.DB.prepare('DELETE FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).run()
+  await env.DB.prepare('UPDATE inventory_items SET quantity_tenths=? WHERE id=?').bind(race?30:0,created.id).run()
+  const before=await snapshot()
+  const batch=env.DB.batch.bind(env.DB)
+  const spy=race?vi.spyOn(env.DB,'batch').mockImplementationOnce(async statements=>{
+   await env.DB.prepare('UPDATE inventory_items SET quantity_tenths=0 WHERE id=?').bind(created.id).run()
+   return batch(statements)
+  }):undefined
+  let response:Response
+  try{response=await request('PATCH','inventory-menu-links/'+link.id,{expectedRevision:1,usageQuantity:2,enabled:true,carryEnabled:false})}finally{spy?.mockRestore()}
+  expect(response.status).toBe(409)
+  expect(await snapshot()).toEqual(before)
+  expect(await env.DB.prepare('SELECT quantity_tenths FROM inventory_items WHERE id=?').bind(created.id).first()).toEqual({quantity_tenths:0})
+ }
+})
+it('初期在庫0/carryOFF登録と同値・使用数編集は成功し、削除済み週行は生成しない',async()=>{
+ const data={...body(),quantity:0,menuLinkage:{requestId:crypto.randomUUID(),menus:[{recipeId,carryEnabled:false}]}}
+ const response=await request('POST','inventory-items',data)
+ expect(response.status).toBe(201)
+ const created=await response.json<{id:number}>()
+ const link=(await env.DB.prepare('SELECT id FROM inventory_menu_links WHERE inventory_item_id=?').bind(created.id).first<{id:number}>())!
+ for(const [expectedRevision,usageQuantity] of [[0,1],[1,2]] as const){
+  expect((await request('PATCH','inventory-menu-links/'+link.id,{expectedRevision,usageQuantity,enabled:true,carryEnabled:false})).status).toBe(200)
+  expect(await env.DB.prepare('SELECT usage_tenths,meal_revision FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).first()).toEqual({usage_tenths:usageQuantity*10,meal_revision:expectedRevision+1})
+ }
+ await env.DB.prepare('DELETE FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).run()
+ for(const [expectedRevision,usageQuantity] of [[2,2],[3,3]] as const)expect((await request('PATCH','inventory-menu-links/'+link.id,{expectedRevision,usageQuantity,enabled:true,carryEnabled:false})).status).toBe(200)
+ expect((await env.DB.prepare('SELECT id FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).all()).results).toEqual([])
+ expect(await env.DB.prepare('SELECT revision,usage_tenths,enabled,carry_enabled FROM inventory_menu_links WHERE id=?').bind(link.id).first()).toEqual({revision:4,usage_tenths:30,enabled:1,carry_enabled:0})
+})
 it('新規/既存原本混在の並行同ID登録は在庫3のまま3献立だけ作る',async()=>{
  const data=body()
  const responses=await Promise.all([request('POST','inventory-items',data),request('POST','inventory-items',data)])
