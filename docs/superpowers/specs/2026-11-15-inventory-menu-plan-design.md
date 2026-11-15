@@ -86,3 +86,9 @@ unlinkで当週event参照の週行とtopを保持する。undoのstock対象は
 既存consume/undoの同requestId/body保存済成功は現在所属確認後、週行存在/日付/CAS検査より先に再現する。aggregate saveだけに追加したv2 operationと混同して旧消費の成功JSONを書換えたり、再送時に行の型推測で不一致へ変えない。Task4は部分消費中のcanUndo、過去週count省略、NULL linkのsnapshot由来を反映する。
 
 Task4取消確認はtop event実量の `undoQuantity` を返して使用する（root承認）。新planned消費は固定1、legacy消費は旧usage、legacy/新planned/detachedを問わず取消量は同じtop eventに一致させる。古いweekly usageや現在の設定量をrefund表示へ流用しない。
+
+### Task3確定: 食事操作の成功レスポンスと自動消費境界
+
+新しいconsume/undo成功は既存フィールドを維持し、remainingCount（legacy/解除済みはnull）、menuPlanEnabled、menuPlanRevision（trigger後の実値）を返す。過去に保存済みの成功JSONは再計算・追記せず、そのまま再送する。解除済みundoは元event在庫に返却しcarryEnabled=false、同レシピ再追加linkに割り当てない。undoQuantityはmutationへ追加せず、GETでcanUndoと同じtop eventの実量から返す。
+
+予定0後に明示的にdailyをONにした状態で、元planned linkが生存し取消で予定1を戻す場合はdaily排他により409・全未反映。自動でdailyをOFFにしない。GETのcanUndoもfalseとし「自動消費をOFFにしてから取り消してください」と説明する。countを復元しない解除済み/legacyの在庫だけの取消には、このdaily条件を一律適用しない。

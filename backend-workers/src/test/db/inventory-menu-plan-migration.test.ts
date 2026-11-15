@@ -49,7 +49,7 @@ it('真pre0030の小数usage・旧OFF・削除済み原本・食事履歴・成�
   expect((await db.prepare('SELECT * FROM menu_entries ORDER BY id').all()).results).toEqual(meals)
   expect((await db.prepare('SELECT * FROM recipes ORDER BY id').all()).results).toEqual(recipes)
   expect((await db.prepare('SELECT * FROM menu_consumption_events ORDER BY id').all()).results)
-    .toEqual(events.map(row => ({ ...row, plan_count_delta: null, inventory_menu_link_id: null })))
+    .toEqual(events.map(row => ({ ...row, plan_count_delta: null, inventory_menu_link_id: null, previous_event_id: null })))
   expect((await db.prepare('SELECT * FROM menu_operation_requests').all()).results).toEqual(successes)
   // Literal assertions catch accidental rounding/revival even if fixture snapshots change.
   expect((await db.prepare('SELECT id,usage_tenths,enabled,carry_enabled,remaining_count FROM inventory_menu_links ORDER BY id').all()).results).toEqual([

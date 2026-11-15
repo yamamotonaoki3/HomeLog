@@ -510,6 +510,7 @@ export const menuConsumptionEvents = sqliteTable('menu_consumption_events', {
   // NULL events restore stock only; new count events also restore the surviving original link.
   planCountDelta: integer('plan_count_delta'),
   inventoryMenuLinkId: integer('inventory_menu_link_id').references(() => inventoryMenuLinks.id, { onDelete: 'set null' }),
+  previousEventId: text('previous_event_id'),
   undoneAt: text('undone_at'),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 })

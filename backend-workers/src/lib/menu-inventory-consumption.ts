@@ -6,7 +6,7 @@ import { executeMenuOperation,finalizeMenuOperation,isMenuConflict,menuConflict,
 
 export const menuMealInputSchema=z.object({requestId:z.string().uuid().transform(v=>v.toLowerCase()),expectedRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)}).strict()
 type Input=z.infer<typeof menuMealInputSchema>
-type Entry={id:number;week_start_date:string;inventory_menu_link_id:number|null;inventory_item_id:number|null}
+type Entry={id:number;week_start_date:string;inventory_menu_link_id:number|null;inventory_item_id:number|null;consumed_event_id:string|null}
 async function perform(db:D1Database,scope:MenuScope,entryId:number,input:Input,undo:boolean):Promise<MenuResult>{
  const parsed=menuMealInputSchema.safeParse(input)
  if(!parsed.success||!Number.isSafeInteger(entryId)||entryId<1)return {status:400,body:errorResponse('VALIDATION_ERROR','入力内容を確認してください')}
@@ -14,31 +14,41 @@ async function perform(db:D1Database,scope:MenuScope,entryId:number,input:Input,
  const json=JSON.stringify({version:1,operation:undo?'undo':'consume',entryId,expectedRevision:value.expectedRevision})
  const saved=await savedMenuOperation(db,scope,value.requestId,json)
  if(saved)return saved
- const entry=await db.prepare('SELECT e.id,e.week_start_date,e.inventory_menu_link_id,l.inventory_item_id FROM menu_entries e LEFT JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id WHERE e.id=? AND e.household_id=?').bind(entryId,scope.householdId).first<Entry>()
+ const entry=await db.prepare('SELECT e.id,e.week_start_date,e.inventory_menu_link_id,e.consumed_event_id,'+(undo?'v':'l')+'.inventory_item_id FROM menu_entries e LEFT JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id AND l.household_id=e.household_id LEFT JOIN menu_consumption_events v ON v.id=e.consumed_event_id AND v.menu_entry_id=e.id AND v.household_id=e.household_id WHERE e.id=? AND e.household_id=?').bind(entryId,scope.householdId).first<Entry>()
  if(!entry)return await savedMenuOperation(db,scope,value.requestId,json)??menuNotFound()
  const week=currentWeekStart(getJstToday())
- if(entry.week_start_date!==week||entry.inventory_menu_link_id===null||entry.inventory_item_id===null)return await savedMenuOperation(db,scope,value.requestId,json)??menuConflict()
+ if(entry.week_start_date!==week||entry.inventory_item_id===null||(!undo&&entry.inventory_menu_link_id===null))return await savedMenuOperation(db,scope,value.requestId,json)??menuConflict()
  const e='e.id='+entryId+' AND e.household_id='+scope.householdId
  const from=' FROM menu_entries e JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id JOIN inventory_items i ON i.id=l.inventory_item_id AND i.household_id=e.household_id '
- const common=e+" AND e.week_start_date='"+week+"' AND e.meal_revision="+value.expectedRevision+' AND e.meal_revision<9007199254740991'
+ const common=e+" AND e.week_start_date='"+week+"' AND e.meal_revision="+value.expectedRevision+' AND e.meal_revision<9007199254740991 AND i.id='+entry.inventory_item_id
+ const topGuard='e.consumed_event_id IS ?'
  const eventId=crypto.randomUUID()
  const eligible=undo
-  ? from+' JOIN menu_consumption_events v ON v.id=e.consumed_event_id AND v.menu_entry_id=e.id AND v.household_id=e.household_id AND v.inventory_item_id=i.id WHERE '+common+" AND e.meal_state='eaten' AND v.undone_at IS NULL AND i.quantity_tenths+v.quantity_tenths<=999999"
-  : from+' JOIN recipes r ON r.id=l.recipe_id AND r.household_id=e.household_id WHERE '+common+" AND e.meal_state='uneaten' AND l.household_id=e.household_id AND l.enabled=1 AND i.auto_consumption_enabled=0 AND e.usage_tenths>0 AND i.quantity_tenths>=e.usage_tenths"
+  ? ' FROM menu_entries e JOIN menu_consumption_events v ON v.id=e.consumed_event_id AND v.menu_entry_id=e.id AND v.household_id=e.household_id JOIN inventory_items i ON i.id=v.inventory_item_id AND i.household_id=e.household_id WHERE '+common+' AND '+topGuard+' AND v.undone_at IS NULL AND i.quantity_tenths+v.quantity_tenths<=999999'
+  : from+' JOIN recipes r ON r.id=l.recipe_id AND r.household_id=e.household_id WHERE '+common+' AND '+topGuard+" AND l.household_id=e.household_id AND i.auto_consumption_enabled=0 AND ((l.remaining_count IS NOT NULL AND i.menu_plan_enabled=1 AND l.remaining_count>0 AND i.quantity_tenths>=10) OR (l.remaining_count IS NULL AND e.meal_state='uneaten' AND l.enabled=1 AND e.usage_tenths>0 AND i.quantity_tenths>=e.usage_tenths))"
+ const target=' FROM menu_entries e JOIN menu_consumption_events v ON v.id=e.consumed_event_id WHERE '+e
  try{
   return await executeMenuOperation(db,scope,value.requestId,json,()=>[
-   menuGuard(db,scope,value.requestId,'EXISTS(SELECT 1'+eligible+')',[]),
-   db.prepare('UPDATE inventory_items SET quantity_tenths=quantity_tenths'+(undo?'+':'-')+'(SELECT '+(undo?'v.quantity_tenths':'e.usage_tenths')+eligible+') WHERE id=(SELECT i.id'+eligible+')'),
+   // Validate the original top/revision/count once. Subsequent writes use that guarded
+   // source without checking a count that this very transaction has already changed.
+   menuGuard(db,scope,value.requestId,'EXISTS(SELECT 1'+eligible+')',[entry.consumed_event_id]),
+   ...(!undo?[
+    db.prepare('UPDATE inventory_menu_links SET remaining_count=remaining_count-1 WHERE id=(SELECT inventory_menu_link_id FROM menu_entries WHERE id=?) AND remaining_count IS NOT NULL').bind(entryId),
+   ]:[]),
+   db.prepare('UPDATE inventory_items SET quantity_tenths=quantity_tenths'+(undo?'+':'-')+'(SELECT '+(undo?'v.quantity_tenths'+target:'CASE WHEN l.remaining_count IS NULL THEN e.usage_tenths ELSE 10 END'+from+' WHERE '+e)+') WHERE id=?').bind(entry.inventory_item_id),
    // inventoryShoppingSync must follow this UPDATE before any other write changes SQLite changes().
    ...inventoryShoppingSync(db,entry.inventory_item_id,scope.householdId),
    ...(undo?[
+    // Only the still-attached original planned link receives its count back.
+    // Event delta NULL remains stock-only even after a legacy link is converted.
+    db.prepare('UPDATE inventory_menu_links SET remaining_count=remaining_count+1 WHERE id=(SELECT v.inventory_menu_link_id'+target+' AND v.plan_count_delta=1) AND household_id=? AND inventory_item_id=? AND remaining_count IS NOT NULL').bind(scope.householdId,entry.inventory_item_id),
     db.prepare('UPDATE menu_consumption_events SET undone_at=? WHERE id=(SELECT consumed_event_id FROM menu_entries WHERE id=?)').bind(new Date().toISOString(),entryId),
-    db.prepare("UPDATE menu_entries SET meal_state='uneaten',consumed_event_id=NULL,meal_revision=meal_revision+1 WHERE id=?").bind(entryId),
+    db.prepare("UPDATE menu_entries SET meal_state=CASE WHEN (SELECT previous_event_id FROM menu_consumption_events WHERE id=consumed_event_id) IS NULL THEN 'uneaten' ELSE 'eaten' END,consumed_event_id=(SELECT previous_event_id FROM menu_consumption_events WHERE id=consumed_event_id),meal_revision=meal_revision+1 WHERE id=?").bind(entryId),
    ]:[
-    db.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths) SELECT ?,e.household_id,e.id,l.inventory_item_id,e.usage_tenths FROM menu_entries e JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id WHERE e.id=?').bind(eventId,entryId),
+    db.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id,previous_event_id) SELECT ?,e.household_id,e.id,l.inventory_item_id,CASE WHEN l.remaining_count IS NULL THEN e.usage_tenths ELSE 10 END,CASE WHEN l.remaining_count IS NULL THEN NULL ELSE 1 END,l.id,e.consumed_event_id FROM menu_entries e JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id WHERE e.id=?').bind(eventId,entryId),
     db.prepare("UPDATE menu_entries SET meal_state='eaten',consumed_event_id=?,meal_revision=meal_revision+1 WHERE id=?").bind(eventId,entryId),
    ]),
-   finalizeMenuOperation(db,scope,value.requestId,200,"SELECT json_object('menuEntryId',e.id,'mealState',e.meal_state,'mealRevision',e.meal_revision,'inventoryItemId',i.id,'quantity',i.quantity_tenths/10.0,'carryEnabled',json(CASE l.carry_enabled WHEN 1 THEN 'true' ELSE 'false' END))"+from+' WHERE '+e,[]),
+   finalizeMenuOperation(db,scope,value.requestId,200,"SELECT json_object('menuEntryId',e.id,'mealState',e.meal_state,'mealRevision',e.meal_revision,'inventoryItemId',i.id,'quantity',i.quantity_tenths/10.0,'carryEnabled',json(CASE l.carry_enabled WHEN 1 THEN 'true' ELSE 'false' END),'remainingCount',l.remaining_count,'menuPlanEnabled',json(CASE i.menu_plan_enabled WHEN 1 THEN 'true' ELSE 'false' END),'menuPlanRevision',i.menu_plan_revision) FROM menu_entries e JOIN inventory_items i ON i.id="+entry.inventory_item_id+' AND i.household_id=e.household_id LEFT JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id AND l.household_id=e.household_id WHERE '+e,[]),
   ])
  }catch(error){if(isMenuConflict(error))return menuConflict();throw error}
 }
