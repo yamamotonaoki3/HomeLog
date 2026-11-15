@@ -132,7 +132,7 @@ inventoryItemsRoute.get('/', async (c) => {
 
   const rows = await db.select().from(inventoryItems).where(eq(inventoryItems.householdId, householdId)).all()
   const links=await inventoryMenuLinksByInventory(c.env.DB,householdId)
-  return c.json(rows.map(item => ({ ...toResponse(item), menuLinks: links.get(item.id)??[] })))
+  return c.json(rows.map(item => ({ ...toResponse(item), menuPlanEnabled:item.menuPlanEnabled,menuPlanRevision:item.menuPlanRevision,menuLinks: links.get(item.id)??[] })))
 })
 
 inventoryItemsRoute.post('/', async (c) => {

@@ -92,3 +92,9 @@ Task4取消確認はtop event実量の `undoQuantity` を返して使用する�
 新しいconsume/undo成功は既存フィールドを維持し、remainingCount（legacy/解除済みはnull）、menuPlanEnabled、menuPlanRevision（trigger後の実値）を返す。過去に保存済みの成功JSONは再計算・追記せず、そのまま再送する。解除済みundoは元event在庫に返却しcarryEnabled=false、同レシピ再追加linkに割り当てない。undoQuantityはmutationへ追加せず、GETでcanUndoと同じtop eventの実量から返す。
 
 予定0後に明示的にdailyをONにした状態で、元planned linkが生存し取消で予定1を戻す場合はdaily排他により409・全未反映。自動でdailyをOFFにしない。GETのcanUndoもfalseとし「自動消費をOFFにしてから取り消してください」と説明する。countを復元しない解除済み/legacyの在庫だけの取消には、このdaily条件を一律適用しない。
+
+### Task4確定: 取得DTOと週次処理
+
+在庫GETは品目menuPlanEnabled/menuPlanRevisionと各関連remainingCount/memoを返す。当週planned献立は現在の残予定とmemoを返し、過去・未来週はremainingCount/memo=nullかつ消費・取消不可。解除済み週行はlinkId/linkRevision/remainingCount/memo/品目flag・revision=null、元top eventの在庫が有効なら在庫だけの取消が可能。undoQuantityは当週の取消可能なtop event実量、対象なし/上限/失効/daily排他時はnull。献立・dashboard・日詳細は解除後も週名snapshotを保持する。通常献立のlive名・削除nullは維持。
+
+planned持越しは品目ON・carryON・remaining>0だけを当週へ生成し、残数をリセットしない。0や品目OFFでは生成しない。legacy NULLは既存動作を維持。週cleanupは関連の残予定/memoを変えず、一覧取得は既存の固定4query以内を維持する。

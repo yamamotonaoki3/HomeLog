@@ -12,8 +12,10 @@ export const menuLinkageSchema=z.object({requestId:z.string().uuid().transform(v
 export type LinkedInventoryInput={name:string;normalizedName:string;categoryId:number;storeId:number|null;quantity:number;threshold:number;price?:number|null;dailyConsumption?:number|null;autoConsumptionEnabled?:boolean;menuLinkage:z.infer<typeof menuLinkageSchema>}
 export const menuLinkUpdateSchema=z.object({expectedRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),usageQuantity:usage,enabled:z.boolean(),carryEnabled:z.boolean()}).refine(v=>v.enabled||!v.carryEnabled)
 type LinkRow={id:number;recipe_id:number|null;recipe_title:string;usage_tenths:number;enabled:number;carry_enabled:number;revision:number}
-export async function inventoryMenuLinksFor(db:D1Database,householdId:number,itemId:number):Promise<MenuLink[]>{
- const rows=await db.prepare('SELECT l.id,l.recipe_id,COALESCE(r.title,l.recipe_title_snapshot) AS recipe_title,l.usage_tenths,l.enabled,l.carry_enabled,l.revision FROM inventory_menu_links l LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.household_id=? AND l.inventory_item_id=? ORDER BY l.id').bind(householdId,itemId).all<LinkRow>()
+export type InventoryMenuLink=MenuLink&{remainingCount:number|null;memo:string|null}
+type ReadLinkRow=LinkRow&{remaining_count:number|null;memo:string|null}
+export async function inventoryMenuLinksFor(db:D1Database,householdId:number,itemId:number):Promise<InventoryMenuLink[]>{
+ const rows=await db.prepare('SELECT l.id,l.recipe_id,COALESCE(r.title,l.recipe_title_snapshot) AS recipe_title,l.usage_tenths,l.enabled,l.carry_enabled,l.revision,l.remaining_count,l.memo FROM inventory_menu_links l LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.household_id=? AND l.inventory_item_id=? ORDER BY l.id').bind(householdId,itemId).all<ReadLinkRow>()
  return rows.results.map(menuLinkResponse)
 }
 export async function createLinkedInventory(db:D1Database,actorId:number,householdId:number,input:LinkedInventoryInput):Promise<MenuResult>{
@@ -73,13 +75,13 @@ export async function updateMenuLink(db:D1Database,householdId:number,linkId:num
  }catch(error){if(isMenuConflict(error))return menuConflict();throw error}
 }
 
-function menuLinkResponse(row:LinkRow):MenuLink {
- return {id:row.id,recipeId:row.recipe_id,recipeTitle:row.recipe_title,usageQuantity:fromTenths(row.usage_tenths),enabled:!!row.enabled,carryEnabled:!!row.carry_enabled,revision:row.revision}
+function menuLinkResponse(row:ReadLinkRow):InventoryMenuLink {
+ return {id:row.id,recipeId:row.recipe_id,recipeTitle:row.recipe_title,usageQuantity:fromTenths(row.usage_tenths),enabled:!!row.enabled,carryEnabled:!!row.carry_enabled,revision:row.revision,remainingCount:row.remaining_count,memo:row.memo}
 }
 /** One scoped read for the inventory list, including ordinary inventories without links. */
-export async function inventoryMenuLinksByInventory(db:D1Database,householdId:number):Promise<Map<number,MenuLink[]>> {
- const rows=await db.prepare('SELECT l.inventory_item_id,l.id,l.recipe_id,COALESCE(r.title,l.recipe_title_snapshot) AS recipe_title,l.usage_tenths,l.enabled,l.carry_enabled,l.revision FROM inventory_menu_links l LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.household_id=? AND l.inventory_item_id IS NOT NULL ORDER BY l.id').bind(householdId).all<LinkRow&{inventory_item_id:number}>()
- const grouped=new Map<number,MenuLink[]>()
+export async function inventoryMenuLinksByInventory(db:D1Database,householdId:number):Promise<Map<number,InventoryMenuLink[]>> {
+ const rows=await db.prepare('SELECT l.inventory_item_id,l.id,l.recipe_id,COALESCE(r.title,l.recipe_title_snapshot) AS recipe_title,l.usage_tenths,l.enabled,l.carry_enabled,l.revision,l.remaining_count,l.memo FROM inventory_menu_links l LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.household_id=? AND l.inventory_item_id IS NOT NULL ORDER BY l.id').bind(householdId).all<ReadLinkRow&{inventory_item_id:number}>()
+ const grouped=new Map<number,InventoryMenuLink[]>()
  for(const row of rows.results){
   const links=grouped.get(row.inventory_item_id)??[]
   links.push(menuLinkResponse(row))

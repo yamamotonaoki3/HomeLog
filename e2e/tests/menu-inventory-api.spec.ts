@@ -100,7 +100,7 @@ test('実Workersで複数レシピ登録・食事・取消・再送・世帯分�
   const link = await disabledResponse.json()
   const zeroReactivation = await request.patch(api(`inventory-menu-links/${link.id}`), { headers, data: { expectedRevision: link.revision, usageQuantity: 2, enabled: true, carryEnabled: false } })
   expect(zeroReactivation.status()).toBe(409)
-  expect((await readInventory()).menuLinks.find((row: { id: number }) => row.id === link.id)).toEqual(link)
+  expect((await readInventory()).menuLinks.find((row: { id: number }) => row.id === link.id)).toEqual({ ...link, remainingCount: null, memo: null })
   expect((await readEntries()).filter(row => row.inventoryLinkage?.inventoryItemId === created.id)).toHaveLength(3)
   const patch = { expectedRevision: link.revision, usageQuantity: link.usageQuantity, enabled: true, carryEnabled: true }
   expect((await request.patch(api(`inventory-menu-links/${link.id}`), { headers, data: patch })).status()).toBe(409)

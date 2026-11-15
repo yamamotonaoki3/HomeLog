@@ -60,26 +60,58 @@ export function undoMenuConsumption(db:D1Database,scope:MenuScope,entryId:number
 
 
 type MenuLinkageRow={
- entry_id:number;week_start_date:string;usage_tenths:number;meal_state:string;meal_revision:number;id:number;
- inventory_item_id:number|null;recipe_id:number|null;enabled:number;carry_enabled:number;revision:number;
+ entry_id:number;week_start_date:string;usage_tenths:number|null;meal_state:'uneaten'|'eaten';meal_revision:number;id:number|null;
+ inventory_item_id:number|null;recipe_id:number|null;enabled:number|null;carry_enabled:number|null;revision:number|null;
  inventory_name:string|null;quantity_tenths:number|null;auto_consumption_enabled:number|null;
- event_id:string|null;event_quantity_tenths:number|null;undone_at:string|null
+ remaining_count:number|null;memo:string|null;menu_plan_enabled:number|null;menu_plan_revision:number|null;
+ reserved_tenths:number;event_id:string|null;event_quantity_tenths:number|null;undone_at:string|null;
+ undo_inventory_item_id:number|null;undo_inventory_name:string|null;undo_quantity_tenths:number|null;
+ undo_daily_enabled:number|null;restore_count:number|null
 }
-const menuLinkageQuery='SELECT e.id AS entry_id,e.week_start_date,e.usage_tenths,e.meal_state,e.meal_revision,l.id,l.inventory_item_id,l.recipe_id,l.enabled,l.carry_enabled,l.revision,i.name AS inventory_name,i.quantity_tenths,i.auto_consumption_enabled,v.id AS event_id,v.quantity_tenths AS event_quantity_tenths,v.undone_at FROM menu_entries e JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id AND l.household_id=e.household_id LEFT JOIN inventory_items i ON i.id=l.inventory_item_id AND i.household_id=e.household_id LEFT JOIN menu_consumption_events v ON v.id=e.consumed_event_id AND v.menu_entry_id=e.id AND v.inventory_item_id=i.id AND v.household_id=e.household_id WHERE '
-function menuLinkageResponse(row:MenuLinkageRow){
+export type MenuInventoryLinkage={
+ linkId:number|null;inventoryItemId:number|null;inventoryName:string|null;quantity:number|null;usageQuantity:number|null;
+ enabled:boolean;carryEnabled:boolean;linkRevision:number|null;mealState:'uneaten'|'eaten';mealRevision:number;
+ remainingCount:number|null;memo:string|null;menuPlanEnabled:boolean|null;menuPlanRevision:number|null;
+ canConsume:boolean;canUndo:boolean;undoQuantity:number|null;
+ unavailableReason:'inventory_deleted'|'recipe_deleted'|'link_disabled'|'daily_consumption'|null
+}
+// The top event owns refunds, including rows whose original link has been removed.
+// All relations remain in this one household/week-scoped read (no row-by-row lookups).
+const menuLinkageQuery=`SELECT e.id AS entry_id,e.week_start_date,e.usage_tenths,e.meal_state,e.meal_revision,
+ l.id,i.id AS inventory_item_id,r.id AS recipe_id,l.enabled,l.carry_enabled,l.revision,
+ l.remaining_count,l.memo,i.name AS inventory_name,i.quantity_tenths,i.auto_consumption_enabled,i.menu_plan_enabled,i.menu_plan_revision,
+ COALESCE(a.reserved_tenths,0) AS reserved_tenths,v.id AS event_id,v.quantity_tenths AS event_quantity_tenths,v.undone_at,
+ u.id AS undo_inventory_item_id,u.name AS undo_inventory_name,u.quantity_tenths AS undo_quantity_tenths,u.auto_consumption_enabled AS undo_daily_enabled,
+ CASE WHEN v.plan_count_delta=1 AND original.remaining_count IS NOT NULL THEN 1 ELSE 0 END AS restore_count
+ FROM menu_entries e
+ LEFT JOIN inventory_menu_links l ON l.id=e.inventory_menu_link_id AND l.household_id=e.household_id
+ LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=e.household_id
+ LEFT JOIN inventory_items i ON i.id=l.inventory_item_id AND i.household_id=e.household_id
+ LEFT JOIN (SELECT household_id,inventory_item_id,SUM(remaining_count)*10 AS reserved_tenths FROM inventory_menu_links WHERE household_id=?1 GROUP BY household_id,inventory_item_id) a ON a.inventory_item_id=i.id AND a.household_id=e.household_id
+ LEFT JOIN menu_consumption_events v ON v.id=e.consumed_event_id AND v.menu_entry_id=e.id AND v.household_id=e.household_id
+ LEFT JOIN inventory_items u ON u.id=v.inventory_item_id AND u.household_id=e.household_id
+ LEFT JOIN inventory_menu_links original ON original.id=v.inventory_menu_link_id AND original.household_id=e.household_id AND original.inventory_item_id=u.id
+ WHERE (e.inventory_menu_link_id IS NOT NULL OR e.usage_tenths IS NOT NULL OR e.recipe_title_snapshot IS NOT NULL OR e.consumed_event_id IS NOT NULL) AND `
+function menuLinkageResponse(row:MenuLinkageRow):MenuInventoryLinkage{
  const current=row.week_start_date===currentWeekStart(getJstToday())
- const unavailableReason=row.inventory_item_id===null?'inventory_deleted':row.recipe_id===null?'recipe_deleted':!row.enabled?'link_disabled':row.auto_consumption_enabled?'daily_consumption':null
- return {linkId:row.id,inventoryItemId:row.inventory_item_id,inventoryName:row.inventory_name,quantity:row.quantity_tenths===null?null:row.quantity_tenths/10,usageQuantity:row.usage_tenths/10,enabled:!!row.enabled,carryEnabled:!!row.carry_enabled,linkRevision:row.revision,mealState:row.meal_state,mealRevision:row.meal_revision,
- canConsume:current&&unavailableReason===null&&row.meal_state==='uneaten'&&(row.quantity_tenths??0)>=row.usage_tenths,
- canUndo:current&&row.meal_state==='eaten'&&row.inventory_item_id!==null&&row.event_id!==null&&row.undone_at===null&&row.quantity_tenths!==null&&row.event_quantity_tenths!==null&&row.quantity_tenths+row.event_quantity_tenths<=999999,
+ const planned=row.remaining_count!==null
+ const detached=row.id===null
+ const inventoryId=detached?row.undo_inventory_item_id:row.inventory_item_id
+ const quantity=detached?row.undo_quantity_tenths:row.quantity_tenths
+ const unavailableReason=inventoryId===null?'inventory_deleted':detached?'link_disabled':row.recipe_id===null?'recipe_deleted':(planned?!row.menu_plan_enabled:!row.enabled)?'link_disabled':row.auto_consumption_enabled?'daily_consumption':null
+ const canUndo=current&&row.event_id!==null&&row.undone_at===null&&row.undo_inventory_item_id!==null&&row.undo_quantity_tenths!==null&&row.event_quantity_tenths!==null&&row.undo_quantity_tenths+row.event_quantity_tenths<=999999&&!(row.restore_count===1&&row.undo_daily_enabled===1)
+ return {linkId:row.id,inventoryItemId:inventoryId,inventoryName:detached?row.undo_inventory_name:row.inventory_name,quantity:quantity===null?null:quantity/10,usageQuantity:row.usage_tenths===null?null:row.usage_tenths/10,enabled:!!row.enabled,carryEnabled:!!row.carry_enabled,linkRevision:row.revision,mealState:row.meal_state,mealRevision:row.meal_revision,
+ remainingCount:current&&!detached?row.remaining_count:null,memo:current&&!detached?row.memo:null,menuPlanEnabled:detached||row.menu_plan_enabled===null?null:!!row.menu_plan_enabled,menuPlanRevision:detached?null:row.menu_plan_revision,
+ canConsume:current&&unavailableReason===null&&(planned?(row.remaining_count??0)>0&&(row.quantity_tenths??0)>=10:row.meal_state==='uneaten'&&row.usage_tenths!==null&&(row.quantity_tenths??0)-row.usage_tenths>=row.reserved_tenths),
+ canUndo,undoQuantity:canUndo?row.event_quantity_tenths!/10:null,
  unavailableReason}
 }
 export async function menuInventoryLinkage(db:D1Database,householdId:number,entryId:number){
- const row=await db.prepare(menuLinkageQuery+'e.id=? AND e.household_id=?').bind(entryId,householdId).first<MenuLinkageRow>()
+ const row=await db.prepare(menuLinkageQuery+'e.id=?2 AND e.household_id=?1').bind(householdId,entryId).first<MenuLinkageRow>()
  return row?menuLinkageResponse(row):null
 }
 /** Fetch only this household's selected week; ordinary entries map to null at the route. */
 export async function menuInventoryLinkagesForWeek(db:D1Database,householdId:number,weekStartDate:string){
- const rows=await db.prepare(menuLinkageQuery+'e.household_id=? AND e.week_start_date=? ORDER BY e.id').bind(householdId,weekStartDate).all<MenuLinkageRow>()
+ const rows=await db.prepare(menuLinkageQuery+'e.household_id=?1 AND e.week_start_date=?2 ORDER BY e.id').bind(householdId,weekStartDate).all<MenuLinkageRow>()
  return new Map(rows.results.map(row=>[row.entry_id,menuLinkageResponse(row)]))
 }

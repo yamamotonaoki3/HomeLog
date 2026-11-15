@@ -162,15 +162,22 @@ describe('purgeExpiredDemos', () => {
   })
 })
 
-async function seedMenuLinkage(household: number, user: number) {
+async function seedMenuLinkage(household: number, user: number, planned=false) {
   const category = (await env.DB.prepare('INSERT INTO zaiko_categories(household_id,name) VALUES (?,?) RETURNING id').bind(household, '[E2E_TEST] link category').first<{ id: number }>())!.id
-  const stock = (await env.DB.prepare('INSERT INTO inventory_items(household_id,name,category_id,quantity_tenths,threshold_tenths) VALUES (?,?,?,20,0) RETURNING id').bind(household, '[E2E_TEST] linked stock', category).first<{ id: number }>())!.id
+  const stock = (await env.DB.prepare('INSERT INTO inventory_items(household_id,name,category_id,quantity_tenths,threshold_tenths,menu_plan_enabled) VALUES (?,?,?,20,0,?) RETURNING id').bind(household, '[E2E_TEST] linked stock', category,Number(planned)).first<{ id: number }>())!.id
   const recipe = (await env.DB.prepare('INSERT INTO recipes(household_id,created_by_user_id,title) VALUES (?,?,?) RETURNING id').bind(household, user, '[E2E_TEST] linked recipe').first<{ id: number }>())!.id
-  const link = (await env.DB.prepare("INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,carry_enabled) VALUES (?,?,?,?,'2026-11-09',1) RETURNING id").bind(household, stock, recipe, '[E2E_TEST] linked recipe').first<{ id: number }>())!.id
+  const link = (await env.DB.prepare("INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,carry_enabled,remaining_count,memo) VALUES (?,?,?,?,'2026-11-09',1,?,?) RETURNING id").bind(household, stock, recipe, '[E2E_TEST] linked recipe',planned?1:null,planned?'[E2E_TEST] planned demo':null).first<{ id: number }>())!.id
   const event = crypto.randomUUID()
   const entry = (await env.DB.prepare("INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,meal_state,consumed_event_id) VALUES (?,?,'2026-11-09',?,10,'eaten',?) RETURNING id").bind(household, recipe, link, event).first<{ id: number }>())!.id
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths) VALUES (?,?,?,?,10)').bind(event, household, entry, stock),
+    env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id) VALUES (?,?,?,?,10,?,?)').bind(event, household, entry, stock,planned?1:null,planned?link:null),
     env.DB.prepare("INSERT INTO menu_operation_requests(household_id,actor_user_id,request_id,request_json,response_status,response_json) VALUES (?,?,?,'{}',200,'{}')").bind(household, user, crypto.randomUUID()),
   ])
+  if(planned){
+    const top=crypto.randomUUID()
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id,previous_event_id) VALUES (?,?,?,?,10,1,?,?)').bind(top,household,entry,stock,link,event),
+      env.DB.prepare('UPDATE menu_entries SET consumed_event_id=? WHERE id=?').bind(top,entry),
+    ])
+  }else await seedMenuLinkage(household,user,true)
 }
