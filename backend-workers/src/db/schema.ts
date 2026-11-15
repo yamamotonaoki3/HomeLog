@@ -1,4 +1,4 @@
-﻿import { sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { integer, real, sqliteTable, text, primaryKey, index, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 // 既存Java実装のFlyway V1相当のテーブル定義をSQLite(D1)向けに翻訳したもの。
@@ -122,6 +122,8 @@ export const inventoryItems = sqliteTable('inventory_items', {
   autoConsumptionEnabled: integer('auto_consumption_enabled', { mode: 'boolean' }).notNull().default(false),
   lastConsumedOn: text('last_consumed_on'),
   consumptionRevision: integer('consumption_revision').notNull().default(0),
+  menuPlanEnabled: integer('menu_plan_enabled', { mode: 'boolean' }).notNull().default(false),
+  menuPlanRevision: integer('menu_plan_revision').notNull().default(0),
 }, (table) => [index('inventory_items_household_normalized_name_idx').on(table.householdId, table.normalizedName)])
 
 export const shoppingListItems = sqliteTable('shopping_list_items', {
@@ -490,6 +492,9 @@ export const inventoryMenuLinks = sqliteTable('inventory_menu_links', {
   recipeId: integer('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
   recipeTitleSnapshot: text('recipe_title_snapshot').notNull(),
   usageTenths: integer('usage_tenths').notNull().default(10),
+  // NULL preserves legacy usage semantics until an explicit plan save.
+  remainingCount: integer('remaining_count'),
+  memo: text('memo'),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   carryEnabled: integer('carry_enabled', { mode: 'boolean' }).notNull().default(false),
   startsOn: text('starts_on').notNull(),
@@ -502,6 +507,9 @@ export const menuConsumptionEvents = sqliteTable('menu_consumption_events', {
   menuEntryId: integer('menu_entry_id').references(() => menuEntries.id, { onDelete: 'set null' }),
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id, { onDelete: 'set null' }),
   quantityTenths: integer('quantity_tenths').notNull(),
+  // NULL events restore stock only; new count events also restore the surviving original link.
+  planCountDelta: integer('plan_count_delta'),
+  inventoryMenuLinkId: integer('inventory_menu_link_id').references(() => inventoryMenuLinks.id, { onDelete: 'set null' }),
   undoneAt: text('undone_at'),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 })
