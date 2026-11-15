@@ -76,13 +76,17 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const locked = submitting || saved || busy || categorySubmitting || linkedUnknown || linkedBlocked || quantityStopped
   const allocated = menuDrafts.reduce((total, draft) => total + (Number.isInteger(Number(draft.remaining)) && Number(draft.remaining) >= 0 ? Number(draft.remaining) : 0), 0)
   const linkageActive = allocated > 0
+  const overAllocated = quantity.trim() !== '' && quantityValid(Number(quantity)) && Number(quantity) < allocated
+  const visibleError = overAllocated ? '予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください' : error
   const changeQuantity = (value: string) => {
+    setQuantity(value)
     if (value.trim() && quantityValid(Number(value)) && Number(value) < allocated) { setError('予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください'); return }
-    setQuantity(value); setError('')
+    setError('')
   }
   const adjustDraft = (sign: 1 | -1) => {
     const next = Math.round((Number(quantity) + sign * step) * 10) / 10
     if (!quantityValid(next)) { setError('在庫個数は0〜99999.9で入力してください'); return }
+    if (next < allocated) { setError('予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください'); return }
     changeQuantity(String(next))
   }
 
@@ -332,15 +336,15 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
           </section>
           </fieldset>
           {quantityNotice && <p role="alert" className="error">{quantityNotice}</p>}
-          {linkedMessage && (!error || !linkedMessageAlert) && <p className={linkedMessageAlert ? 'error' : 'hint'} role={linkedMessageAlert ? 'alert' : undefined}>{linkedMessage}</p>}
+          {linkedMessage && (!visibleError || !linkedMessageAlert) && <p className={linkedMessageAlert ? 'error' : 'hint'} role={linkedMessageAlert ? 'alert' : undefined}>{linkedMessage}</p>}
           {!linkedReady && onLinkedRecheck && <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={onLinkedRecheck}>献立連携の本人と世帯を再確認</button>}
           {(linkedUnknown || linkedBlocked) && onLinkedRecover && <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={() => void onLinkedRecover()}>同じ内容で確認</button>}
-          {error && error !== CONSUMPTION_ERROR && <p className="error" role="alert">{error}</p>}
+          {visibleError && visibleError !== CONSUMPTION_ERROR && <p className="error" role="alert">{visibleError}</p>}
           <div className="modal-actions ui-form-actions">
             <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting} onClick={close}>
               キャンセル
             </button>
-            <button type="submit" className="ui-action" disabled={locked}>
+            <button type="submit" className="ui-action" disabled={locked || overAllocated}>
               保存
             </button>
           </div>

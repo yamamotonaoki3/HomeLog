@@ -4,6 +4,27 @@ import { expect, it, vi } from 'vitest'
 import { InventoryModal } from '../../components/zaiko/InventoryModal'
 const item = { id: 21, name: '[E2E_TEST] 鶏肉', categoryId: 1, storeId: null, quantity: 5, threshold: 0.5, price: 300, dailyConsumption: 0.3, autoConsumptionEnabled: false, menuPlanEnabled: true, menuPlanRevision: 4, menuLinks: [{ id: 8, recipeId: 2, recipeTitle: '[E2E_TEST] カレー', usageQuantity: 1, enabled: true, carryEnabled: true, revision: 1, remainingCount: 2, memo: '辛口' }] }
 const base = { categories: [{ id: 1, name: '[E2E_TEST] 食材', isDefault: false }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onClose: vi.fn(), onSaved: vi.fn().mockResolvedValue(undefined) }
+it('予定合計未満の手入力を下書きに保持し、有効な数量まで入力して保存できる', async () => {
+  const save = vi.fn().mockResolvedValue({ kind: 'success' }), user = userEvent.setup()
+  render(<InventoryModal {...base} item={{ ...item, menuLinks: [{ ...item.menuLinks[0], remainingCount: 5 }] }} onPlanSave={save} />)
+  const quantity = screen.getByLabelText('在庫個数')
+  await user.click(screen.getByRole('button', { name: '[E2E_TEST] 鶏肉を減らす' }))
+  expect(quantity).toHaveValue(5)
+  await user.clear(quantity)
+  await user.type(quantity, '1')
+  expect(quantity).toHaveValue(1)
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('予定回数の合計が在庫個数を超えています')
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(save).not.toHaveBeenCalled()
+  await user.type(quantity, '0')
+  expect(quantity).toHaveValue(10)
+  expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ quantity: 10 }), true, expect.arrayContaining([expect.objectContaining({ remainingCount: 5 })]))
+})
 it('品目OFFでも既存の料理があればレシピを取得する', () => {
   const request = vi.fn()
   render(<InventoryModal {...base} item={{ ...item, menuPlanEnabled: false }} onRecipesRequest={request} />)

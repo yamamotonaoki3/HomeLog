@@ -103,7 +103,7 @@ function setupApi(initial: Partial<MockState> = {}) {
         purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0,
       }
       state.shopping.push(item)
-      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody, {id:item.id}), { status: 201 })
+      return HttpResponse.json(item, { status: 201 })
     }),
     http.delete('/api/shopping-list-items/:id', ({ params }) => {
       calls.push({ method: 'DELETE', url: `/api/shopping-list-items/${params.id}` })
@@ -254,10 +254,10 @@ describe('ZaikoPage', () => {
 
   it.each(['登録', '編集'] as const)('在庫の%sで409ならモーダル内にサーバーのエラーを表示し入力を保持する', async (mode) => {
     setupApi({ inventory: [{ ...milk }, { ...egg }] })
-    const conflict = () => HttpResponse.json({
+    const conflict = vi.fn(() => HttpResponse.json({
       code: 'DUPLICATE_INVENTORY_ITEM_NAME',
       message: '同じ品名の在庫が既に登録されています',
-    }, { status: 409 })
+    }, { status: 409 }))
     server.use(
       http.post('/api/inventory-items', conflict),
       http.put('/api/inventory-items/:id', conflict),
@@ -279,7 +279,17 @@ describe('ZaikoPage', () => {
     expect(modal).toBeVisible()
     expect(within(modal).getByLabelText('品名')).toHaveValue('牛乳')
     expect(within(modal).getByLabelText('値段（円・任意）')).toHaveValue('123')
-    expect(within(modal).getByRole('button', { name: '保存' })).toBeEnabled()
+    expect(conflict).toHaveBeenCalledTimes(1)
+    if (mode === '編集') {
+      expect(within(modal).getByRole('button', { name: '保存' })).toBeDisabled()
+      await user.click(within(modal).getByRole('button', { name: 'キャンセル' }))
+      await user.click(screen.getByRole('button', { name: '一覧を再取得' }))
+      await openInventoryDetails(user, '卵')
+      await waitFor(() => expect(within(screen.getByRole('dialog', { name: '在庫の詳細編集' })).getByRole('button', { name: '保存' })).toBeEnabled())
+      expect(conflict).toHaveBeenCalledTimes(1)
+    } else {
+      expect(within(modal).getByRole('button', { name: '保存' })).toBeEnabled()
+    }
     expect(screen.getByRole('button', { name: '卵の詳細' })).toBeInTheDocument()
     expect(screen.queryByText(`在庫を${mode}しました`)).not.toBeInTheDocument()
   })
