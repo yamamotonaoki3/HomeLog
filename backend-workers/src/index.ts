@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { secureHeaders } from 'hono/secure-headers'
 import { errorResponse } from './lib/errors'
+import { isMenuPlanWriteConflict } from './lib/menu-operation-requests'
 import { accountsRoute } from './routes/accounts'
 import { authRoute } from './routes/auth'
 import { cardsRoute } from './routes/cards'
@@ -59,6 +60,9 @@ app.onError((err, c) => {
   let cause: unknown = err
   while (cause instanceof Error && !seen.has(cause)) {
     seen.add(cause)
+    if (isMenuPlanWriteConflict(cause)) {
+      return c.json(errorResponse('RESOURCE_CONFLICT', '?????????????????????????'), 409)
+    }
     if (/\bHOMELOG_ACCOUNT_DELETED\b/.test(cause.message)) {
       return c.json(errorResponse('VALIDATION_ERROR', '指定された口座が見つかりません'), 400)
     }

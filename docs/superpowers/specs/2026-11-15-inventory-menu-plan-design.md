@@ -76,3 +76,13 @@ For old dailyON inventory, do not omit or overwrite overdue settlement. Capture 
 
 Task3 handoff: event inventory is undo authority, no INNER JOIN link prerequisite. Preserve current-week event-referenced menu row and event.menu_entry_id during unlink. New surviving original link alone receives count+1; legacy event count stays untouched; unlinked/re-added ID never restored.
 Task4 handoff: cleanup removes old week rows only, remaining independent. Preserve weekly title snapshot provenance when linkID NULL; past week cannot display live count as historical count. Keep capability DTO operation guards explicit.
+
+## Root承認: Task3反復消費/LIFOの技術契約
+
+新0032にnullable `menu_consumption_events.previous_event_id`を追加し、週行`consumed_event_id`をstack topとする。新consumeは前topをeventへ保存して自分をtopへ、undoはtopだけを一度取消して前pointerへ戻す。top/mealRevision CAS・stock/count/event/resultは同batch。同秒created_atやUUIDから順番を推定しない。旧event prevはNULL、数量/旧成功JSONは変えない。
+
+unlinkで当週event参照の週行とtopを保持する。undoのstock対象はevent.inventory_item_id、linkのINNER JOINを前提にしない。元の生存planned linkならcountも戻すが、legacy eventはstockだけ、解除済みはstockだけで再追加の新IDへ復元しない。新planned consumeはremaining0まで反復し、legacyの週1回terminal状態で誤って停止しない。legacy consumeも新planned残合計を割るstock減算は全rollbackする。
+
+既存consume/undoの同requestId/body保存済成功は現在所属確認後、週行存在/日付/CAS検査より先に再現する。aggregate saveだけに追加したv2 operationと混同して旧消費の成功JSONを書換えたり、再送時に行の型推測で不一致へ変えない。Task4は部分消費中のcanUndo、過去週count省略、NULL linkのsnapshot由来を反映する。
+
+Task4取消確認はtop event実量の `undoQuantity` を返して使用する（root承認）。新planned消費は固定1、legacy消費は旧usage、legacy/新planned/detachedを問わず取消量は同じtop eventに一致させる。古いweekly usageや現在の設定量をrefund表示へ流用しない。

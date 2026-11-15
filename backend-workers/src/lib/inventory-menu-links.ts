@@ -1,4 +1,4 @@
-﻿import { z } from 'zod'
+import { z } from 'zod'
 import { currentWeekStart,getJstToday } from './date'
 import { fromTenths,isOneDecimalPlace,MAX_VALUE,toTenths } from './decimal'
 import { errorResponse } from './errors'
@@ -54,14 +54,15 @@ export async function createLinkedInventory(db:D1Database,actorId:number,househo
  })}catch(error){if(isMenuConflict(error))return menuConflict();throw error}
 }
 export async function updateMenuLink(db:D1Database,householdId:number,linkId:number,input:z.infer<typeof menuLinkUpdateSchema>):Promise<MenuResult>{
- const current=await db.prepare('SELECT inventory_item_id,recipe_id,enabled,carry_enabled FROM inventory_menu_links WHERE id=? AND household_id=?').bind(linkId,householdId).first<{inventory_item_id:number|null;recipe_id:number|null;enabled:number;carry_enabled:number}>()
+ const current=await db.prepare('SELECT inventory_item_id,recipe_id,enabled,carry_enabled,remaining_count FROM inventory_menu_links WHERE id=? AND household_id=?').bind(linkId,householdId).first<{inventory_item_id:number|null;recipe_id:number|null;enabled:number;carry_enabled:number;remaining_count:number|null}>()
  if(!current)return {status:404,body:errorResponse('RESOURCE_NOT_FOUND','献立連携が見つかりません')}
+ if(current.remaining_count!==null)return menuConflict()
  const activate=(!current.enabled&&input.enabled)||(!current.carry_enabled&&input.carryEnabled)
  const week=currentWeekStart(getJstToday())
  try{
   const results=await db.batch([
    // Reject reactivation inside the write: the revision CHECK rolls back the entire batch.
-   db.prepare('UPDATE inventory_menu_links SET usage_tenths=?,enabled=?,carry_enabled=?,revision=CASE WHEN revision=? AND revision<9007199254740991 AND (NOT ((enabled=0 AND ?=1) OR (carry_enabled=0 AND ?=1)) OR EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=inventory_menu_links.inventory_item_id AND i.household_id=inventory_menu_links.household_id AND i.quantity_tenths>0)) THEN revision+1 ELSE -1 END WHERE id=? AND household_id=? RETURNING id').bind(toTenths(input.usageQuantity),input.enabled?1:0,input.carryEnabled?1:0,input.expectedRevision,input.enabled?1:0,input.carryEnabled?1:0,linkId,householdId),
+   db.prepare('UPDATE inventory_menu_links SET usage_tenths=?,enabled=?,carry_enabled=?,revision=CASE WHEN remaining_count IS NULL AND revision=? AND revision<9007199254740991 AND (NOT ((enabled=0 AND ?=1) OR (carry_enabled=0 AND ?=1)) OR EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=inventory_menu_links.inventory_item_id AND i.household_id=inventory_menu_links.household_id AND i.quantity_tenths>0)) THEN revision+1 ELSE -1 END WHERE id=? AND household_id=? RETURNING id').bind(toTenths(input.usageQuantity),input.enabled?1:0,input.carryEnabled?1:0,input.expectedRevision,input.enabled?1:0,input.carryEnabled?1:0,linkId,householdId),
    db.prepare("UPDATE menu_entries SET usage_tenths=?,meal_revision=meal_revision+1 WHERE inventory_menu_link_id=? AND week_start_date=? AND meal_state='uneaten' AND EXISTS(SELECT 1 FROM inventory_menu_links WHERE id=? AND revision=? AND changes()>0)").bind(toTenths(input.usageQuantity),linkId,week,linkId,input.expectedRevision+1),
    db.prepare('INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,recipe_title_snapshot) SELECT l.household_id,l.recipe_id,?,l.id,l.usage_tenths,r.title FROM inventory_menu_links l JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.id=? AND l.household_id=? AND l.revision=? AND l.enabled=1 AND ?=1 ON CONFLICT(inventory_menu_link_id,week_start_date) DO NOTHING').bind(week,linkId,householdId,input.expectedRevision+1,activate?1:0),
    db.prepare('SELECT l.id,l.recipe_id,COALESCE(r.title,l.recipe_title_snapshot) AS recipe_title,l.usage_tenths,l.enabled,l.carry_enabled,l.revision FROM inventory_menu_links l LEFT JOIN recipes r ON r.id=l.recipe_id AND r.household_id=l.household_id WHERE l.id=? AND l.household_id=?').bind(linkId,householdId),

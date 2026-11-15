@@ -94,7 +94,10 @@ it('新計画の回数は整数、メモは255文字以内、品目設定とrevi
   for (const assignment of ['menu_plan_enabled=2', 'menu_plan_enabled=0.5', 'menu_plan_revision=-1', 'menu_plan_revision=0.5', 'menu_plan_revision=9007199254740992']) {
     await expect(db.prepare(`UPDATE inventory_items SET ${assignment} WHERE id=1`).run()).rejects.toThrow()
   }
-  await db.prepare('UPDATE inventory_items SET menu_plan_enabled=1,menu_plan_revision=9007199254740991 WHERE id=1').run()
+  await db.prepare('UPDATE inventory_items SET menu_plan_enabled=1 WHERE id=1').run()
+  await db.prepare('UPDATE inventory_items SET menu_plan_revision=9007199254740991 WHERE id=1').run()
+  // Restore the boundary fixture before unrelated writes invalidate the aggregate CAS.
+  await db.prepare('UPDATE inventory_items SET menu_plan_revision=0 WHERE id=1').run()
   await db.prepare("INSERT INTO menu_consumption_events(id,household_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id) VALUES('testuser_new_count_event',1,1,10,1,1)").run()
   for (const delta of [0, -1, 0.5, 2]) {
     await expect(db.prepare("UPDATE menu_consumption_events SET plan_count_delta=? WHERE id='testuser_new_count_event'").bind(delta).run()).rejects.toThrow()
