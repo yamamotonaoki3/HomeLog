@@ -283,7 +283,7 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
                   aria-describedby={`inventory-delta-hint-${item.id}`} aria-invalid={Boolean(quantityErrors[item.id])}
                   onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} />
               </div>
-              <p id={`inventory-delta-hint-${item.id}`} className="hint">正の数は加算、負の数は減算します。適用後は取り消せません。</p>
+              <p id={`inventory-delta-hint-${item.id}`} className="hint">正の数は加算、負の数は減算します。適用後は取り消せません。手入力した増減量は「数量を適用」で反映します。＋／−は、選択した増減幅ですぐに反映されるため、「数量を適用」を押す必要はありません。</p>
               <button type="submit" className="ui-action" disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed}>数量を適用</button>
             </form>
             {stopped ? <p className="error" role="alert">{uncertainMessage}</p> : quantityErrors[item.id] && <p className="error" role="alert">{quantityErrors[item.id]}</p>}
