@@ -1,4 +1,4 @@
-﻿import type { MenuEntry } from '../../api/kondateTypes'
+import type { MenuEntry } from '../../api/kondateTypes'
 import { useDialog } from '../../hooks/useDialog'
 export function MenuMealConfirmation({entry,undo,busy,confirmBlocked,error,onClose,onConfirm}:{entry:MenuEntry;undo:boolean;busy:boolean;confirmBlocked:boolean;error:string;onClose:()=>void;onConfirm:()=>void}) {
  const close=()=>{if(!busy)onClose()}
@@ -28,4 +28,3 @@ export function LinkedMenuControls({entry,disabled,carryReady,onMeal,onCarry}:{e
   <p className="ui-page-sub">食事済みは今週だけ表示します。来週への持ち越しは残りの在庫がある場合だけです。</p>
  </div>
 }
-
