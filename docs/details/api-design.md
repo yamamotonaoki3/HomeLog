@@ -12,13 +12,11 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 - 自己指定、識別子なし・複数、重複（名前はtrim・大文字小文字を無視）、空白名、不正な負担分を400 `VALIDATION_ERROR`で拒否する。拒否時は既存設定を維持し、新規名も作成しない。割合は0〜100・合計100以下、金額は0〜9,999,999,999の整数・合計は固定費金額以下。`splitInputType` は `ratio` / `amount`、未指定は `ratio`。
 - 本人向け内訳は `{ debtorUserId, debtorExternalId, debtorExternalName, splitRatio, amountDue }`。世帯内は外部ID・名がnull、世帯外はuser IDがnull。外部名は現在の `external_persons.name` を返す。他者には `splitInputType:null` / `splits:[]` を返す。
 - PATCHは全置換。空配列・null・省略は内訳削除。世帯内のみの旧入力も引き続き利用可能。本体と内訳は単一batchで保存し、新規の外部名マスタのみ検証完了後に先行作成する。
-- 自動計上は自世帯の世帯外相手も `expense_splits`（unpaid）へ転記し、精算APIの既存フローを利用する。退会snapshotは対象外。入力・詳細UIは後続#254で対応する。
+- 自動計上は自世帯の世帯外相手も `expense_splits`（unpaid）へ転記し、精算APIの既存フローを利用する。退会snapshotは対象外。入力・詳細UIは[F05](features/F05_kakeibo_fixedcost.md)を参照。
 
 [← 要件定義書に戻る](../requirements.md)
 
-MVPスコープ（認証・世帯グループ・在庫管理・買い物リスト・トップ簡易ダッシュボード）のREST APIエンドポイントを定義する。家計簿・献立表等のPhase 2以降の機能のAPIは、着手時に追記する。
-
-エンドポイントパスや型は実装時に変更されうる暫定仕様であり、詳細はController実装時にOpenAPI（springdoc）で確定させる（[技術スタック.md](../技術スタック.md)参照）。
+認証・世帯グループ・家計簿・在庫管理・買い物リスト・レシピ・献立表・ダッシュボードの、現在の Workers 版のREST APIを定義する。実装は `backend-workers/src/routes/` を参照。
 
 ---
 
@@ -35,19 +33,19 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | `DELETE /api/accounts/:id` | 固定費参照または残高0でない子カードがあれば400。過去の支出/収入（通常/精算）/チャージ/割り勘支払元の参照があれば`deleted_at`へUTC日時を設定し履歴と口座名を保持（子カード経由も対象）、参照なしなら物理削除。成功204。削除済み/他人は404（#368） |
 | `GET /api/accounts` | 削除済み口座とその子カードを除外。口座選択肢・残高合計はこの結果を利用 |
 
-削除済み口座は口座編集・再削除・履歴取得で404、新規の収入/支出/カード登録/チャージ元/固定費/精算先で指定不可。全APIは認証必須（未認証401）。過去のNULL口座行・精算収入・残高は遡及更新しない。精算で自動生成される収入の口座は従来どおり任意。#245で口座必須入力と削除済み口座名の表示UIを対応する。
+削除済み口座は口座編集・再削除・履歴取得で404、新規の収入/支出/カード登録/チャージ元/固定費/精算先で指定不可。全APIは認証必須（未認証401）。過去のNULL口座行・精算収入・残高は遡及更新しない。精算で自動生成される収入の口座は従来どおり任意。口座必須入力と削除済み口座名の表示UIは[F13](features/F13_kakeibo_income.md) 8-3章を参照。
 
 事前照合後に口座が論理削除された場合も、書き込み時のDBガードで400 `VALIDATION_ERROR`として拒否する。同一D1 batch内の支出/収入/チャージ履歴・残高・精算状態をまとめてロールバックする。削除側もbatch内で固定費・子カード残高の禁止条件と履歴参照の有無を再確認する。削除より先に確定した取引は保持して論理削除する（#368）。
 
 ### 1-1. 認証
 
-- 以下のエンドポイントは`Authorization`ヘッダー不要（アクセストークンを前提としない）：`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/password-reset/*`, `/api/auth/account/deletion/cancel`, `/health`
+- 以下のエンドポイントは`Authorization`ヘッダー不要（アクセストークンを前提としない）：`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/password-reset/*`, `/api/auth/account/deletion/cancel`, `GET /api/demo`, `POST /api/demo/start`, `/health`
 - 認証が必要なAPIでは、退会の申し込み中・退会済みのアカウントを有効なアクセストークンでも401にする（#297）
   - `/api/auth/logout`はリクエストボディのリフレッシュトークンのみで失効処理を行う。アクセストークンが期限切れでもログアウトできる必要があるため（[F01_auth](features/F01_auth.md)参照）。
 - 上記以外は`Authorization: Bearer <アクセストークン>`ヘッダーが必須。
 - トークンが無い・無効・期限切れの場合は **401 Unauthorized** を返す。
 - ログイン・保護対象API・トークン更新ではアカウント状態をサーバー側で確認する。削除申請中アカウントへの新規ログインを拒否し、未失効のアクセストークンが残っていても通常APIとトークン更新を拒否する。許可するのは削除申請取消の専用経路のみ。
-- 削除申請取消は通常ログインに依存しないワンタイム資格情報で行う。資格情報はハッシュ化して保存し、使用後は失効させる。資格情報の発行・送信方法はメール基盤を含め実装時に確定する。
+- 削除申請取消は通常ログインに依存しない専用APIで、メールアドレスとパスワードによる本人確認を行う。取消成功時に新しいトークンを発行する（[F01_auth.md](features/F01_auth.md) 8-2章）。
 
 ### 1-2. 権限エラー
 
@@ -123,7 +121,8 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 | GET | `/api/auth/me` | 認証済み本人のID・表示名取得（Workers、#258）。デモ環境では `demo` も返す（#529） |
 | POST | `/api/auth/refresh` | リフレッシュトークンでアクセストークン再発行 |
 | POST | `/api/auth/logout` | ログアウト（リフレッシュトークンを失効） |
-| POST | `/api/auth/password-reset/request` | パスワードリセット申請（メール送信サービス未導入のため、現在はトークンを発行するだけでメールは送らない） |
+| GET | `/api/auth/password-reset/availability` | パスワード再設定の利用可否を取得 |
+| POST | `/api/auth/password-reset/request` | パスワードリセット申請（有効化・設定済みの場合、GAS経由で案内メールを送信。未設定・停止中は503） |
 | POST | `/api/auth/password-reset/confirm` | パスワードリセット実行 |
 | GET / PATCH | `/api/auth/account` | 本人のメールアドレス・表示名の取得／表示名の変更（#291） |
 | PUT | `/api/auth/password` | 現在のパスワードで再認証してパスワードを変更（#291） |
@@ -134,9 +133,9 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 ### GET /api/auth/me（Workers、#258）
 
-`Authorization: Bearer <アクセストークン>` 必須。JWTで認証した本人のIDで `users` を検索し、現在の `{ "id": 1, "displayName": "testuser_太郎" }` のみを200で返す。`id` は数値、`displayName` は登録済みの表示名（1〜50文字）。メールアドレス・パスワードハッシュ等は返さない。リクエストのID指定は本人の識別に使わず、世帯所属も不要。
+`Authorization: Bearer <アクセストークン>` 必須。JWTで認証した本人のIDで `users` を検索し、現在の `{ "id": 1, "displayName": "testuser_太郎", "demo": null }` を200で返す。`id` は数値、`displayName` は登録済みの表示名（1〜50文字）。デモ利用者の `demo` は有効期限と切替先の表示名を含む（「デモ環境」参照）。メールアドレス・パスワードハッシュ等は返さない。リクエストのID指定は本人の識別に使わず、世帯所属も不要。
 
-トークンなし・不正・期限切れ、および認証したIDのユーザーがDBに存在しない場合は、いずれも401と `{ "code": "UNAUTHORIZED", "message": "認証が必要です" }` を返す。JWTの内容、login/refreshの応答、DBスキーマは変更しない。ヘッダーへの表示は後続#257で対応する。
+トークンなし・不正・期限切れ、および認証したIDのユーザーがDBに存在しない場合は、いずれも401と `{ "code": "UNAUTHORIZED", "message": "認証が必要です" }` を返す。ヘッダーへの本人名表示は[共通事項](common-notes.md)の「共通ヘッダーの本人名」を参照。
 
 ### POST /api/auth/register
 
@@ -233,7 +232,7 @@ MVPスコープ（認証・世帯グループ・在庫管理・買い物リス�
 
 ### アカウント設定・退会（実装済み）
 
-契約・エラーは [F01_auth.md](features/F01_auth.md) 8-1章（アカウント設定）・8-2章（退会）を参照。メール送信サービスが未導入のため、要件で想定していた「新アドレスの確認リンク」「削除申請メールのワンタイム資格情報による取り消し」は採用せず、取り消しはメールアドレスとパスワードで本人確認する。
+契約・エラーは [F01_auth.md](features/F01_auth.md) 8-1章（アカウント設定）・8-2章（退会）を参照。「新アドレスの確認リンク」「削除申請メールのワンタイム資格情報による取り消し」は未実装で、メールアドレス変更は即時確定し、退会の取り消しはメールアドレスとパスワードで本人確認する。パスワード再設定の案内メールはGAS経由で実装済み。
 
 ---
 
@@ -364,7 +363,7 @@ POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名�
 編集対象自身を除いて一致すれば409、共通形式 `{ code: "DUPLICATE_INVENTORY_ITEM_NAME", message: "同じ品名の在庫が既に登録されています", details: [] }` を返す。
 別世帯は対象外。失敗時は在庫・買い物リストを変更しない。既存重複データは維持し、UNIQUE制約は追加しない。
 
-### 値段の共通契約（#235：バックエンド先行）
+### 値段の共通契約（#235）
 
 - 在庫GET（配列の各行）/POST/PATCHは常に `price: number | null` を返す。
 - `price` は日本円の整数0〜9,999,999,999、null許容。文字列・負数・小数・上限超過は400で保存値を変更しない。
@@ -372,7 +371,7 @@ POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名�
 - PATCHの必須入力は従来どおりname/categoryId/storeId/threshold。quantityは数量増減APIで操作する。
 - 値段は在庫ID単位で世帯共有し、同名の別IDは独立。世帯メンバーは閲覧・編集可。未認証401、他世帯PATCHは404。
 - 数量増減・購入更新はpriceを変更・乗算しない。同時更新は最後に成功した書き込みを保持する。履歴・比較・ダッシュボードへの追加は行わない。
-- UIの値段入力・表示は後続Issue。#235では画面を変更しない。
+- UIの値段入力・表示は[F07](features/F07_zaiko_inventory.md)の「値段と在庫編集」を参照。
 
 ### 日次自動消費の共通契約（#329）
 
@@ -447,9 +446,9 @@ price省略は保存値維持、nullはクリア、数値は在庫の値段を�
 
 ---
 
-## 6. トップ画面ダッシュボード（簡易版）
+## 6. トップ画面ダッシュボード
 
-MVP時点では家計簿機能を含まないため、ダッシュボードは在庫・買い物リストの集計のみを提供する（家計簿系カード・カレンダーはPhase 2で追加）。
+在庫・買い物リスト、本人の収支・割り勘、世帯支出、献立・イベントと月間カレンダーの情報を提供する。
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
@@ -482,7 +481,7 @@ MVP時点では家計簿機能を含まないため、ダッシュボードは�
 ```
 
 - `weeklyMenuEntries` はJST基準の今週（月曜始まり）の同一世帯の献立を登録順に返す。`recipeId` はレシピID（number）で、自由メモはnull。同名レシピもIDで区別できる。レシピ削除後は献立行を残し、`recipeId`・`recipeTitle` はnullになる。献立がなければ空配列を返す。
-- `eventPeriod=year|month` でイベント別支出の集計期間を指定する。未指定時は `year`、不正値は400。
+- `eventPeriod=today|month|year` でイベント別支出の集計期間（JSTの当日・当月・暦年）を指定する。未指定時は `year`、不正値は400。
 - `monthlyPersonalExpense` はJST当月の本人支出、未精算サマリーは精算済みを除いた本人の受取予定／支払予定。イベント別支出は表示対象かつ閲覧可能なイベントを0円を含めて返す。
 
 `GET /api/dashboard/calendar` のレスポンス（200 OK）:
@@ -567,7 +566,7 @@ interface DashboardDayDetail {
 | 機能 | エンドポイント | 詳細 |
 | --- | --- | --- |
 | デモ環境（#529） | `GET demo` `POST demo/start` `POST demo/switch` | 「デモ環境」 |
-| 認証・アカウント | `POST auth/register` `POST auth/login` `POST auth/refresh` `POST auth/logout` `GET auth/me` `POST auth/password-reset/request` `POST auth/password-reset/confirm` `GET/PATCH auth/account` `PUT auth/password` `PUT auth/email` `GET auth/account/deletion-check` `POST auth/account/deletion` `POST auth/account/deletion/cancel` | [F01](features/F01_auth.md) |
+| 認証・アカウント | `POST auth/register` `POST auth/login` `POST auth/refresh` `POST auth/logout` `GET auth/me` `GET auth/password-reset/availability` `POST auth/password-reset/request` `POST auth/password-reset/confirm` `GET/PATCH auth/account` `PUT auth/password` `PUT auth/email` `GET auth/account/deletion-check` `POST auth/account/deletion` `POST auth/account/deletion/cancel` | [F01](features/F01_auth.md) |
 | 世帯グループ | `POST households` `POST households/join` `GET households/me` `POST households/invite-code/regenerate` `POST households/leave` | [F02](features/F02_household.md) |
 | 支出 | `GET/POST expenses` `PUT/DELETE expenses/:id` | [F03](features/F03_kakeibo_expense.md) |
 | 支出カテゴリー | `GET/POST kakeibo-categories` `PATCH/DELETE kakeibo-categories/:id` | [F03](features/F03_kakeibo_expense.md) |
@@ -619,4 +618,4 @@ interface DashboardDayDetail {
 - 不正JSON/UUID/必須値・型/unsafe整数など正規化不能な400、未認証401、現在未所属404にはterminal保証/markerがない。未知SQL・通信障害500、MISMATCH、破損/不完全ledgerは結果不明。旧keyを捨て新keyへ自動移行しない。成功・拒否とも期限削除せず、別actor/別世帯へ結果を流用しない。
 - 単一D1 batchの全件guard、相対在庫更新、削除/残数/revision、成功台帳を原子的に確定する。末尾SQLはresponse更新件数1・PK1行・status200・要求順snapshot完全一致をassertし、不成立をSQL例外で全rollbackする。既知named CHECKだけ409候補として拒否INSERT調停へ進み、その他の障害を未反映保証へ変換しない。
 
-後続#421のFEは送信前にactor/世帯別pendingへ元requestId/bodyを保存する。成功200または一致したmarker付き保存拒否だけでpendingを解決し、MISMATCH/未知応答では元body回復を行う。logoutでも未解決記録を保持し、同user同世帯の認証確認後に利用者操作で回復する。別user/別世帯へ表示・送信せず、401refresh後の再送直前にもscope/sessionを照合する。200後のGET失敗は反映済みとして一覧再取得だけを行う。FEの実装・画面検証は#421で行う。
+#421の画面は送信前にactor/世帯別pendingへ元requestId/bodyを保存する。成功200または一致したmarker付き保存拒否だけでpendingを解決し、MISMATCH/未知応答では元body回復を行う。logoutでも未解決記録を保持し、同user同世帯の認証確認後に利用者操作で回復する。別user/別世帯へ表示・送信せず、401refresh後の再送直前にもscope/sessionを照合する。200後のGET失敗は反映済みとして一覧再取得だけを行う。画面仕様は[F08](features/F08_zaiko_shoppinglist.md) 9章を参照。

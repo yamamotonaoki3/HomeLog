@@ -18,7 +18,7 @@ flowchart TB
         D1[("D1\n（SQLite 互換 DB）")]
         R2[("R2\n手書きレシピ画像の一時保存")]
         AI["Workers AI\n（LLM でレシピを構造化）"]
-        Cron["Cron Trigger\n毎日 JST 1:00"]
+        Cron["Cron Trigger\n毎日 JST 0:00・1:00"]
     end
 
     Vision["Google Cloud Vision\n（手書き文字の認識）"]
@@ -31,11 +31,12 @@ flowchart TB
     Worker --> AI
     Worker -- 画像の文字認識 --> Vision
     Worker -- タイトル・サムネイル取得 --> Web
-    Cron -- 固定費の自動計上・OCR画像の削除・退会アカウントの削除 --> Worker
+    Cron -- 献立の期限切れ削除・在庫の自動消費・固定費の自動計上など --> Worker
 ```
 
 - 画面（SPA）と API は同じ Worker・同じオリジンから配信する。`/api` と `/health` は Worker の処理を先に通し、それ以外のパスは `index.html` に戻す（SPA フォールバック）。
 - デプロイは `production` ブランチへの push を契機に Cloudflare Workers Builds が行う（マイグレーション適用 → デプロイ）。
+- JST 0:00は期限切れの献立だけを削除する。JST 1:00は献立削除を再試行し、在庫の日次自動消費、固定費の自動計上、古いOCR画像、退会期限を過ぎたアカウント、保持期間を過ぎた回数制限データの削除を行う。デモ環境は別のWorker・D1を使い、毎時のCronで期限切れのデモ世帯を削除する（[deployment.md](../deployment.md)の「デモ環境」）。
 
 ## 2. 開発環境
 

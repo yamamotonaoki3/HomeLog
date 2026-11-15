@@ -197,6 +197,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint owner_user_id FK
+        bigint created_by_user_id FK
         varchar name
         date event_date
         boolean is_all_day
@@ -405,6 +406,8 @@ erDiagram
 
 ### account_deletion_requests（アカウント削除申請）
 
+> このエンティティとワンタイム取消資格情報は将来の論理モデル。現在のWorkers実装では専用テーブルを作らず、`users.deletion_requested_at` で申請を管理し、取消はメールアドレスとパスワードで本人確認する。削除予定日は申請日時の30日後として計算する（[F01_auth.md](features/F01_auth.md) 8-2章）。
+
 削除申請日時、30日後の削除予定日時、取消日時、処理完了日時を追跡する。申請中はユーザーの通常アクセスとトークン更新を拒否する。取消は通常APIとは別の専用手段とし、ワンタイムの取消資格情報を用いてハッシュ化して保管する。処理完了時はuser_idとの紐付けと取消資格情報を削除し、詳細な有効期限・再発行方式はメール送信基盤を含めて実装Issueで確定する。
 
 ### 退会時に保持する共有記録の帰属
@@ -517,7 +520,7 @@ erDiagram
 | households.invite_code | VARCHAR(16) | ○ | UNIQUE。世帯作成時に自動発行するランダム英数字コード（他ユーザーの参加に使用） |
 | household_members.household_id | BIGINT | ○ | FK → households.id |
 | household_members.user_id | BIGINT | ○ | FK → users.id |
-| household_members.role | VARCHAR(20) | ○ | `admin` / `member`。作成者を`admin`で登録。既存管理者のみが変更でき、変更者・日時を監査する。最後の管理者を単独で降格・解除できない |
+| household_members.role | VARCHAR(20) | ○ | 将来要件。現行Workersにrole列と管理者の権限制御は未実装（[common-notes.md](common-notes.md) 12.3章参照）。実装する場合は`admin` / `member`を持ち、作成者を`admin`で登録。既存管理者のみが変更でき、変更者・日時を監査する。最後の管理者を単独で降格・解除できない |
 
 ### external_persons（世帯外の精算相手）
 
@@ -685,6 +688,7 @@ Workersの#253では `debtor_user_id` をnullableにし、`debtor_external_id` �
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | owner_user_id | BIGINT | — | FK → users.id。NULL＝世帯共有（メンバー全員が閲覧可能）、設定時＝個人所有（本人のみ閲覧・編集可能）。登録時に選択する（[common-notes.md](common-notes.md) 2章） |
+| created_by_user_id | BIGINT | ○ | FK → users.id（登録者）。共有イベントでも編集・削除はこのユーザーに限る。個人イベントではowner_user_idと同じ値 |
 | name | VARCHAR(50) | ○ | イベント名 |
 | event_date | DATE | ○ | イベントの基準日（トップ画面カレンダー表示に使用） |
 | is_all_day | BOOLEAN | ○ | 終日イベントかどうか。デフォルトtrue |
