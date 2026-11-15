@@ -75,7 +75,7 @@ for (const width of [1280, 390, 320]) {
       await openInventoryDetails(page, row)
       await expect(selection.locator('option:checked')).toHaveText(categoryName)
       await expect(dialog.getByLabel('値段（円・任意）')).toHaveValue('1280')
-      await expect(dialog.locator('.qty-value')).toHaveText('2.0')
+      await expect(dialog.getByLabel('在庫個数', { exact: true })).toHaveValue('2')
       await dialog.getByLabel('品名', { exact: true }).fill('[E2E_TEST] 保存しない名前')
       await dialog.getByRole('button', { name: '＋カテゴリーを登録' }).click()
       await categoryInput.fill('[E2E_TEST] 編集で追加')

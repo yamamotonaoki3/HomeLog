@@ -4,7 +4,7 @@ import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
-async function setup(page: Page, label: string, second = false) {
+async function setup(page: Page, label: string, second = false, initialQuantity = 0) {
   await setupUserWithHousehold(page, label)
   const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
   const headers = { Authorization: 'Bearer ' + token }
@@ -14,7 +14,7 @@ async function setup(page: Page, label: string, second = false) {
   const items: { id: number; name: string }[] = []
   for (const [index, suffix] of (second ? ['A', 'B'] : ['A']).entries()) {
     const name = '[E2E_TEST] 数量安全' + suffix
-    const response = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId: categories[0].id, storeId: null, quantity: index, threshold: 1 } })
+    const response = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId: categories[0].id, storeId: null, quantity: initialQuantity + index, threshold: 1 } })
     expect(response.status()).toBe(201)
     items.push(await response.json())
   }
@@ -87,9 +87,12 @@ test('実加算後500でもGET結果や開閉で停止を解除せず同じdelta
 
 test('実APIの未更新400はdraftを保持し訂正した正の増減量だけ明示適用できる', async ({ page, consoleGuard }) => {
   consoleGuard.watch(page)
-  const { headers, item, row, operations } = await setup(page, 'quantity_rejected')
+  const { headers, item, row, operations } = await setup(page, 'quantity_rejected', false, 1)
   const path = '/api/inventory-items/' + item.id + '/quantity'
   consoleGuard.allow({ url: new RegExp(path + '$'), message: /400 \(Bad Request\)/ })
+  // Another writer consumes the server stock after this page read quantity 1.
+  expect((await page.request.patch(path, { headers, data: { delta: -1 } })).status()).toBe(200)
+  await expect(row.locator('.inventory-list-quantity')).toHaveText('1.0')
   const deltas: number[] = []
   page.on('request', request => { if (request.method() === 'PATCH' && new URL(request.url()).pathname === path) deltas.push(request.postDataJSON().delta) })
   await operations.getByLabel('増減量', { exact: true }).fill('-1')
@@ -98,7 +101,10 @@ test('実APIの未更新400はdraftを保持し訂正した正の増減量だけ
   expect((await rejection).status()).toBe(400)
   await expect(operations.getByRole('alert')).toContainText('在庫個数が範囲外です')
   await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('-1')
-  await expect(row.locator('.inventory-list-quantity')).toHaveText('0.0')
+  await expect(row.locator('.inventory-list-quantity')).toHaveText('1.0')
+  const rejectedState = await page.request.get('/api/inventory-items', { headers })
+  expect(rejectedState.status()).toBe(200)
+  expect(await rejectedState.json()).toEqual([expect.objectContaining({ id: item.id, quantity: 0 })])
   await operations.getByLabel('増減量', { exact: true }).fill('2.5')
   await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   await expect(row.locator('.inventory-list-quantity')).toHaveText('2.5')
