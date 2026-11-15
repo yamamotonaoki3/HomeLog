@@ -62,7 +62,7 @@ export async function saveInventoryMenuPlan(db:D1Database, actorUserId:number, h
   const allocated=input.menuPlan.links.reduce((sum,line)=>sum+line.remainingCount*10,0)
   const existingDailyAllocation=!!current?.auto_consumption_enabled&&allocated>0
   if(existingDailyAllocation&&input.autoConsumptionEnabled!==false)return fail(invalid('日次自動消費をOFFにしてから予定を割り当ててください'))
-  const daily=existingDailyAllocation&&input.dailyConsumption==null?current!.daily_consumption_tenths:input.dailyConsumption===undefined?(current?.daily_consumption_tenths??null):input.dailyConsumption===null?null:toTenths(input.dailyConsumption)
+  const daily=input.dailyConsumption===undefined?(current?.daily_consumption_tenths??null):input.dailyConsumption===null?null:toTenths(input.dailyConsumption)
   const enabled=input.dailyConsumption===null?false:input.autoConsumptionEnabled??(current?!!current.auto_consumption_enabled:daily!==null)
   if((enabled&&daily===null)||(input.dailyConsumption===null&&input.autoConsumptionEnabled===true))return fail(invalid('自動消費には1日の消費量が必要です'))
   const changed=!!current&&(daily!==current.daily_consumption_tenths||enabled!==!!current.auto_consumption_enabled)

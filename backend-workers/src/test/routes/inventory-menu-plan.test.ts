@@ -276,7 +276,7 @@ it('旧link PATCHの事前read後にplannedへ変換されても週行とlinkを
  expect((await env.DB.prepare('SELECT id FROM menu_entries WHERE inventory_menu_link_id=?').bind(link.id).all()).results).toEqual([])
 })
 
-it('I1: daily ON allocation requires explicit auto=false and keeps configured daily amount',async()=>{
+it('I1: daily ON allocation requires explicit auto=false and explicit null clears daily amount',async()=>{
  const ordinary=await (await request('POST','inventory-items',{...body(),menuPlan:undefined,dailyConsumption:1,autoConsumptionEnabled:true})).json<{id:number}>()
  const state=async()=>Promise.all(['inventory_items','recipes','inventory_menu_links','menu_entries','menu_operation_requests','shopping_list_items'].map(table=>env.DB.prepare('SELECT * FROM '+table+' WHERE household_id=? ORDER BY rowid').bind(householdId).all().then(result=>result.results)))
  const current=(await env.DB.prepare('SELECT menu_plan_revision FROM inventory_items WHERE id=?').bind(ordinary.id).first<{menu_plan_revision:number}>())!
@@ -286,7 +286,17 @@ it('I1: daily ON allocation requires explicit auto=false and keeps configured da
  expect(await state()).toEqual(before)
  const response=await request('PUT','inventory-items/'+ordinary.id,{...data,autoConsumptionEnabled:false})
  expect(response.status).toBe(200)
- expect(await response.json()).toMatchObject({dailyConsumption:1,autoConsumptionEnabled:false,menuLinks:[{remainingCount:1}]})
+ expect(await response.json()).toMatchObject({dailyConsumption:null,autoConsumptionEnabled:false,menuLinks:[{remainingCount:1}]})
+ expect(await env.DB.prepare('SELECT daily_consumption_tenths,auto_consumption_enabled FROM inventory_items WHERE id=?').bind(ordinary.id).first()).toEqual({daily_consumption_tenths:null,auto_consumption_enabled:0})
+})
+it('I1: daily ON allocation with explicit auto=false retains an omitted daily amount',async()=>{
+ const created=await request('POST','inventory-items',{...body(),menuPlan:undefined,dailyConsumption:1,autoConsumptionEnabled:true})
+ expect(created.status).toBe(201)
+ const ordinary=await created.json<{id:number}>()
+ const current=(await env.DB.prepare('SELECT menu_plan_revision FROM inventory_items WHERE id=?').bind(ordinary.id).first<{menu_plan_revision:number}>())!
+ const response=await request('PUT','inventory-items/'+ordinary.id,{...body([line(1)]),dailyConsumption:undefined,autoConsumptionEnabled:false,expectedMenuPlanRevision:current.menu_plan_revision})
+ expect(response.status).toBe(200)
+ expect(await response.json()).toMatchObject({dailyConsumption:1,autoConsumptionEnabled:false,menuLinks:[{recipeId,remainingCount:1}]})
  expect(await env.DB.prepare('SELECT daily_consumption_tenths,auto_consumption_enabled FROM inventory_items WHERE id=?').bind(ordinary.id).first()).toEqual({daily_consumption_tenths:10,auto_consumption_enabled:0})
 })
 it('I1: null clearing without a positive allocation retains the existing contract',async()=>{
