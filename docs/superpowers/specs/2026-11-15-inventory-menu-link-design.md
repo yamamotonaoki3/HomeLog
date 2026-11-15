@@ -14,7 +14,7 @@
 - 連携OFF・在庫削除・原本削除は将来の持越しを止める。既存週行は残し「連携解除／削除された在庫・レシピ」を表示、新たなconsumeは不可。既食行の取消は連携OFF・原本削除後も在庫と世帯権限が維持されれば可能。在庫削除後は409で拒否し在庫を再作成しない。献立行の明示削除も関連carryをOFFにし、数量は返さない（取消と区別）。通常献立・自由メモの削除動作は従来どおり。
 - 取消は現行保持する当週行だけ。既存の過去週物理削除を維持し、cleanup後の新しい取消は404。別履歴UIは追加しない。保存済み要求の同一再送は週行削除後も保存結果を返す。
 
-## DB（追加型0028 migration、既共有migrationを変更しない）
+## DB（追加型0028・0029 migration、既共有migrationを変更しない）
 
 `inventory_menu_links`:
 `id PK, household_id FK CASCADE, inventory_item_id FK SET NULL, recipe_id FK SET NULL, recipe_title_snapshot TEXT NOT NULL, usage_tenths INTEGER NOT NULL CHECK 1..999999 DEFAULT 10, enabled INTEGER NOT NULL DEFAULT 1, carry_enabled INTEGER NOT NULL DEFAULT 0, starts_on TEXT NOT NULL（月曜）, revision INTEGER NOT NULL DEFAULT 0, created_at TEXT`。
@@ -23,6 +23,12 @@
 `menu_entries`追加:
 `inventory_menu_link_id INTEGER NULL FK SET NULL, usage_tenths INTEGER NULL, meal_state TEXT NOT NULL DEFAULT 'uneaten' CHECK ('uneaten','eaten'), meal_revision INTEGER NOT NULL DEFAULT 0, consumed_event_id TEXT NULL`（UUID）。
 通常行はlink/usage/event NULL、state=uneatenのまま。`UNIQUE(inventory_menu_link_id,week_start_date)`は連携行だけを重複防止し、従来の同原本手動再追加は制限しない。使用数/原本名は生成時snapshot。レシピの現行SET NULLを維持する。
+
+0029で`menu_entries.recipe_title_snapshot TEXT NULL`を追加する。連携行は初回登録・明示再ON・持ち越しの新行生成時の現原本名を保存し、同値/使用数編集・食事状態更新・改名/削除では上書きしない。GETの連携行と登録応答`linkedMenuEntries`はこの週snapshotを返す。通常行は列NULLのまま現JOIN名に追随し、原本削除後は名前もNULL。原本のlive存在によるconsume/undo能力判定は変更しない。
+
+既存連携行は移行時の現原本名、原本削除済みなら関連の名前snapshotでbackfillする。移行前の改名履歴は復元不能であり、移行前の生成時名を保証できない。関連作成時snapshotと各週生成時snapshotは別物とし、保存済み`menu_operation_requests`の成功JSONは一切更新しない。
+
+dashboard summaryの`weeklyMenuEntries`とday-detailの`menuEntries`も、連携行は同じ週行の名前snapshot、通常行は現原本名（削除後NULL）を返す。
 
 `menu_consumption_events`:
 `id TEXT UUID PK, household_id FK CASCADE, menu_entry_id INTEGER NULL FK SET NULL, inventory_item_id INTEGER NULL FK SET NULL, quantity_tenths INTEGER NOT NULL, undone_at TEXT NULL, created_at TEXT`。

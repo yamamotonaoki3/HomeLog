@@ -814,15 +814,17 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 
 ## 在庫別メニュー・実食・継続の物理モデル（#547）
 
-D1追加型マイグレーション`0028_inventory_menu_linkage.sql`と`schema.ts`を正とする。後続画面#548は未実装。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
+D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_menu_entry_recipe_title_snapshot.sql`と`schema.ts`を正とする。後続画面#548は未実装。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
 
 | 対象 | 追加内容 |
 | --- | --- |
 | `inventory_menu_links` | 世帯、在庫/原本（削除時SET NULL）、原本名snapshot、使用数10倍整数1〜999999、enabled/carry_enabled、開始月曜、revision。週行と独立。enabled=1の同在庫/同原本は部分一意。異在庫の同原本は許可 |
-| `menu_entries` | nullable `inventory_menu_link_id`/`usage_tenths`/`consumed_event_id`、`meal_state`既定uneaten、`meal_revision`既定0。`(inventory_menu_link_id,week_start_date)`一意。通常のNULL関連行は同原本再追加可 |
+| `menu_entries` | nullable `inventory_menu_link_id`/`usage_tenths`/`consumed_event_id`/`recipe_title_snapshot TEXT`、`meal_state`既定uneaten、`meal_revision`既定0。名前は連携週行生成時に保存、通常行はNULL。`(inventory_menu_link_id,week_start_date)`一意。通常のNULL関連行は同原本再追加可 |
 | `menu_consumption_events` | UUID、世帯、週行/在庫（削除時SET NULL）、消費量10倍整数、取消日時、作成日時。週削除後もイベントを保持する |
 | `menu_operation_requests` | 世帯/actor/requestIdの複合主キー、正規化request JSON、成功HTTP status/JSON、`guard=1`の名前付きCHECK、作成日時。成功再送を再現し、期限自動削除しない |
 
 新表は世帯削除CASCADE、要求台帳のactorはusers参照CASCADE。退会の墓標化方針は維持し、期限切れデモの物理削除では既存世帯/利用者削除のCASCADEで新表も消える。週行削除だけで持ち越し設定・要求台帳・イベントを削除しない。
+
+0029は既存連携週行だけを移行時の現原本名で補完し、原本削除済みなら関連の`recipe_title_snapshot`を使う。過去の改名履歴は保存されていないため、移行前の生成時名は復元できない。通常行の名前列はNULLのまま、保存済み操作要求の成功JSONも変更しない。
 
 在庫数量のUPDATEで0に到達するとDB triggerで該当関連のcarryをOFFにしrevisionを増やす。補充・取消で自動再ONしない。在庫/原本削除は関連を無効化して参照NULLを残す。日次自動消費ONと有効関連は相互にDB triggerで拒否する。

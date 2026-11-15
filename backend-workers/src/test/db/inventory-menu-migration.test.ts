@@ -1,6 +1,6 @@
 ﻿import { applyD1Migrations, env, type D1Migration } from 'cloudflare:test'
 import { expect,it } from 'vitest'
-it('0028は旧在庫・日次設定・原本・通常献立・自由メモを不変で移行する',async()=>{
+it('真pre0028から全最新migrationへ旧在庫・日次設定・原本・通常献立・自由メモを不変で移行する',async()=>{
  const {MIGRATION_DB:db,TEST_MIGRATIONS:migrations}=env as unknown as {MIGRATION_DB:D1Database;TEST_MIGRATIONS:D1Migration[]}
  const migration=migrations.find(m=>m.name.startsWith('0028'))!
  await applyD1Migrations(db,migrations.filter(m=>m.name<migration.name))
@@ -15,9 +15,9 @@ it('0028は旧在庫・日次設定・原本・通常献立・自由メモを不
  const inventories=(await db.prepare('SELECT * FROM inventory_items').all()).results
  const recipes=(await db.prepare('SELECT * FROM recipes').all()).results
  const menus=(await db.prepare('SELECT * FROM menu_entries ORDER BY id').all()).results
- await applyD1Migrations(db,[migration])
+ await applyD1Migrations(db,migrations.filter(m=>m.name>=migration.name))
  expect((await db.prepare('SELECT * FROM inventory_items').all()).results).toEqual(inventories)
  expect((await db.prepare('SELECT * FROM recipes').all()).results).toEqual(recipes)
- expect((await db.prepare('SELECT * FROM menu_entries ORDER BY id').all()).results).toEqual(menus.map(row=>({...row,inventory_menu_link_id:null,usage_tenths:null,meal_state:'uneaten',meal_revision:0,consumed_event_id:null})))
+ expect((await db.prepare('SELECT * FROM menu_entries ORDER BY id').all()).results).toEqual(menus.map(row=>({...row,inventory_menu_link_id:null,usage_tenths:null,meal_state:'uneaten',meal_revision:0,consumed_event_id:null,recipe_title_snapshot:null})))
  expect((await db.prepare('SELECT * FROM inventory_menu_links').all()).results).toEqual([])
 })

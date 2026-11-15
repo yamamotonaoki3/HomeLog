@@ -4,8 +4,8 @@
 export async function carryMenuEntries(db: D1Database, now: Date): Promise<number> {
   const week = currentWeekStart(new Date(now.getTime() + 9 * 60 * 60 * 1000))
   const result = await db.prepare(`
-    INSERT INTO menu_entries (household_id, recipe_id, week_start_date, inventory_menu_link_id, usage_tenths)
-    SELECT l.household_id, l.recipe_id, ?1, l.id, l.usage_tenths
+    INSERT INTO menu_entries (household_id, recipe_id, week_start_date, inventory_menu_link_id, usage_tenths, recipe_title_snapshot)
+    SELECT l.household_id, l.recipe_id, ?1, l.id, l.usage_tenths, r.title
     FROM inventory_menu_links l
     JOIN inventory_items i ON i.id = l.inventory_item_id AND i.household_id = l.household_id
     JOIN recipes r ON r.id = l.recipe_id AND r.household_id = l.household_id

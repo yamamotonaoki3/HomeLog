@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** 在庫別メニューを週献立へ登録し、実食・取消・残数に応じた持越しを安全に行う。
-**Architecture:** 原本と在庫の関連を週行から独立し、週行は使用数snapshotと食済状態を持つ。D1 batch、条件更新、操作要求台帳、0到達トリガーを使う。
+**Architecture:** 原本と在庫の関連を週行から独立し、週行は使用数・原本名の生成時snapshotと食済状態を持つ。D1 batch、条件更新、操作要求台帳、0到達トリガーを使う。
 **Tech Stack:** 現行TypeScript/Hono/Drizzle/zod/D1/Vitest/Playwright。依存追加なし。
 **Spec:** [承認仕様・DB/API契約](../specs/2026-11-15-inventory-menu-link-design.md)（ユーザー承認ルールを優先）。
 
@@ -26,6 +26,7 @@
 ## Files / Task interfaces
 
 - db/schema.ts + drizzle/0028_inventory_menu_linkage.sql:追加schema、guard/0停止trigger。
+- drizzle/0029_menu_entry_recipe_title_snapshot.sql:週行のnullable名前snapshotを追加。既存連携行を移行時現原本名→削除済みは関連snapshotで補完する（過去の改名履歴・生成時名は復元不能）。登録・再ON・carry新行で現原本名を取得し、既存週行・通常行・保存済み成功JSONは書き換えない。
 - lib/inventory-menu-links.ts: `createLinkedInventory(db,actorId,householdId,input):Promise<ResponseSnapshot>`、`updateMenuLink(db,householdId,linkId,input):Promise<Link>`。型はdesignのAPI。
 - lib/menu-inventory-consumption.ts: `consumeMenuEntry(db,scope,entryId,input)` / `undoMenuConsumption(...)`。scope={actorUserId,householdId}、input={requestId,expectedRevision}、戻り値={status,json}。
 - lib/menu-operation-requests.ts: 正規化要求/台帳照合/保存用statement構築。requestのoperation/対象/actor/世帯を必ず含める。
@@ -108,3 +109,10 @@ InventoryModalに連携toggleと1〜20メニュー、新規/既存検索（keywo
 - Codex execで、UPDATE時の実際のenabled/carry遷移だけを対象に同世帯在庫>0の原子guardを追加。既存CHECKでbatchをrollbackし、0028/schemaは変更していない。初回stock0登録と既有効usage編集は維持した。
 - 依頼側の最終確認: 対象16件green、backend全体lint/typecheck成功・66ファイル1020件pass、実Workers API E2E 1件pass（stock0/carryOFF再ON409と全値不変を追加）。
 - Codex execのsandboxではテストがspawn EPERMだったため、redと最終greenは依頼側の制限外環境で確認した。ローカル通常全体282pass/4skipはこのguard修正前の結果で、修正後はAPI E2Eと最新headのCI全件を確認する。
+
+### 週行名snapshotのCLIレビュー対応
+
+- 原本改名・削除で連携週行名まで変わるP2を確認し、改名/削除・再ON・carry・旧DB移行の5redを実測した。0028は不変のまま0029でnullable recipe_title_snapshot追加と取得可能名のbackfillを行った。
+- 初回/明示再ON/carryの生成時名を週行へ保存し、menu GET/登録応答と、横断確認で残っていたsummary/day-detailの2投影を揃えた。後者も独立HTTP2redを確認後にCASEで修正。通常行のlive名/削除null、在庫menuLinksのlive名、能力判定、保存済み台帳を維持した。
+- 移行テストはfreshな専用DBへ分離し、0029前の新列不存在、pre0028→最新の既存全列不変、0028→0029 backfill/通常nullを確認した。過去の生成時名は復元できず、移行時現原本名/削除済み関連snapshotで補完する限界を記録した。
+- 依頼側最終検証はlint/typecheck成功、67ファイル1026テストpass。実Workers API E2Eも1passで改名・削除後名保持（menu/summary/day-detail）、削除後取消、保存済み登録結果の再現を確認。専用D1残数0・今回のサーバー閉鎖を確認した。

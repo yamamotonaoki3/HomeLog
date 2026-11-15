@@ -13,6 +13,95 @@ beforeEach(async()=>{
  headers={'Content-Type':'application/json',Authorization:'Bearer '+await signAccessToken(u.id,env.JWT_SECRET,900)}
 })
 const body=()=>({name:'[E2E_TEST] chicken',categoryId,storeId:null,quantity:3,threshold:1,menuLinkage:{requestId:crypto.randomUUID(),menus:[{newRecipeTitle:'[E2E_TEST] ham',carryEnabled:true},{recipeId,usageQuantity:1},{newRecipeTitle:'[E2E_TEST] teriyaki',usageQuantity:1}]}})
+it.each(['summary','day-detail'] as const)('dashboard %sは連携生成時名と通常行のlive名を改名・削除後も区別する',async endpoint=>{
+ const {currentWeekStart,getJstToday}=await import('../../lib/date')
+ const today=getJstToday()
+ const week=currentWeekStart(today)
+ const data={...body(),menuLinkage:{requestId:crypto.randomUUID(),menus:[{recipeId,carryEnabled:false}]}}
+ const createdResponse=await request('POST','inventory-items',data)
+ expect(createdResponse.status).toBe(201)
+ const created=await createdResponse.json<{linkedMenuEntries:{id:number}[]}>()
+ expect((await request('POST','menu-entries',{recipeId,weekStartDate:week})).status).toBe(201)
+ expect((await request('POST','menu-entries/'+created.linkedMenuEntries[0].id+'/consume',{requestId:crypto.randomUUID(),expectedRevision:0})).status).toBe(200)
+ type MenuTitle={recipeId:number|null;recipeTitle:string|null}
+ const list=async()=>{
+  const path=endpoint==='summary'?'dashboard/summary':'dashboard/day-detail?date='+today.toISOString().slice(0,10)
+  const response=await request('GET',path)
+  expect(response.status).toBe(200)
+  const result=await response.json<{weeklyMenuEntries?:MenuTitle[];menuEntries?:MenuTitle[]}>()
+  const rows=endpoint==='summary'?result.weeklyMenuEntries:result.menuEntries
+  expect(rows).toHaveLength(2)
+  return rows!.map(row=>({recipeId:row.recipeId,recipeTitle:row.recipeTitle}))
+ }
+ expect(await list()).toEqual([
+  {recipeId,recipeTitle:'[E2E_TEST] existing'},
+  {recipeId,recipeTitle:'[E2E_TEST] existing'},
+ ])
+ await env.DB.prepare('UPDATE recipes SET title=? WHERE id=?').bind('[E2E_TEST] renamed',recipeId).run()
+ expect(await list()).toEqual([
+  {recipeId,recipeTitle:'[E2E_TEST] existing'},
+  {recipeId,recipeTitle:'[E2E_TEST] renamed'},
+ ])
+ await env.DB.prepare('DELETE FROM recipes WHERE id=?').bind(recipeId).run()
+ expect(await list()).toEqual([
+  {recipeId:null,recipeTitle:'[E2E_TEST] existing'},
+  {recipeId:null,recipeTitle:null},
+ ])
+})
+it('連携の食済名は生成時を保持し、通常献立だけ改名に追随し削除後NULLになる',async()=>{
+ const {currentWeekStart,getJstToday}=await import('../../lib/date')
+ const week=currentWeekStart(getJstToday())
+ const createdResponse=await request('POST','inventory-items',body())
+ expect(createdResponse.status).toBe(201)
+ const created=await createdResponse.json<{linkedMenuEntries:{id:number}[]}>()
+ const linkedId=created.linkedMenuEntries[1].id
+ const manualResponse=await request('POST','menu-entries',{recipeId,weekStartDate:week})
+ expect(manualResponse.status).toBe(201)
+ const manual=await manualResponse.json<{id:number}>()
+ expect((await request('POST','menu-entries/'+linkedId+'/consume',{requestId:crypto.randomUUID(),expectedRevision:0})).status).toBe(200)
+ const list=async()=>{
+  const response=await request('GET','menu-entries?weekStartDate='+week)
+  expect(response.status).toBe(200)
+  return response.json<{id:number;recipeId:number|null;recipeTitle:string|null;inventoryLinkage:{mealState:string;canConsume:boolean}|null}[]>()
+ }
+ expect((await list()).find(row=>row.id===linkedId)).toMatchObject({recipeTitle:'[E2E_TEST] existing',inventoryLinkage:{mealState:'eaten'}})
+ await env.DB.prepare('UPDATE recipes SET title=? WHERE id=?').bind('[E2E_TEST] renamed',recipeId).run()
+ let rows=await list()
+ expect(rows.find(row=>row.id===linkedId)).toMatchObject({recipeId,recipeTitle:'[E2E_TEST] existing',inventoryLinkage:{mealState:'eaten'}})
+ expect(rows.find(row=>row.id===manual.id)).toMatchObject({recipeId,recipeTitle:'[E2E_TEST] renamed',inventoryLinkage:null})
+ await env.DB.prepare('DELETE FROM recipes WHERE id=?').bind(recipeId).run()
+ rows=await list()
+ expect(rows.find(row=>row.id===linkedId)).toMatchObject({recipeId:null,recipeTitle:'[E2E_TEST] existing',inventoryLinkage:{mealState:'eaten',canConsume:false}})
+ expect(rows.find(row=>row.id===manual.id)).toMatchObject({recipeId:null,recipeTitle:null,inventoryLinkage:null})
+})
+it('再ONで欠損今週行に現在の原本名を保存し、同値・使用数編集で名前を上書きしない',async()=>{
+ const data={...body(),menuLinkage:{requestId:crypto.randomUUID(),menus:[{recipeId,carryEnabled:false}]}}
+ const createdResponse=await request('POST','inventory-items',data)
+ expect(createdResponse.status).toBe(201)
+ const created=await createdResponse.json<{id:number;linkedMenuEntries:{id:number}[]}>()
+ const link=(await env.DB.prepare('SELECT id FROM inventory_menu_links WHERE inventory_item_id=?').bind(created.id).first<{id:number}>())!
+ const update=(expectedRevision:number,enabled:boolean,usageQuantity=1)=>request('PATCH','inventory-menu-links/'+link.id,{expectedRevision,enabled,usageQuantity,carryEnabled:false})
+ expect((await update(0,false)).status).toBe(200)
+ expect((await request('DELETE','menu-entries/'+created.linkedMenuEntries[0].id)).status).toBe(204)
+ await env.DB.prepare('UPDATE recipes SET title=? WHERE id=?').bind('[E2E_TEST] at reactivation',recipeId).run()
+ expect((await update(1,true)).status).toBe(200)
+ const {currentWeekStart,getJstToday}=await import('../../lib/date')
+ const list=async()=>{
+  const response=await request('GET','menu-entries?weekStartDate='+currentWeekStart(getJstToday()))
+  expect(response.status).toBe(200)
+  return response.json<{id:number;recipeTitle:string;inventoryLinkage:{usageQuantity:number;mealRevision:number}}[]>()
+ }
+ const rows=await list()
+ expect(rows).toHaveLength(1)
+ expect(rows[0].recipeTitle).toBe('[E2E_TEST] at reactivation')
+ await env.DB.prepare('UPDATE recipes SET title=? WHERE id=?').bind('[E2E_TEST] after reactivation',recipeId).run()
+ for(const [revision,usageQuantity] of [[2,1],[3,2]] as const){
+  expect((await update(revision,true,usageQuantity)).status).toBe(200)
+  const updated=await list()
+  expect(updated).toHaveLength(1)
+  expect(updated[0]).toMatchObject({id:rows[0].id,recipeTitle:'[E2E_TEST] at reactivation',inventoryLinkage:{usageQuantity,mealRevision:revision-1}})
+ }
+})
 it.each([false,true])('在庫0の持越しOFF再ONは409全未反映（batch直前の0更新=%s）',async race=>{
  const data={...body(),menuLinkage:{requestId:crypto.randomUUID(),menus:[{recipeId,carryEnabled:false}]}}
  const created=await (await request('POST','inventory-items',data)).json<{id:number}>()

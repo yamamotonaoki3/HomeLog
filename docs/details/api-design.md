@@ -634,3 +634,5 @@ interface DashboardDayDetail {
 | `POST /api/menu-entries/:id/undo-consumption` | `{requestId,expectedRevision}`。食済→未食、イベント量の相対返却。連携OFF/原本削除後も在庫ありなら可能。在庫削除済み409、行削除済み404 |
 
 消費/取消200は`{menuEntryId,mealState,mealRevision,inventoryItemId,quantity,carryEnabled}`。確定時snapshotであり最新一覧ではない。在庫不足・取消時上限超過は全未反映。通常レシピ・自由メモの既存操作は維持する。
+
+連携行の`GET /api/menu-entries.recipeTitle`と登録応答`linkedMenuEntries[].recipeTitle`は週行生成時の原本名snapshot。登録・明示再ON・持ち越しの新行生成で取得し、既存行の設定編集・食事状態更新・原本改名/削除では変更しない。通常手動行は現在のJOIN名、削除後nullを維持する。在庫一覧の`menuLinks[].recipeTitle`は現在名/削除時の関連snapshotで別契約。保存済み操作要求の成功JSONは書き換えない。

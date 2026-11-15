@@ -54,7 +54,7 @@ it('一括取得は関連順・削除原本snapshot・無関連・世帯と週�
  const link=async(home:number,item:number,recipeId:number,title:string)=>(await env.DB.prepare('INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on) VALUES(?,?,?,?,?) RETURNING id').bind(home,item,recipeId,title,week).first<{id:number}>())!.id
  const linkA=await link(householdId,first,recipeA,'[E2E_TEST] current')
  const linkB=await link(householdId,first,recipeB,'[E2E_TEST] deleted')
- const addMenu=async(recipeId:number|null,linkId:number|null,targetWeek:string)=>(await env.DB.prepare('INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths) VALUES(?,?,?,?,?) RETURNING id').bind(householdId,recipeId,targetWeek,linkId,linkId===null?null:10).first<{id:number}>())!.id
+ const addMenu=async(recipeId:number|null,linkId:number|null,targetWeek:string)=>(await env.DB.prepare('INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,recipe_title_snapshot) VALUES(?,?,?,?,?,(SELECT title FROM recipes WHERE id=? AND ? IS NOT NULL)) RETURNING id').bind(householdId,recipeId,targetWeek,linkId,linkId===null?null:10,recipeId,linkId).first<{id:number}>())!.id
  const menuA=await addMenu(recipeA,linkA,week),menuB=await addMenu(recipeB,linkB,week),normal=await addMenu(null,null,week)
  await addMenu(recipeA,linkA,'2020-01-06')
  const otherHome=(await env.DB.prepare("INSERT INTO households(name,invite_code) VALUES('[E2E_TEST] hidden',?) RETURNING id").bind(crypto.randomUUID()).first<{id:number}>())!.id

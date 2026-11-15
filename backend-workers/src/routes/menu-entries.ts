@@ -48,8 +48,7 @@ function toResponse(entry: typeof menuEntries.$inferSelect, recipeTitle: string 
     recipeId: entry.recipeId,
     // レシピ選択(確定登録)のエントリを一覧表示する際、呼び出し側が別途
     // GET /api/recipesと突き合わせなくてもレシピ名を表示できるようにする
-    // (F10_kondate_menu.md「週の表示・切り替え」参照。recipeIdはあるがrecipeTitleが
-    // nullの場合は、レシピが削除済みであることを意味する)。
+    // (F10_kondate_menu.md「週の表示・切り替え」参照)。連携行は生成時の名前を渡す。
     recipeTitle,
     freeTextMemo: entry.freeTextMemo,
     weekStartDate: entry.weekStartDate,
@@ -74,8 +73,7 @@ menuEntriesRoute.get('/', async (c) => {
 
   // 献立表は世帯メンバー全員が自由に編集可能(common-notes.md 2章)なため、
   // 所有者チェックは行わず世帯所属のみを確認する(recipes.ts/stores.tsと同じパターン)。
-  // leftJoinでrecipesテーブルのtitleも一緒に取得する(recipeIdがNULLの行、あるいは
-  // 参照先のレシピが既に削除された行はrecipeTitleがNULLになる)。
+  // 通常行は現在の原本名、連携行は原本削除後も週行生成時の名前を返す。
   const rows = await db
     .select({ entry: menuEntries, recipeTitle: recipes.title })
     .from(menuEntries)
@@ -85,7 +83,7 @@ menuEntriesRoute.get('/', async (c) => {
     .all()
 
   const linkages=await menuInventoryLinkagesForWeek(c.env.DB,householdId,weekStartDate)
-  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.recipeTitle), inventoryLinkage: linkages.get(row.entry.id)??null })))
+  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.entry.inventoryMenuLinkId===null?row.recipeTitle:row.entry.recipeTitleSnapshot), inventoryLinkage: linkages.get(row.entry.id)??null })))
 })
 
 menuEntriesRoute.post('/', async (c) => {

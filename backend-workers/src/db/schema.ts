@@ -320,6 +320,7 @@ export const recipes = sqliteTable('recipes', {
 })
 
 export const menuEntries = sqliteTable('menu_entries', {
+  recipeTitleSnapshot: text('recipe_title_snapshot'),
   inventoryMenuLinkId: integer('inventory_menu_link_id').references((): AnySQLiteColumn => inventoryMenuLinks.id, { onDelete: 'set null' }),
   usageTenths: integer('usage_tenths'),
   mealState: text('meal_state').notNull().default('uneaten'),

@@ -16,6 +16,8 @@ async function newHousehold(request: APIRequestContext, label: string) {
 }
 
 interface Entry {
+  recipeId: number | null
+  recipeTitle: string | null
   id: number
   inventoryLinkage: null | {
     linkId: number; inventoryItemId: number; quantity: number; usageQuantity: number
@@ -112,6 +114,34 @@ test('実Workersで複数レシピ登録・食事・取消・再送・世帯分�
   const retained = (await readEntries()).find(row => row.inventoryLinkage?.linkId === link.id)!
   expect(retained.inventoryLinkage).toMatchObject({ mealState: 'eaten', canConsume: false })
   expect((await readEntries()).filter(row => row.inventoryLinkage?.inventoryItemId === created.id)).toHaveLength(3)
+  const linkedRecipeEntry = (await readEntries()).find(row => row.recipeId === recipeId && row.inventoryLinkage)!
+  expect(linkedRecipeEntry.recipeTitle).toBe('[E2E_TEST] existing recipe')
+  expect((await request.patch(api(`recipes/${recipeId}`), { headers, data: { title: '[E2E_TEST] renamed recipe' } })).status()).toBe(200)
+  expect((await readEntries()).find(row => row.id === linkedRecipeEntry.id)?.recipeTitle).toBe('[E2E_TEST] existing recipe')
+  const dashboardWeekViews = [
+    { path: 'dashboard/summary', field: 'weeklyMenuEntries' },
+    { path: `dashboard/day-detail?date=${week}`, field: 'menuEntries' },
+  ]
+  const assertDashboardTitle = async (expectedRecipeId: number | null) => {
+    for (const view of dashboardWeekViews) {
+      const response = await request.get(api(view.path), { headers })
+      expect(response.status()).toBe(200)
+      const rows = (await response.json())[view.field] as { recipeId: number | null; recipeTitle: string | null }[]
+      expect(rows).toContainEqual(expect.objectContaining({ recipeId: expectedRecipeId, recipeTitle: '[E2E_TEST] existing recipe' }))
+    }
+  }
+  await assertDashboardTitle(recipeId)
+  expect((await readInventory()).menuLinks.find((row: { recipeId: number }) => row.recipeId === recipeId).recipeTitle).toBe('[E2E_TEST] renamed recipe')
+  expect((await request.delete(api(`recipes/${recipeId}`), { headers })).status()).toBe(204)
+  await assertDashboardTitle(null)
+  const deletedOriginalEntry = (await readEntries()).find(row => row.id === linkedRecipeEntry.id)!
+  expect(deletedOriginalEntry).toMatchObject({ recipeId: null, recipeTitle: '[E2E_TEST] existing recipe', inventoryLinkage: { canConsume: false, canUndo: true } })
+  const undoDeletedOriginal = await request.post(api(`menu-entries/${linkedRecipeEntry.id}/undo-consumption`), { headers, data: { requestId: randomUUID(), expectedRevision: linkedRecipeEntry.inventoryLinkage!.mealRevision } })
+  expect(undoDeletedOriginal.status()).toBe(200)
+  expect(await undoDeletedOriginal.json()).toMatchObject({ quantity: 2, mealState: 'uneaten' })
+  const replayCreation = await request.post(api('inventory-items'), { headers, data: body })
+  expect(replayCreation.status()).toBe(201)
+  expect(await replayCreation.json()).toEqual(created)
   const other = await newHousehold(request, 'menu_other')
   expect((await request.post(consumeUrl, { headers: other, data: { requestId: randomUUID(), expectedRevision: 3 } })).status()).toBe(404)
   expect((await request.get(api('inventory-items'), { headers: other })).ok()).toBe(true)
