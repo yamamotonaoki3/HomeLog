@@ -1,3 +1,4 @@
+﻿import { consumeMenuEntry,undoMenuConsumption,menuMealInputSchema,menuInventoryLinkagesForWeek } from '../lib/menu-inventory-consumption'
 import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
@@ -83,7 +84,8 @@ menuEntriesRoute.get('/', async (c) => {
     .orderBy(menuEntries.id)
     .all()
 
-  return c.json(rows.map((row) => toResponse(row.entry, row.recipeTitle)))
+  const linkages=await menuInventoryLinkagesForWeek(c.env.DB,householdId,weekStartDate)
+  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.recipeTitle), inventoryLinkage: linkages.get(row.entry.id)??null })))
 })
 
 menuEntriesRoute.post('/', async (c) => {
@@ -147,7 +149,23 @@ menuEntriesRoute.delete('/:id', async (c) => {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
   }
 
-  await db.delete(menuEntries).where(eq(menuEntries.id, entryId))
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE inventory_menu_links SET carry_enabled=0,revision=revision+1 WHERE id=(SELECT inventory_menu_link_id FROM menu_entries WHERE id=? AND household_id=?) AND household_id=? AND carry_enabled=1').bind(entryId,householdId,householdId),
+    c.env.DB.prepare('DELETE FROM menu_entries WHERE id=? AND household_id=?').bind(entryId,householdId),
+  ])
 
   return c.body(null, 204)
 })
+
+
+for (const operation of ['consume','undo-consumption'] as const) {
+  menuEntriesRoute.post('/:id/'+operation,async c=>{
+    const parsed=menuMealInputSchema.safeParse(await parseJsonBody(c))
+    const id=Number(c.req.param('id'))
+    if(!parsed.success||!Number.isSafeInteger(id)||id<1)return c.json(errorResponse('VALIDATION_ERROR','入力内容を確認してください'),400)
+    const householdId=await resolveHouseholdId(drizzle(c.env.DB),c.get('userId'))
+    if(householdId===null)return c.json(errorResponse('RESOURCE_NOT_FOUND',HOUSEHOLD_NOT_FOUND_MESSAGE),404)
+    const result=await (operation==='consume'?consumeMenuEntry:undoMenuConsumption)(c.env.DB,{householdId,actorUserId:c.get('userId')},id,parsed.data)
+    return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}})
+  })
+}

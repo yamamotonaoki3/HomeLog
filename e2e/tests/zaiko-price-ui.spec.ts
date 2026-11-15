@@ -62,7 +62,17 @@ for (const width of [1280, 390, 320]) {
     await expect(shoppingRow).toHaveCount(0)
     await tabs.getByRole('link', { name: '在庫一覧' }).click()
     await openInventoryDetails(page, row)
+    // 購入後の在庫再取得が完了してから減らす。旧数量0のままなら負数拒否で先へ進めない。
+    await expect(detail.locator('.qty-value')).toHaveText('1.0')
+    const decreased = page.waitForResponse(response => response.url().endsWith('/quantity') && response.request().method() === 'PATCH')
+    const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/inventory-items' && response.request().method() === 'GET')
     await detail.getByRole('button', { name: `${name}を減らす`, exact: true }).click()
+    const decreaseResponse = await decreased
+    expect(decreaseResponse.status()).toBe(200)
+    expect(await decreaseResponse.json()).toMatchObject({ quantity: 0 })
+    const refreshResponse = await refreshed
+    expect(refreshResponse.status()).toBe(200)
+    expect((await refreshResponse.json()).find((item: { name: string }) => item.name === name)).toMatchObject({ quantity: 0 })
     await expect(detail.locator('.qty-value')).toHaveText('0.0')
     await detail.getByRole('button', { name: 'キャンセル' }).click()
     await tabs.getByRole('link', { name: '買い物リスト' }).click()

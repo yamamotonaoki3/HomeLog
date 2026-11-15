@@ -807,3 +807,18 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 ※ `recipe_id` と `free_text_memo` はどちらか一方のみ設定する（確定登録/ラフ登録の排他）。
 
 保存期間（#362）：今週（月曜0時開始、JST）と未来の行を保持する。毎日JST 0時と1時の定期処理で、実行時点の今週の月曜日より `week_start_date` が前の行を全世帯について物理削除する。初回は既存の過去週も対象。元の `recipes` は保持する。実行遅延・失敗時は次回に回収し、復元・アーカイブは提供しない。詳細は [F10](features/F10_kondate_menu.md) の「保存期間・自動削除」を参照。
+
+## 在庫別メニュー・実食・継続の物理モデル（#547）
+
+D1追加型マイグレーション`0028_inventory_menu_linkage.sql`と`schema.ts`を正とする。後続画面#548は未実装。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
+
+| 対象 | 追加内容 |
+| --- | --- |
+| `inventory_menu_links` | 世帯、在庫/原本（削除時SET NULL）、原本名snapshot、使用数10倍整数1〜999999、enabled/carry_enabled、開始月曜、revision。週行と独立。enabled=1の同在庫/同原本は部分一意。異在庫の同原本は許可 |
+| `menu_entries` | nullable `inventory_menu_link_id`/`usage_tenths`/`consumed_event_id`、`meal_state`既定uneaten、`meal_revision`既定0。`(inventory_menu_link_id,week_start_date)`一意。通常のNULL関連行は同原本再追加可 |
+| `menu_consumption_events` | UUID、世帯、週行/在庫（削除時SET NULL）、消費量10倍整数、取消日時、作成日時。週削除後もイベントを保持する |
+| `menu_operation_requests` | 世帯/actor/requestIdの複合主キー、正規化request JSON、成功HTTP status/JSON、`guard=1`の名前付きCHECK、作成日時。成功再送を再現し、期限自動削除しない |
+
+新表は世帯削除CASCADE、要求台帳のactorはusers参照CASCADE。退会の墓標化方針は維持し、期限切れデモの物理削除では既存世帯/利用者削除のCASCADEで新表も消える。週行削除だけで持ち越し設定・要求台帳・イベントを削除しない。
+
+在庫数量のUPDATEで0に到達するとDB triggerで該当関連のcarryをOFFにしrevisionを増やす。補充・取消で自動再ONしない。在庫/原本削除は関連を無効化して参照NULLを残す。日次自動消費ONと有効関連は相互にDB triggerで拒否する。
