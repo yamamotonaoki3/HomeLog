@@ -83,7 +83,7 @@ menuEntriesRoute.get('/', async (c) => {
     .all()
 
   const linkages=await menuInventoryLinkagesForWeek(c.env.DB,householdId,weekStartDate)
-  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.entry.inventoryMenuLinkId===null?row.recipeTitle:row.entry.recipeTitleSnapshot), inventoryLinkage: linkages.get(row.entry.id)??null })))
+  return c.json(rows.map(row => ({ ...toResponse(row.entry, row.entry.inventoryMenuLinkId!==null||row.entry.usageTenths!==null||row.entry.recipeTitleSnapshot!==null||row.entry.consumedEventId!==null?row.entry.recipeTitleSnapshot:row.recipeTitle), inventoryLinkage: linkages.get(row.entry.id)??null })))
 })
 
 menuEntriesRoute.post('/', async (c) => {

@@ -828,3 +828,17 @@ D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_men
 0029は既存連携週行だけを移行時の現原本名で補完し、原本削除済みなら関連の`recipe_title_snapshot`を使う。過去の改名履歴は保存されていないため、移行前の生成時名は復元できない。通常行の名前列はNULLのまま、保存済み操作要求の成功JSONも変更しない。
 
 在庫数量のUPDATEで0に到達するとDB triggerで該当関連のcarryをOFFにしrevisionを増やす。補充・取消で自動再ONしない。在庫/原本削除は関連を無効化して参照NULLを残す。日次自動消費ONと有効関連は相互にDB triggerで拒否する。
+
+### 予定回数・品目単位計画の追加（#554、画面#555未実装）
+
+0030〜0032の追加型移行。共有済み0028/0029は変更しない。旧usage_tenths・event数量・週snapshot・保存済み成功JSONは丸めず保持する。
+
+| テーブル | 追加列と意味 |
+| --- | --- |
+| inventory_items | menu_plan_enabled boolean既定false（planned専用）、menu_plan_revision安全整数既定0（品目集約CAS） |
+| inventory_menu_links | remaining_count nullable整数0〜99999。NULLはlegacy、明示的新計画保存時だけ整数へ。memo nullable255文字以内。recipe別carryは既存列を維持 |
+| menu_consumption_events | plan_count_delta NULL=旧stockだけ/1=新planned、inventory_menu_link_id nullable FK SET NULL、previous_event_id nullable TEXT（LIFO前top、旧行NULL） |
+
+menu_entriesはcountを持たず、consumed_event_idをtop、meal_revisionをCASとして使う。unlinkしてlinkIDがNULLでもevent参照の週行と週名snapshotを保持する。undoの在庫正本はevent.inventory_item_id、元planned link生存時だけcountを戻し、解除/再追加の新IDへ履歴を付け替えない。
+
+0031は全stock writerでSUM(planned remaining)*10≦stockを保証（品目OFFも同じ）。残予定>0とdailyONは排他、legacyは旧enabled条件を維持する。在庫の観測列更新と関連INSERT/UPDATE/DELETEで品目集約revisionを進める。count/stock/event/台帳結果は同batch、既存menu_operation_requestsへ集約version2を追加し旧操作・旧成功JSONを保持する。
