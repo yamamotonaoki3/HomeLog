@@ -620,7 +620,7 @@ interface DashboardDayDetail {
 
 #421の画面は送信前にactor/世帯別pendingへ元requestId/bodyを保存する。成功200または一致したmarker付き保存拒否だけでpendingを解決し、MISMATCH/未知応答では元body回復を行う。logoutでも未解決記録を保持し、同user同世帯の認証確認後に利用者操作で回復する。別user/別世帯へ表示・送信せず、401refresh後の再送直前にもscope/sessionを照合する。200後のGET失敗は反映済みとして一覧再取得だけを行う。画面仕様は[F08](features/F08_zaiko_shoppinglist.md) 9章を参照。
 
-## 在庫別メニュー・実食連携API（バックエンド #547 / 画面 #548は未実装）
+## 在庫別メニュー・実食連携API（バックエンド #547 / 画面 #548）
 
 詳細な入力・返却型と原子性は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)を参照。全操作は認証と現在の世帯所属が必要。他世帯404、不正入力400、状態・残量・revision競合409。新規consume/undoはJST当週のみ。保存成功の同requestId/body再送は認証・所属確認後、当週/存在検査より先に再現し、異bodyは409とする。未知応答で新しい要求IDへ切り替えない。
 
@@ -636,3 +636,5 @@ interface DashboardDayDetail {
 消費/取消200は`{menuEntryId,mealState,mealRevision,inventoryItemId,quantity,carryEnabled}`。確定時snapshotであり最新一覧ではない。在庫不足・取消時上限超過は全未反映。通常レシピ・自由メモの既存操作は維持する。
 
 連携行の`GET /api/menu-entries.recipeTitle`と登録応答`linkedMenuEntries[].recipeTitle`は週行生成時の原本名snapshot。登録・明示再ON・持ち越しの新行生成で取得し、既存行の設定編集・食事状態更新・原本改名/削除では変更しない。通常手動行は現在のJOIN名、削除後nullを維持する。在庫一覧の`menuLinks[].recipeTitle`は現在名/削除時の関連snapshotで別契約。保存済み操作要求の成功JSONは書き換えない。
+
+#548の画面は登録/実食/取消の送信前に本人・世帯別pendingへ元UUIDと不変bodyを保存し、成功応答または初回の明確な未反映拒否でだけ解決する。異body同UUIDは409 `RESOURCE_CONFLICT` と `details:[{field:'requestId',reason:'PAYLOAD_MISMATCH'}]`で返るため、初回でも結果不明として保持する。結果不明後の400/404/409だけでは要求を捨てない。成功後のGET失敗はmutationを再送せず、必要な一覧だけ再取得する。本人・世帯・credentialの不一致では旧画面を隔離し、元scopeの保存pendingを別scopeへ移植しない。画面仕様は[F07](features/F07_zaiko_inventory.md)・[F10](features/F10_kondate_menu.md)を参照。

@@ -1,14 +1,29 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
-import type { Category, Store, InventoryItem } from '../../api/zaikoTypes'
+import type { InventoryCreateBody, MenuLinkDraft, InventoryMenuLink, InventoryMenuLinkUpdate, Category, Store, InventoryItem } from '../../api/zaikoTypes'
 import { validPrice, PRICE_ERROR } from './price'
 import { useInventoryDialog } from './useInventoryDialog'
+import { InventoryMenuSettings } from './InventoryMenuSettings'
+import type { Recipe } from '../../api/kondateTypes'
+import { InventoryMenuDrafts, menuDraftPayload, type MenuDraft } from './InventoryMenuDrafts'
 
 const CONSUMPTION_ERROR = '1日の消費量は0.1〜99999.9、小数点第一位までで入力してください'
 
 interface Props {
   item?: InventoryItem
+  recipes?: Recipe[]
+  onRecipesRequest?: () => void
+  linkedReady?: boolean
+  linkedMessage?: string
+  linkedMessageAlert?: boolean
+  onLinkedRecheck?: () => void
+  onLinkedRecover?: () => Promise<void>
+  recipeError?: string
+  onRecipesRetry?: () => void
+  linkedBlocked?: boolean
+  onLinkedCreate?: (inventory: InventoryCreateBody, menus: MenuLinkDraft[]) => Promise<{ kind: string; message?: string }>
+  onLinkSave?: (id: number, body: InventoryMenuLinkUpdate) => Promise<InventoryMenuLink>
   categories: Category[]
   onCategoriesChange: (categories: Category[]) => void
   stores: Store[]
@@ -20,10 +35,15 @@ interface Props {
   onStep?: (step: number) => void
   onAdjust?: (sign: 1 | -1) => void
   onClose: () => void
-  onSaved: () => Promise<void>
+  onSaved: (linked?: boolean) => Promise<void>
 }
 
-export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, quantityStopped = false, quantityNotice, step = 1, onStep, onAdjust }: Props) {
+export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, quantityStopped = false, quantityNotice, step = 1, onStep, onAdjust, recipes = [], recipeError, onRecipesRetry, linkedBlocked = false, onLinkedCreate, onLinkSave, onRecipesRequest, linkedReady = true, linkedMessage, linkedMessageAlert = true, onLinkedRecheck, onLinkedRecover }: Props) {
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkRecipes, setLinkRecipes] = useState(false)
+  useEffect(() => { if (linkRecipes) onRecipesRequest?.() }, [linkRecipes, onRecipesRequest])
+  const [menuDrafts, setMenuDrafts] = useState<MenuDraft[]>([])
+  const [linkedUnknown, setLinkedUnknown] = useState(false)
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(String(item?.categoryId ?? categories[0]?.id ?? ''))
   const [storeId, setStoreId] = useState(item?.storeId == null ? '' : String(item.storeId))
@@ -48,10 +68,11 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [saved, setSaved] = useState(false)
-  const close = () => { if (!submitting && !busy && !categoryPending.current) onClose() }
+  const close = () => { if (!submitting && !busy && !linkBusy && !categoryPending.current) onClose() }
   const dialogRef = useInventoryDialog(close, '#inv-name')
 
-  const locked = submitting || saved || busy || categorySubmitting
+  const locked = submitting || saved || busy || categorySubmitting || linkedUnknown || linkedBlocked || linkBusy
+  const linkageActive = linkRecipes || !!item?.menuLinks?.some(link => link.enabled)
 
   useEffect(() => {
     if (!categoryFocusRequested.current || locked || categoryFormOpen) return
@@ -107,7 +128,8 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (pending.current || busy || categoryPending.current) return
+    if (pending.current || busy || categoryPending.current || linkBusy || saved || linkedUnknown || linkedBlocked) return
+    if (linkRecipes && !item && !linkedReady) { setError('本人と世帯を確認してから登録してください'); return }
     const daily = dailyConsumption.trim() === '' ? null : Number(dailyConsumption)
     if ((autoConsumptionEnabled && daily === null) || (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7))) {
       if (!autoConsumptionEnabled) setConsumptionCorrectionOpen(true)
@@ -132,6 +154,9 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
       setError('在庫個数・閾値は0以上で入力してください')
       return
     }
+    const menus = linkRecipes && !item ? menuDraftPayload(menuDrafts) : null
+    if (linkRecipes && !item && !menus) { setError(menuDrafts.length === 0 ? '料理を1件以上追加してください' : '使用数は0.1〜99999.9、小数点第一位までで入力してください'); return }
+    if (linkRecipes && !item && !onLinkedCreate) { setError('本人と世帯を確認してから登録してください'); return }
     setError('')
     pending.current = true
     setSubmitting(true)
@@ -146,7 +171,14 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
         price: price.trim() === '' ? null : Number(price),
       }
       if (item) await apiClient.patch(`/inventory-items/${item.id}`, body)
-      else await apiClient.post('/inventory-items', { ...body, quantity: quantityValue })
+      else if (menus && onLinkedCreate) {
+        const outcome = await onLinkedCreate({ ...body, quantity: quantityValue }, menus)
+        if (outcome.kind !== 'success') {
+          setLinkedUnknown(outcome.kind === 'unknown' || outcome.kind === 'detached')
+          setError(outcome.message ?? '結果を確認できません。前回の結果を確認してください')
+          pending.current = false; setSubmitting(false); return
+        }
+      } else await apiClient.post('/inventory-items', { ...body, quantity: quantityValue })
     } catch (err) {
       setError(getApiErrorMessage(err, item ? '在庫の編集に失敗しました' : '在庫の登録に失敗しました'))
       pending.current = false
@@ -155,7 +187,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     }
     // The save already succeeded. A refresh failure must never enable resending it.
     setSaved(true)
-    try { await onSaved() }
+    try { if (!item && linkRecipes) await onSaved(true); else await onSaved() }
     catch { setSubmitting(false); setError('保存しました。一覧の再取得に失敗しました。閉じて再読み込みしてください') }
   }
 
@@ -170,6 +202,8 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
       <div ref={dialogRef} className="modal inventory-modal inventory-form-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
         <h2 id="inventory-modal-title">{item ? '在庫の詳細編集' : '在庫を登録'}</h2>
         <form onSubmit={handleSubmit} noValidate>
+          <fieldset className="inventory-form-fields" disabled={locked}>
+          <legend className="visually-hidden">在庫の入力</legend>
           <label htmlFor="inv-name">品名</label>
           <input id="inv-name" type="text" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
           <div className="inventory-category-heading">
@@ -269,7 +303,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
                 <p className="hint">オンのときだけ1日の消費量を入力します</p>
               </div>
               <button type="button" role="switch" aria-labelledby="inv-consumption-title" aria-checked={autoConsumptionEnabled}
-                aria-controls="inventory-consumption-fields" className="ui-switch" disabled={locked}
+                aria-controls="inventory-consumption-fields" className="ui-switch" disabled={locked || linkageActive}
                 onClick={() => { setConsumptionCorrectionOpen(false); setAutoConsumptionEnabled(enabled => !enabled) }}>
                 <span className="ui-switch-track" aria-hidden="true" />
                 <span className="ui-switch-state" aria-hidden="true">{autoConsumptionEnabled ? 'オン' : 'オフ'}</span>
@@ -287,9 +321,23 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             </div>}
             <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
           </div>
+          {linkageActive && <p className="hint">献立との連携中は毎日の自動消費を開始できません。</p>}
+          {!item && <section className="ui-card inventory-menu-registration">
+            <label className="inventory-menu-check"><input type="checkbox" checked={linkRecipes} disabled={locked || autoConsumptionEnabled || !linkedReady} onChange={event => setLinkRecipes(event.target.checked)} />レシピも登録する</label>
+            {autoConsumptionEnabled && <p className="hint">毎日の自動消費をオフにすると献立へ連携できます。入力した消費量は保持します。</p>}
+            {linkRecipes && <InventoryMenuDrafts recipes={recipes} drafts={menuDrafts} disabled={locked} recipeError={recipeError} onRecipesRetry={onRecipesRetry} onChange={setMenuDrafts} />}
+          </section>}
+          </fieldset>
+          {item && onLinkSave && (item.menuLinks ?? []).length > 0 && <section aria-label="献立との連携設定" className="inventory-menu-settings">
+            <h3>献立との連携設定</h3><p className="hint">連携設定は下の「保存」とは別に保存します。</p>
+            {(item.menuLinks ?? []).map(link => <InventoryMenuSettings key={link.id} link={link} quantity={item.quantity} autoConsumptionEnabled={item.autoConsumptionEnabled} disabled={locked || !linkedReady} onSave={onLinkSave} onBusy={setLinkBusy} />)}
+          </section>}
+          {linkedMessage && (!error || !linkedMessageAlert) && <p className={linkedMessageAlert ? 'error' : 'hint'} role={linkedMessageAlert ? 'alert' : undefined}>{linkedMessage}</p>}
+          {!linkedReady && onLinkedRecheck && <button type="button" className="btn btn-secondary" disabled={submitting || busy || linkBusy} onClick={onLinkedRecheck}>献立連携の本人と世帯を再確認</button>}
+          {(linkedUnknown || linkedBlocked) && onLinkedRecover && <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={() => void onLinkedRecover()}>同じ内容で確認</button>}
           {error && error !== CONSUMPTION_ERROR && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions ui-form-actions">
-            <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting} onClick={close}>
+            <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting || linkBusy} onClick={close}>
               キャンセル
             </button>
             <button type="submit" className="ui-action" disabled={locked}>
