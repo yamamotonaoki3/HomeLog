@@ -76,7 +76,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const locked = submitting || saved || busy || categorySubmitting || linkedUnknown || linkedBlocked || quantityStopped
   const allocated = menuDrafts.reduce((total, draft) => total + (Number.isInteger(Number(draft.remaining)) && Number(draft.remaining) >= 0 ? Number(draft.remaining) : 0), 0)
   const linkageActive = allocated > 0
-  const overAllocated = quantity.trim() !== '' && quantityValid(Number(quantity)) && Number(quantity) < allocated
+  const overAllocated = menuDraftPayload(menuDrafts) !== null && quantity.trim() !== '' && quantityValid(Number(quantity)) && Number(quantity) < allocated
   const visibleError = overAllocated ? '予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください' : error
   const changeQuantity = (value: string) => {
     setQuantity(value)

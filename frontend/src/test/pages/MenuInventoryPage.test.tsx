@@ -56,6 +56,60 @@ function setupOrdinaryMenu(){
  server.use(http.get('/api/menu-entries',()=>HttpResponse.json([{id:11,recipeId:10,recipeTitle:state.accountB?'[E2E_TEST] Bの献立':'[E2E_TEST] Aの献立',freeTextMemo:null,weekStartDate:getMondayOf(new Date())}])),http.get('/api/recipes',()=>HttpResponse.json(state.accountB?[]:[privateRecipe])),http.post('/api/menu-entries',async({request})=>{posts.push(await request.json());return HttpResponse.json({id:12},{status:201})}),http.delete('/api/menu-entries/11',({request})=>{deletes.push(request.url);return new HttpResponse(null,{status:204})}))
  return {state,posts,deletes}
 }
+it('初回本人確認中の通常メモは下書きを保持し確認完了後の明示送信だけで追加する',async()=>{
+ const {posts}=setupOrdinaryMenu();let release!:()=>void,arrived!:()=>void,authChecks=0
+ const gate=new Promise<void>(r=>{release=r}),entered=new Promise<void>(r=>{arrived=r})
+ server.use(http.get('/api/auth/me',async()=>{authChecks++;arrived();await gate;return HttpResponse.json({id:1})}))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await entered
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ const memo='[E2E_TEST] 初回確認を待つメモ'
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toBeEnabled()
+ expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeDisabled()
+ expect(authChecks).toBe(1)
+ await act(async()=>{release()})
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(authChecks).toBe(1)
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}])
+})
+it('初回本人確認失敗でも通常メモを保持し再確認後の明示送信だけで追加する',async()=>{
+ const {posts}=setupOrdinaryMenu();let unavailable=true
+ server.use(http.get('/api/auth/me',()=>unavailable?new HttpResponse(null,{status:503}):HttpResponse.json({id:1})))
+ const user=userEvent.setup();render(<MenuPage/>);
+ expect(await screen.findByRole('status')).toBeVisible()
+ await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('本人と世帯を確認できません'))
+ expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeEnabled()
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ const memo='[E2E_TEST] 再確認後に送るメモ'
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toBeEnabled()
+ await user.click(screen.getByRole('button',{name:'閉じる'}))
+ unavailable=false
+ await user.click(screen.getByRole('button',{name:'本人と世帯を再確認'}))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}])
+})
 it('通常メモ保存の直前に同tokenの世帯変更を検出し旧draftを送信しない',async()=>{
  const {posts}=setupOrdinaryMenu();let household=10
  server.use(http.get('/api/households/me',()=>HttpResponse.json({id:household})))

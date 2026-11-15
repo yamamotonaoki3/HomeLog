@@ -192,6 +192,7 @@ export function MenuPage() {
     setError('')
     if (addMode === 'recipe' && selectedIds.length === 0) { setError('レシピを選択してください'); return }
     if (addMode === 'memo' && !memo.trim()) { setError('メモを入力してください'); return }
+    if (!operation.verifiedScope) { setError('本人と世帯の確認が必要です。確認中はお待ちください。確認できない場合は、閉じて本人と世帯を再確認してください'); return }
     const targetWeek = weekStartDate
     const ids = [...selectedIds]
     const mode = addMode
@@ -205,7 +206,7 @@ export function MenuPage() {
     let resultUncertain = false
     let refreshFailed = false
     try {
-      if (!credentials || !operation.verifiedScope) { operation.invalidate(); return }
+      if (!credentials) { operation.invalidate(); return }
       try { await verifyMenuScope(credentials, operation.verifiedScope, valid) }
       catch (error) { if (pageGeneration.current !== epoch) return; if (error instanceof PurchaseIdentityError || !valid()) operation.invalidate(); else setError('本人と世帯を再確認してください'); return }
       const payloads = mode === 'recipe' ? ids.map(recipeId => ({ weekStartDate: targetWeek, recipeId })) : [{ weekStartDate: targetWeek, freeTextMemo: memo.trim() }]
@@ -253,6 +254,7 @@ export function MenuPage() {
 
   const handleDelete = async () => {
     if (scopeInvalidated || !deleteTarget || pending.current || (deleteTarget.inventoryLinkage && (operation.busy || operation.pending || mealSyncRequired || linkBusy))) return
+    if (!operation.verifiedScope) { setDeleteError('本人と世帯の確認が必要です。確認中はお待ちください。確認できない場合は、閉じて本人と世帯を再確認してください'); return }
     const target = deleteTarget
     const epoch = pageGeneration.current
     const credentials = captureMenuCredentials()
@@ -261,7 +263,7 @@ export function MenuPage() {
     setSubmitting(true)
     setDeleteError('')
     try {
-      if (!credentials || !operation.verifiedScope) { operation.invalidate(); return }
+      if (!credentials) { operation.invalidate(); return }
       await verifyMenuScope(credentials, operation.verifiedScope, valid)
       if (!valid()) { if (pageGeneration.current === epoch) operation.invalidate(); return }
       await apiClient.delete('/menu-entries/' + target.id, boundConfig(credentials))
@@ -291,9 +293,9 @@ export function MenuPage() {
         <button type="button" className="menu-week-button" disabled={weekMoveDisabled} onClick={() => setWeekStartDate(value => addWeeks(value, 1))}>次の週<span aria-hidden="true">›</span></button>
       </div>
       <button ref={addTrigger} type="button" className="ui-action" disabled={loading||scopeInvalidated} onClick={() => { if (!uncertain) setError(''); setAddOpen(true) }}><span aria-hidden="true">＋</span>レシピを追加</button>
-      {(linkedPresent||scopeInvalidated) && operation.message && <p role="status">{operation.message}</p>}
+      {(linkedPresent||scopeInvalidated||!operation.verifiedScope) && (operation.message||!operation.verifiedScope) && <p role="status">{operation.message || '本人と世帯の確認が必要です。確認中はお待ちください。確認できない場合は本人と世帯を再確認してください。下書きは保持されます。'}</p>}
       {operation.pending && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={()=>{void finishMeal(true)}}>前回の結果を確認</button>}
-      {(linkedPresent||scopeInvalidated) && (!operation.verifiedScope||scopeInvalidated) && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={()=>{void operation.recheck()}}>本人と世帯を再確認</button>}
+      {(!operation.verifiedScope||scopeInvalidated) && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={()=>{void operation.recheck()}}>本人と世帯を再確認</button>}
       {mealSyncRequired && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={()=>{void synchronizeMeal()}}>献立の一覧を再取得</button>}
       {inventoryError && <div role="status"><p>連携設定を確認できません。食事の記録とは別に再取得してください。</p><button type="button" className="btn btn-secondary" onClick={()=>{void fetchInventories().catch(()=>{})}}>連携設定を再取得</button></div>}
       {loading ? <p className="ui-empty">読み込み中...</p> : <>
