@@ -32,18 +32,23 @@ export interface MenuEntry {
   weekStartDate: string
 }
 export interface MenuInventoryLinkage {
-  linkId: number
+  linkId: number | null
   inventoryItemId: number | null
   inventoryName: string | null
   quantity: number | null
   usageQuantity: number
   enabled: boolean
   carryEnabled: boolean
-  linkRevision: number
+  linkRevision: number | null
+  remainingCount?: number | null
+  memo?: string | null
+  menuPlanEnabled?: boolean | null
+  menuPlanRevision?: number | null
+  undoQuantity?: number | null
   mealState: 'uneaten' | 'eaten'
   mealRevision: number
   canConsume: boolean
   canUndo: boolean
   unavailableReason: 'inventory_deleted' | 'recipe_deleted' | 'link_disabled' | 'daily_consumption' | null
 }
-export interface MenuMealResult { menuEntryId: number; mealState: 'uneaten' | 'eaten'; mealRevision: number; inventoryItemId: number; quantity: number; carryEnabled: boolean }
+export interface MenuMealResult { menuEntryId: number; mealState: 'uneaten' | 'eaten'; mealRevision: number; inventoryItemId: number; quantity: number; carryEnabled: boolean; remainingCount?: number | null; menuPlanEnabled?: boolean; menuPlanRevision?: number }

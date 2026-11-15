@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
-import type { InventoryCreateBody, MenuLinkDraft, InventoryMenuLink, InventoryMenuLinkUpdate, Category, Store, InventoryItem } from '../../api/zaikoTypes'
+import type { InventoryCreateBody, MenuPlanLine, MenuLinkDraft, InventoryMenuLink, InventoryMenuLinkUpdate, Category, Store, InventoryItem } from '../../api/zaikoTypes'
 import { validPrice, PRICE_ERROR } from './price'
 import { useInventoryDialog } from './useInventoryDialog'
-import { InventoryMenuSettings } from './InventoryMenuSettings'
+import { quantityValid } from '../../lib/shoppingPending'
 import type { Recipe } from '../../api/kondateTypes'
 import { InventoryMenuDrafts, menuDraftPayload, type MenuDraft } from './InventoryMenuDrafts'
 
@@ -12,6 +12,7 @@ const CONSUMPTION_ERROR = '1日の消費量は0.1〜99999.9、小数点第一位
 
 interface Props {
   item?: InventoryItem
+  onPlanSave?: (inventory: InventoryCreateBody, enabled: boolean, links: MenuPlanLine[]) => Promise<{ kind: string; message?: string }>
   recipes?: Recipe[]
   onRecipesRequest?: () => void
   linkedReady?: boolean
@@ -38,11 +39,12 @@ interface Props {
   onSaved: (linked?: boolean) => Promise<void>
 }
 
-export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, quantityStopped = false, quantityNotice, step = 1, onStep, onAdjust, recipes = [], recipeError, onRecipesRetry, linkedBlocked = false, onLinkedCreate, onLinkSave, onRecipesRequest, linkedReady = true, linkedMessage, linkedMessageAlert = true, onLinkedRecheck, onLinkedRecover }: Props) {
-  const [linkBusy, setLinkBusy] = useState(false)
-  const [linkRecipes, setLinkRecipes] = useState(false)
-  useEffect(() => { if (linkRecipes) onRecipesRequest?.() }, [linkRecipes, onRecipesRequest])
-  const [menuDrafts, setMenuDrafts] = useState<MenuDraft[]>([])
+export function InventoryModal({ item, categories, onCategoriesChange, stores, onStoresChange, onClose, onSaved, busy = false, quantityStopped = false, quantityNotice, step: initialStep = 1, recipes = [], recipeError, onRecipesRetry, linkedBlocked = false, onPlanSave, onRecipesRequest, linkedReady = true, linkedMessage, linkedMessageAlert = true, onLinkedRecheck, onLinkedRecover }: Props) {
+  const [linkRecipes, setLinkRecipes] = useState(item?.menuPlanEnabled ?? false)
+  const [menuDrafts, setMenuDrafts] = useState<MenuDraft[]>(() => (item?.menuLinks ?? []).map(link => ({ key: link.id, linkId: link.id, recipeId: link.recipeId ?? undefined, title: link.recipeTitle, remaining: link.remainingCount == null ? '' : String(link.remainingCount), memo: link.memo ?? '', carry: link.carryEnabled, legacy: link.remainingCount == null, legacyEnabled: link.enabled, legacyUsage: link.usageQuantity })))
+  const showRecipePicker = linkRecipes || menuDrafts.length > 0
+  useEffect(() => { if (showRecipePicker) onRecipesRequest?.() }, [showRecipePicker, onRecipesRequest])
+  const [step, setStep] = useState(initialStep)
   const [linkedUnknown, setLinkedUnknown] = useState(false)
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(String(item?.categoryId ?? categories[0]?.id ?? ''))
@@ -68,11 +70,21 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [saved, setSaved] = useState(false)
-  const close = () => { if (!submitting && !busy && !linkBusy && !categoryPending.current) onClose() }
+  const close = () => { if (!submitting && !busy && !categoryPending.current) onClose() }
   const dialogRef = useInventoryDialog(close, '#inv-name')
 
-  const locked = submitting || saved || busy || categorySubmitting || linkedUnknown || linkedBlocked || linkBusy
-  const linkageActive = linkRecipes || !!item?.menuLinks?.some(link => link.enabled)
+  const locked = submitting || saved || busy || categorySubmitting || linkedUnknown || linkedBlocked || quantityStopped
+  const allocated = menuDrafts.reduce((total, draft) => total + (Number.isInteger(Number(draft.remaining)) && Number(draft.remaining) >= 0 ? Number(draft.remaining) : 0), 0)
+  const linkageActive = allocated > 0
+  const changeQuantity = (value: string) => {
+    if (value.trim() && quantityValid(Number(value)) && Number(value) < allocated) { setError('予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください'); return }
+    setQuantity(value); setError('')
+  }
+  const adjustDraft = (sign: 1 | -1) => {
+    const next = Math.round((Number(quantity) + sign * step) * 10) / 10
+    if (!quantityValid(next)) { setError('在庫個数は0〜99999.9で入力してください'); return }
+    changeQuantity(String(next))
+  }
 
   useEffect(() => {
     if (!categoryFocusRequested.current || locked || categoryFormOpen) return
@@ -128,8 +140,8 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (pending.current || busy || categoryPending.current || linkBusy || saved || linkedUnknown || linkedBlocked) return
-    if (linkRecipes && !item && !linkedReady) { setError('本人と世帯を確認してから登録してください'); return }
+    if (pending.current || busy || categoryPending.current || saved || linkedUnknown || linkedBlocked || quantityStopped) return
+    if (!linkedReady) { setError('本人と世帯を確認してから登録してください'); return }
     const daily = dailyConsumption.trim() === '' ? null : Number(dailyConsumption)
     if ((autoConsumptionEnabled && daily === null) || (daily !== null && (!Number.isFinite(daily) || daily < 0.1 || daily > 99999.9 || Math.abs(daily * 10 - Math.round(daily * 10)) > 1e-7))) {
       if (!autoConsumptionEnabled) setConsumptionCorrectionOpen(true)
@@ -150,13 +162,15 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     }
     const quantityValue = Number(trimmedQuantity)
     const thresholdValue = Number(trimmedThreshold)
-    if (Number.isNaN(quantityValue) || quantityValue < 0 || Number.isNaN(thresholdValue) || thresholdValue < 0) {
+    if (!quantityValid(quantityValue) || !quantityValid(thresholdValue)) {
       setError('在庫個数・閾値は0以上で入力してください')
       return
     }
-    const menus = linkRecipes && !item ? menuDraftPayload(menuDrafts) : null
-    if (linkRecipes && !item && !menus) { setError(menuDrafts.length === 0 ? '料理を1件以上追加してください' : '使用数は0.1〜99999.9、小数点第一位までで入力してください'); return }
-    if (linkRecipes && !item && !onLinkedCreate) { setError('本人と世帯を確認してから登録してください'); return }
+    const menus = menuDraftPayload(menuDrafts)
+    if (!menus) { setError('残り予定回数は0〜99999の整数で入力してください。旧設定の料理も回数を入力するか関連を外してください'); return }
+    if (allocated > quantityValue) { setError('予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください'); return }
+    if (allocated > 0 && autoConsumptionEnabled) { setError('予定を割り当てるには毎日の自動消費をオフにしてください。設定した消費量は保持します'); return }
+    if (!onPlanSave) { setError('本人と世帯を確認してから保存してください'); return }
     setError('')
     pending.current = true
     setSubmitting(true)
@@ -170,15 +184,12 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
         threshold: thresholdValue,
         price: price.trim() === '' ? null : Number(price),
       }
-      if (item) await apiClient.patch(`/inventory-items/${item.id}`, body)
-      else if (menus && onLinkedCreate) {
-        const outcome = await onLinkedCreate({ ...body, quantity: quantityValue }, menus)
-        if (outcome.kind !== 'success') {
-          setLinkedUnknown(outcome.kind === 'unknown' || outcome.kind === 'detached')
-          setError(outcome.message ?? '結果を確認できません。前回の結果を確認してください')
-          pending.current = false; setSubmitting(false); return
-        }
-      } else await apiClient.post('/inventory-items', { ...body, quantity: quantityValue })
+      const outcome = await onPlanSave({ ...body, quantity: quantityValue }, linkRecipes, menus)
+      if (outcome.kind !== 'success') {
+        setLinkedUnknown(outcome.kind === 'unknown' || outcome.kind === 'detached')
+        setError(outcome.message ?? '結果を確認できません。前回の結果を確認してください')
+        pending.current = false; setSubmitting(false); return
+      }
     } catch (err) {
       setError(getApiErrorMessage(err, item ? '在庫の編集に失敗しました' : '在庫の登録に失敗しました'))
       pending.current = false
@@ -187,7 +198,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
     }
     // The save already succeeded. A refresh failure must never enable resending it.
     setSaved(true)
-    try { if (!item && linkRecipes) await onSaved(true); else await onSaved() }
+    try { await onSaved(true) }
     catch { setSubmitting(false); setError('保存しました。一覧の再取得に失敗しました。閉じて再読み込みしてください') }
   }
 
@@ -261,31 +272,21 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
               </button>
             </div>
           )}
-          {item ? <>
-            <p className="inventory-quantity-caption">在庫個数（＋/－で即時反映）</p>
-            <div className="inventory-quantity-row">
-              <div className="inventory-quantity-controls inventory-quantity-inline">
-                <span className="qty-value" aria-live="polite">{item.quantity.toFixed(1)}</span>
-                <button type="button" className="btn btn-secondary" disabled={locked || quantityStopped} aria-label={`${item.name}を増やす`} onClick={() => onAdjust?.(1)}>＋</button>
-                <button type="button" className="btn btn-secondary" disabled={locked || quantityStopped} aria-label={`${item.name}を減らす`} onClick={() => onAdjust?.(-1)}>－</button>
-              </div>
-              <div className="inventory-step-options" role="group" aria-label="増減幅">
-                <span>増減幅</span>
-                {[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary"
-                  aria-pressed={step === value} disabled={locked || quantityStopped}
-                  onClick={() => onStep?.(value)}>{value}</button>)}
-              </div>
-            </div>
-            <p className="hint">個数の変更はキャンセルしても元に戻りません</p>
-            {quantityNotice && <p className="error" role="alert">{quantityNotice}</p>}
-            {priceField}
-          </> : <div className="inventory-form-pair">
+          <div className="inventory-form-pair">
             <div>
               <label htmlFor="inv-quantity">在庫個数</label>
-              <input id="inv-quantity" type="number" step="0.1" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <input id="inv-quantity" type="number" step="0.1" min="0" max="99999.9" value={quantity} onChange={event => changeQuantity(event.target.value)} />
             </div>
             {priceField}
-          </div>}
+          </div>
+          {item && <>
+            <div className="inventory-quantity-controls inventory-quantity-inline">
+              <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を増やす`} onClick={() => adjustDraft(1)}>＋</button>
+              <button type="button" className="btn btn-secondary" disabled={locked} aria-label={`${item.name}を減らす`} onClick={() => adjustDraft(-1)}>－</button>
+            </div>
+            <div className="inventory-step-options" role="group" aria-label="増減幅"><span>増減幅</span>{[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary" aria-pressed={step === value} disabled={locked} onClick={() => setStep(value)}>{value}</button>)}</div>
+          </>}
+          <p className="hint">在庫個数と料理の変更は、下の「保存」でまとめて反映します。キャンセルすると変更を破棄します。</p>
           <label htmlFor="inv-threshold">買い物リスト追加閾値</label>
           <input
             id="inv-threshold"
@@ -303,7 +304,7 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
                 <p className="hint">オンのときだけ1日の消費量を入力します</p>
               </div>
               <button type="button" role="switch" aria-labelledby="inv-consumption-title" aria-checked={autoConsumptionEnabled}
-                aria-controls="inventory-consumption-fields" className="ui-switch" disabled={locked || linkageActive}
+                aria-controls="inventory-consumption-fields" className="ui-switch" disabled={locked || (!autoConsumptionEnabled && linkageActive)}
                 onClick={() => { setConsumptionCorrectionOpen(false); setAutoConsumptionEnabled(enabled => !enabled) }}>
                 <span className="ui-switch-track" aria-hidden="true" />
                 <span className="ui-switch-state" aria-hidden="true">{autoConsumptionEnabled ? 'オン' : 'オフ'}</span>
@@ -322,22 +323,21 @@ export function InventoryModal({ item, categories, onCategoriesChange, stores, o
             <p className="hint">毎日1:00（日本時間）に減ります。開始・再開は翌日から。停止・消費量変更時は到来済みの未処理分を旧設定で精算します。</p>
           </div>
           {linkageActive && <p className="hint">献立との連携中は毎日の自動消費を開始できません。</p>}
-          {!item && <section className="ui-card inventory-menu-registration">
-            <label className="inventory-menu-check"><input type="checkbox" checked={linkRecipes} disabled={locked || autoConsumptionEnabled || !linkedReady} onChange={event => setLinkRecipes(event.target.checked)} />レシピも登録する</label>
-            {autoConsumptionEnabled && <p className="hint">毎日の自動消費をオフにすると献立へ連携できます。入力した消費量は保持します。</p>}
-            {linkRecipes && <InventoryMenuDrafts recipes={recipes} drafts={menuDrafts} disabled={locked} recipeError={recipeError} onRecipesRetry={onRecipesRetry} onChange={setMenuDrafts} />}
-          </section>}
+          <section className="ui-card inventory-menu-registration">
+            <label className="inventory-menu-check"><input type="checkbox" checked={linkRecipes} disabled={locked || !linkedReady} onChange={event => setLinkRecipes(event.target.checked)} />献立と連携する</label>
+            <p className="hint">オフでも料理の予定と持ち越し設定を保持します。食事の記録と新しい週への持ち越しは停止します。</p>
+            {autoConsumptionEnabled && <p className="hint">予定を割り当てる前に、毎日の自動消費を明示的にオフにしてください。入力した消費量は保持します。</p>}
+            <p className="inventory-menu-plan-summary" aria-live="polite">予定合計 {allocated}回 ／ 在庫 {quantity || '—'}個 ／ 未割当 {quantityValid(Number(quantity)) ? Math.round((Number(quantity) - allocated) * 10) / 10 : '—'}個</p>
+            {showRecipePicker && <InventoryMenuDrafts recipes={recipes} drafts={menuDrafts} disabled={locked} recipeError={recipeError} onRecipesRetry={onRecipesRetry} onChange={setMenuDrafts} />}
+          </section>
           </fieldset>
-          {item && onLinkSave && (item.menuLinks ?? []).length > 0 && <section aria-label="献立との連携設定" className="inventory-menu-settings">
-            <h3>献立との連携設定</h3><p className="hint">連携設定は下の「保存」とは別に保存します。</p>
-            {(item.menuLinks ?? []).map(link => <InventoryMenuSettings key={link.id} link={link} quantity={item.quantity} autoConsumptionEnabled={item.autoConsumptionEnabled} disabled={locked || !linkedReady} onSave={onLinkSave} onBusy={setLinkBusy} />)}
-          </section>}
+          {quantityNotice && <p role="alert" className="error">{quantityNotice}</p>}
           {linkedMessage && (!error || !linkedMessageAlert) && <p className={linkedMessageAlert ? 'error' : 'hint'} role={linkedMessageAlert ? 'alert' : undefined}>{linkedMessage}</p>}
-          {!linkedReady && onLinkedRecheck && <button type="button" className="btn btn-secondary" disabled={submitting || busy || linkBusy} onClick={onLinkedRecheck}>献立連携の本人と世帯を再確認</button>}
+          {!linkedReady && onLinkedRecheck && <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={onLinkedRecheck}>献立連携の本人と世帯を再確認</button>}
           {(linkedUnknown || linkedBlocked) && onLinkedRecover && <button type="button" className="btn btn-secondary" disabled={submitting || busy} onClick={() => void onLinkedRecover()}>同じ内容で確認</button>}
           {error && error !== CONSUMPTION_ERROR && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions ui-form-actions">
-            <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting || linkBusy} onClick={close}>
+            <button type="button" className="ui-form-cancel" disabled={submitting || busy || categorySubmitting} onClick={close}>
               キャンセル
             </button>
             <button type="submit" className="ui-action" disabled={locked}>

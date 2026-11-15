@@ -1,0 +1,55 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { expect, it, vi } from 'vitest'
+import { InventoryModal } from '../../components/zaiko/InventoryModal'
+const item = { id: 21, name: '[E2E_TEST] 鶏肉', categoryId: 1, storeId: null, quantity: 5, threshold: 0.5, price: 300, dailyConsumption: 0.3, autoConsumptionEnabled: false, menuPlanEnabled: true, menuPlanRevision: 4, menuLinks: [{ id: 8, recipeId: 2, recipeTitle: '[E2E_TEST] カレー', usageQuantity: 1, enabled: true, carryEnabled: true, revision: 1, remainingCount: 2, memo: '辛口' }] }
+const base = { categories: [{ id: 1, name: '[E2E_TEST] 食材', isDefault: false }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onClose: vi.fn(), onSaved: vi.fn().mockResolvedValue(undefined) }
+it('品目OFFでも既存の料理があればレシピを取得する', () => {
+  const request = vi.fn()
+  render(<InventoryModal {...base} item={{ ...item, menuPlanEnabled: false }} onRecipesRequest={request} />)
+  expect(request).toHaveBeenCalledTimes(1)
+})
+it('編集の数量・全料理はdraftで取消は未送信、保存だけ全体を1回送る', async () => {
+  const save = vi.fn().mockResolvedValue({ kind: 'success' }), adjust = vi.fn(), user = userEvent.setup()
+  const view = render(<InventoryModal {...base} item={item} onPlanSave={save} onAdjust={adjust} />)
+  await user.click(screen.getByRole('button', { name: '[E2E_TEST] 鶏肉を増やす' }))
+  fireEvent.change(screen.getByLabelText('[E2E_TEST] カレーの残り予定回数'), { target: { value: '3' } })
+  fireEvent.change(screen.getByLabelText('[E2E_TEST] カレーのメモ'), { target: { value: '甘口' } })
+  expect(save).not.toHaveBeenCalled(); expect(adjust).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+  expect(save).not.toHaveBeenCalled()
+  view.unmount()
+  render(<InventoryModal {...base} item={item} onPlanSave={save} />)
+  expect(screen.getByLabelText('在庫個数')).toHaveValue(5)
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ quantity: 5, dailyConsumption: 0.3, autoConsumptionEnabled: false }), true, [{ linkId: 8, remainingCount: 2, memo: '辛口', carryEnabled: true }])
+})
+it('品目OFFでも合計超過と小数回数を拒否し、解除は原本削除せず全集合から外す', async () => {
+  const save = vi.fn().mockResolvedValue({ kind: 'success' }), user = userEvent.setup()
+  render(<InventoryModal {...base} item={item} onPlanSave={save} />)
+  await user.click(screen.getByRole('checkbox', { name: '献立と連携する' }))
+  fireEvent.change(screen.getByLabelText('[E2E_TEST] カレーの残り予定回数'), { target: { value: '6' } })
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('予定回数の合計が在庫個数を超えています')
+  expect(save).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('[E2E_TEST] カレーの残り予定回数'), { target: { value: '1.5' } })
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('整数')
+  await user.click(screen.getByRole('button', { name: '[E2E_TEST] カレーの関連を外す' }))
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ quantity: 5 }), false, []))
+})
+it('旧回数は推測せず空欄、daily設定は明示OFF後も保持して保存する', async () => {
+  const save = vi.fn().mockResolvedValue({ kind: 'success' }), user = userEvent.setup()
+  render(<InventoryModal {...base} item={{ ...item, autoConsumptionEnabled: true, menuPlanEnabled: false, menuLinks: [{ ...item.menuLinks[0], remainingCount: null, enabled: false }] }} onPlanSave={save} />)
+  expect(screen.getByLabelText('[E2E_TEST] カレーの残り予定回数')).toHaveValue(null)
+  expect(screen.getByText('旧設定で連携停止中')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(save).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('switch', { name: '毎日の自動消費' }))
+  fireEvent.change(screen.getByLabelText('[E2E_TEST] カレーの残り予定回数'), { target: { value: '1' } })
+  await user.click(screen.getByRole('checkbox', { name: '献立と連携する' }))
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ dailyConsumption: 0.3, autoConsumptionEnabled: false }), true, expect.any(Array)))
+})

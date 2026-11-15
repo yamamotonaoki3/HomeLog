@@ -1,20 +1,26 @@
 ﻿import { useId, useState } from 'react'
 import type { Recipe } from '../../api/kondateTypes'
-import type { MenuLinkDraft } from '../../api/zaikoTypes'
+import type { MenuPlanLine } from '../../api/zaikoTypes'
 import { RecipePicker } from '../kondate/RecipePicker'
 import { MenuTitle } from '../kondate/MenuTitle'
 
 export interface MenuDraft {
   key: number
   recipeId?: number
+  linkId?: number
+  legacy?: boolean
+  legacyEnabled?: boolean
+  legacyUsage?: number
   title: string
-  usage: string
+  remaining: string
+  memo: string
   carry: boolean
 }
-export function menuDraftPayload(drafts: MenuDraft[]): MenuLinkDraft[] | null {
-  if (drafts.length < 1 || drafts.length > 20 || drafts.some(draft => !draft.usage.trim() || !Number.isFinite(Number(draft.usage)) || Number(draft.usage) < 0.1 || Number(draft.usage) > 99999.9 || Math.abs(Number(draft.usage) * 10 - Math.round(Number(draft.usage) * 10)) > 1e-7)) return null
-  return drafts.map(draft => ({ ...(draft.recipeId === undefined ? { newRecipeTitle: draft.title } : { recipeId: draft.recipeId }), usageQuantity: Number(draft.usage), carryEnabled: draft.carry }))
+export function menuDraftPayload(drafts: MenuDraft[]): MenuPlanLine[] | null {
+  if (drafts.length > 20 || drafts.some(draft => !draft.remaining.trim() || !Number.isInteger(Number(draft.remaining)) || Number(draft.remaining) < 0 || Number(draft.remaining) > 99999 || draft.memo.length > 255)) return null
+  return drafts.map(draft => ({ ...(draft.linkId !== undefined ? { linkId: draft.linkId } : draft.recipeId === undefined ? { newRecipeTitle: draft.title } : { recipeId: draft.recipeId }), remainingCount: Number(draft.remaining), memo: draft.memo === '' ? null : draft.memo, carryEnabled: draft.carry }))
 }
+
 interface Props {
   recipes: Recipe[]
   drafts: MenuDraft[]
@@ -32,13 +38,13 @@ export function InventoryMenuDrafts({ recipes, drafts, disabled, recipeError, on
       const name = title.trim()
       if (!name || name.length > 100) { setError('料理名は1〜100文字で入力してください'); return }
       if (drafts.length >= 20) { setError('料理は20件まで追加できます'); return }
-      onChange([...drafts, { key: Math.max(0, ...drafts.map(draft => draft.key)) + 1, title: name, usage: '1', carry: false }]); setTitle('')
+      onChange([...drafts, { key: Math.max(0, ...drafts.map(draft => draft.key)) + 1, title: name, remaining: '1', memo: '', carry: false }]); setTitle('')
     } else {
       const additions = selected.filter(id => !drafts.some(draft => draft.recipeId === id)).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => !!recipe)
       if (additions.length === 0) { setError('レシピを選択してください。同じレシピは一度だけ追加できます'); return }
       if (drafts.length + additions.length > 20) { setError('料理は20件まで追加できます'); return }
       const base = Math.max(0, ...drafts.map(draft => draft.key))
-      onChange([...drafts, ...additions.map((recipe, index) => ({ key: base + index + 1, recipeId: recipe.id, title: recipe.title, usage: '1', carry: false }))]); setSelected([])
+      onChange([...drafts, ...additions.map((recipe, index) => ({ key: base + index + 1, recipeId: recipe.id, title: recipe.title, remaining: '1', memo: '', carry: false }))]); setSelected([])
     }
   }
   return <section className="inventory-menu-drafts" aria-label="登録する料理">
@@ -52,12 +58,14 @@ export function InventoryMenuDrafts({ recipes, drafts, disabled, recipeError, on
     </>}
     <button type="button" className="btn btn-secondary" disabled={disabled || (mode === 'recipe' && !!recipeError)} onClick={append}>{mode === 'new' ? '料理を追加' : '選んだレシピを追加'}</button>
     {error && <p className="error" role="alert">{error}</p>}
-    <p className="hint">今週の献立へ追加します。登録では在庫を予約・減算しません。「食べた」でこの在庫だけを使用数分減らします。</p>
+    <p className="hint">保存では在庫を減らしません。「食べた」1回で在庫1個と残り予定1回を減らします。関連を外してもレシピ原本と在庫は残ります。</p>
     <ol className="inventory-menu-draft-list">{drafts.map(draft => <li key={draft.key} className="ui-card inventory-menu-draft">
       <MenuTitle text={draft.title} />
-      <label>{draft.title}の使用数<input type="number" inputMode="decimal" min="0.1" max="99999.9" step="0.1" value={draft.usage} disabled={disabled} onChange={event => onChange(drafts.map(value => value.key === draft.key ? { ...value, usage: event.target.value } : value))} /></label>
+      {draft.legacy && <p className="hint">旧設定の使用数: {draft.legacyUsage}。残り予定回数を入力するか関連を外してから保存してください。通常の在庫項目だけを変更する場合も必要です。{!draft.legacyEnabled && <strong>旧設定で連携停止中</strong>}</p>}
+      <label>{draft.title}の残り予定回数<input type="number" inputMode="numeric" min="0" max="99999" step="1" value={draft.remaining} disabled={disabled} onChange={event => onChange(drafts.map(value => value.key === draft.key ? { ...value, remaining: event.target.value } : value))} /></label>
+      <label>{draft.title}のメモ<textarea maxLength={255} value={draft.memo} disabled={disabled} onChange={event => onChange(drafts.map(value => value.key === draft.key ? { ...value, memo: event.target.value } : value))} /></label>
       <label className="inventory-menu-check"><input type="checkbox" checked={draft.carry} disabled={disabled} onChange={event => onChange(drafts.map(value => value.key === draft.key ? { ...value, carry: event.target.checked } : value))} />{draft.title}を翌週へ持ち越す</label>
-      <button type="button" className="btn btn-secondary" aria-label={`${draft.title}を選択から外す`} disabled={disabled} onClick={() => onChange(drafts.filter(value => value.key !== draft.key))}>外す</button>
+      <button type="button" className="btn btn-secondary" aria-label={`${draft.title}の関連を外す`} disabled={disabled} onClick={() => onChange(drafts.filter(value => value.key !== draft.key))}>関連を外す</button>
     </li>)}</ol>
   </section>
 }

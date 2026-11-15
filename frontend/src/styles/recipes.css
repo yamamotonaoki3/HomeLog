@@ -544,3 +544,6 @@
 .menu-inventory-actions label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; margin: 0; cursor: pointer; }
 .menu-inventory-actions input[type="checkbox"] { flex: 0 0 24px; width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; accent-color: var(--ui-primary); }
 .menu-inventory-actions label:has(input:disabled) { cursor: not-allowed; }
+
+/* #555: 連携献立は料理名・残回数・メモを一行にまとめる。全文は展開時に表示する。 */
+.menu-list-row-planned .menu-title-clamped { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; }

@@ -12,13 +12,13 @@ import { recipeSite } from '../lib/recipeSite'
 import { useDialog } from '../hooks/useDialog'
 import { AuthContext } from '../context/authContextValue'
 import { useMenuInventoryOperation } from '../hooks/useMenuInventoryOperation'
-import { captureMenuCredentials, menuCredentialsMatch, updateInventoryMenuLink } from '../api/menuInventory'
-import { PurchaseIdentityError } from '../api/shoppingPurchases'
+import { captureMenuCredentials, menuCredentialsMatch, updateInventoryMenuLink, verifyMenuScope } from '../api/menuInventory'
+import { PurchaseIdentityError, boundConfig } from '../api/shoppingPurchases'
 import type { InventoryItem } from '../api/zaikoTypes'
 import { LinkedMenuControls, MenuMealConfirmation } from '../components/kondate/LinkedMenuControls'
 
 function displayLabel(entry: MenuEntry): string {
-  if (entry.inventoryLinkage) return entry.recipeTitle ?? '(削除されたレシピ)'
+  if (entry.inventoryLinkage) { const link=entry.inventoryLinkage; return (entry.recipeTitle ?? '(削除されたレシピ)') + (link.remainingCount != null ? `×${link.remainingCount}${link.memo ? '｜'+link.memo : ''}` : '') }
   return entry.recipeId !== null ? entry.recipeTitle ?? '(削除されたレシピ)' : entry.freeTextMemo ?? ''
 }
 
@@ -157,7 +157,7 @@ export function MenuPage() {
     }else setMealError(result.message)
   }
   const changeCarry=async(entry:MenuEntry,enabled:boolean)=>{
-    if(scopeInvalidated||linkBusy||operation.busy||operation.pending||!operation.verifiedScope)return
+    if(scopeInvalidated||linkBusy||operation.busy||operation.pending||!operation.verifiedScope||entry.inventoryLinkage?.remainingCount !== undefined)return
     const linkage=entry.inventoryLinkage!,credentials=captureMenuCredentials(),epoch=pageGeneration.current
     if(!credentials)return
     const valid=()=>pageGeneration.current===epoch&&menuCredentialsMatch(credentials)
@@ -196,7 +196,8 @@ export function MenuPage() {
     const ids = [...selectedIds]
     const mode = addMode
     const epoch = pageGeneration.current
-    const valid = () => pageGeneration.current === epoch
+    const credentials = captureMenuCredentials()
+    const valid = () => pageGeneration.current === epoch && !!credentials && menuCredentialsMatch(credentials)
     pending.current = true
     setSubmitting(true)
     let successCount = 0
@@ -204,11 +205,14 @@ export function MenuPage() {
     let resultUncertain = false
     let refreshFailed = false
     try {
+      if (!credentials || !operation.verifiedScope) { operation.invalidate(); return }
+      try { await verifyMenuScope(credentials, operation.verifiedScope, valid) }
+      catch (error) { if (pageGeneration.current !== epoch) return; if (error instanceof PurchaseIdentityError || !valid()) operation.invalidate(); else setError('本人と世帯を再確認してください'); return }
       const payloads = mode === 'recipe' ? ids.map(recipeId => ({ weekStartDate: targetWeek, recipeId })) : [{ weekStartDate: targetWeek, freeTextMemo: memo.trim() }]
       for (const payload of payloads) {
         if (!valid()) return
         try {
-          await apiClient.post('/menu-entries', payload)
+          await apiClient.post('/menu-entries', payload, boundConfig(credentials))
           if (!valid()) return
           successCount++
           if ('recipeId' in payload) setSelectedIds(previous => previous.filter(id => id !== payload.recipeId))
@@ -243,6 +247,7 @@ export function MenuPage() {
       }
     } finally {
       if (valid()) { pending.current = false; setSubmitting(false) }
+      else if (pageGeneration.current === epoch) operation.invalidate()
     }
   }
 
@@ -250,19 +255,23 @@ export function MenuPage() {
     if (scopeInvalidated || !deleteTarget || pending.current || (deleteTarget.inventoryLinkage && (operation.busy || operation.pending || mealSyncRequired || linkBusy))) return
     const target = deleteTarget
     const epoch = pageGeneration.current
-    const valid = () => pageGeneration.current === epoch
+    const credentials = captureMenuCredentials()
+    const valid = () => pageGeneration.current === epoch && !!credentials && menuCredentialsMatch(credentials)
     pending.current = true
     setSubmitting(true)
     setDeleteError('')
     try {
-      await apiClient.delete('/menu-entries/' + target.id)
+      if (!credentials || !operation.verifiedScope) { operation.invalidate(); return }
+      await verifyMenuScope(credentials, operation.verifiedScope, valid)
+      if (!valid()) { if (pageGeneration.current === epoch) operation.invalidate(); return }
+      await apiClient.delete('/menu-entries/' + target.id, boundConfig(credentials))
       if (!valid()) return
       if (currentWeekRef.current === target.weekStartDate) setEntries(previous => previous.filter(entry => entry.id !== target.id))
       setDeleteTarget(null)
       addTrigger.current?.focus()
       showToast('献立を削除しました')
-    } catch (err) { if (valid()) setDeleteError(getApiErrorMessage(err, '献立の削除に失敗しました')) }
-    finally { if (valid()) { pending.current = false; setSubmitting(false) } }
+    } catch (err) { if (pageGeneration.current !== epoch) return; if (err instanceof PurchaseIdentityError || !valid()) { operation.invalidate(); return } if (valid()) setDeleteError(getApiErrorMessage(err, '献立の削除に失敗しました')) }
+    finally { if (valid()) { pending.current = false; setSubmitting(false) } else if (pageGeneration.current === epoch) operation.invalidate() }
   }
 
   const mealDisabled=operation.busy || !!operation.pending || mealSyncRequired || linkBusy || !operation.verifiedScope
@@ -293,14 +302,18 @@ export function MenuPage() {
           {entries.length === 0 ? <li className="ui-empty">この週の献立はまだありません</li> : entries.map(entry => {
             const recipe = recipes.find(item => item.id === entry.recipeId)
             const available = recipe && entry.recipeTitle !== null
-            return <li key={entry.id} className="ui-card menu-list-row">
-              <MenuTitle text={displayLabel(entry)} siteLabel={sourceLabel(entry, recipe)} chevron>
+            const planned = entry.inventoryLinkage?.remainingCount != null
+            const controlsInDetails = !!entry.inventoryLinkage && entry.inventoryLinkage.remainingCount !== undefined
+            const controls = entry.inventoryLinkage && <LinkedMenuControls entry={entry} disabled={mealDisabled||mealTarget!==null||submitting} carryReady={inventories!==null} onMeal={(undo,button)=>{mealTrigger.current=button;setMealError('');setMealTarget({entry,undo})}} onCarry={enabled=>{void changeCarry(entry,enabled)}}/>
+            return <li key={entry.id} className={planned ? 'ui-card menu-list-row menu-list-row-planned' : 'ui-card menu-list-row'}>
+              <MenuTitle text={displayLabel(entry)} siteLabel={planned ? undefined : sourceLabel(entry, recipe)} chevron>
                 {available && (recipe.sourceType === 'web' && recipe.url
                   ? <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">レシピを見る</a>
                   : <button type="button" className="menu-entry-link" onClick={event => { detailTrigger.current = event.currentTarget; setDetailRecipe(recipe) }}>レシピを見る</button>)}
                 <button type="button" className="menu-delete-trigger" disabled={!!entry.inventoryLinkage&&(mealDisabled||mealTarget!==null)} onClick={event => { deleteTrigger.current = event.currentTarget; setDeleteError(''); setDeleteTarget(entry) }}>削除</button>
+                {controlsInDetails && controls}
               </MenuTitle>
-              {entry.inventoryLinkage && <LinkedMenuControls entry={entry} disabled={mealDisabled||mealTarget!==null||submitting} carryReady={inventories!==null} onMeal={(undo,button)=>{mealTrigger.current=button;setMealError('');setMealTarget({entry,undo})}} onCarry={enabled=>{void changeCarry(entry,enabled)}}/>}
+              {!controlsInDetails && controls}
             </li>
           })}
         </ul>

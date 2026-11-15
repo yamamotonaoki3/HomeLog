@@ -10,6 +10,8 @@ export interface Store {
 }
 
 export interface InventoryItem {
+  menuPlanEnabled?: boolean
+  menuPlanRevision?: number
   menuLinks?: InventoryMenuLink[]
   id: number
   name: string
@@ -46,6 +48,8 @@ export interface ProcessPurchaseResult {
 
 export type ShoppingSort = 'name' | 'category' | 'store'
 export interface InventoryMenuLink {
+  remainingCount?: number | null
+  memo?: string | null
   id: number
   recipeId: number | null
   recipeTitle: string
@@ -68,3 +72,8 @@ export interface InventoryCreateBody {
 export type LinkedInventoryCreateBody = InventoryCreateBody & { menuLinkage: { requestId: string; menus: MenuLinkDraft[] } }
 export type LinkedInventoryCreateResult = InventoryItem & { linkedMenuEntries: { id: number; recipeId: number | null; recipeTitle: string; weekStartDate: string; usageQuantity: number }[] }
 export interface InventoryMenuLinkUpdate { expectedRevision: number; usageQuantity: number; enabled: boolean; carryEnabled: boolean }
+
+export type MenuPlanLine = ({ linkId: number; recipeId?: never; newRecipeTitle?: never } | { recipeId: number; linkId?: never; newRecipeTitle?: never } | { newRecipeTitle: string; linkId?: never; recipeId?: never }) & { remainingCount: number; memo: string | null; carryEnabled: boolean }
+export type InventoryPlanCreateBody = InventoryCreateBody & { menuPlan: { requestId: string; enabled: boolean; links: MenuPlanLine[] } }
+export type InventoryPlanReplaceBody = InventoryPlanCreateBody & { expectedMenuPlanRevision: number }
+export type InventoryPlanResult = Omit<LinkedInventoryCreateResult, 'menuLinks'> & { menuPlanEnabled: boolean; menuPlanRevision: number; menuLinks: (InventoryMenuLink & { remainingCount: number; memo: string | null })[] }

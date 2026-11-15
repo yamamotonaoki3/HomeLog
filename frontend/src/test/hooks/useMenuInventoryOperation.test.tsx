@@ -5,9 +5,24 @@ import { server } from '../mocks/server'
 import { getAccessToken, getRefreshToken, setAccessToken, setTokens } from '../../api/tokenStorage'
 import { useMenuInventoryOperation } from '../../hooks/useMenuInventoryOperation'
 import { readMenuPending } from '../../lib/menuOperationPending'
+import { makeInventoryPlanResult } from '../mocks/inventoryPlan'
+import type { InventoryPlanReplaceBody } from '../../api/zaikoTypes'
 const scope={actorUserId:1,householdId:10}
 const input={kind:'consume' as const,entryId:11,mealRevision:2}
 const success={menuEntryId:11,mealState:'eaten',mealRevision:3,inventoryItemId:21,quantity:2,carryEnabled:false}
+it('集約PUTはscope確認中のdraft変更にも影響されず同一ID・CAS・bodyで回復する',async()=>{
+ const bodies:InventoryPlanReplaceBody[]=[]
+ const draft={kind:'plan-replace' as const,itemId:21,expectedMenuPlanRevision:4,inventory:{name:'[E2E_TEST] 鶏肉',categoryId:1,storeId:null,quantity:5,threshold:0},enabled:true,links:[{recipeId:3,remainingCount:2,memo:'辛口',carryEnabled:false}]}
+ server.use(http.put('/api/inventory-items/21',async({request})=>{const body=await request.json() as InventoryPlanReplaceBody;bodies.push(body);return bodies.length===1?HttpResponse.error():HttpResponse.json(makeInventoryPlanResult(body,{id:21,revision:9}))}))
+ const {result}=renderHook(()=>useMenuInventoryOperation({actorUserId:1}))
+ await waitFor(()=>expect(result.current.verifiedScope).toEqual(scope))
+ let sending!:Promise<unknown>
+ act(()=>{sending=result.current.run(draft);draft.inventory.quantity=7;draft.links[0].memo='変更後'})
+ await act(async()=>{await sending})
+ expect(bodies[0]).toMatchObject({quantity:5,expectedMenuPlanRevision:4,menuPlan:{links:[{memo:'辛口'}]}})
+ await act(async()=>{await result.current.recover()})
+ expect(bodies).toHaveLength(2);expect(bodies[1]).toEqual(bodies[0]);expect(readMenuPending(scope).kind).toBe('empty')
+})
 beforeEach(()=>{localStorage.clear();setTokens('testuser_access','testuser_refresh');vi.stubGlobal('isSecureContext',true);vi.stubGlobal('navigator',{locks:{request:async(_n:string,_o:unknown,cb:()=>unknown)=>cb()}});server.use(http.get('/api/auth/me',()=>HttpResponse.json({id:1})),http.get('/api/households/me',()=>HttpResponse.json({id:10})))})
 afterEach(()=>vi.unstubAllGlobals())
 function setupExpiredAccess(){
