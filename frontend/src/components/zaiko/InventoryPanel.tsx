@@ -55,9 +55,18 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   if (previousActor.current !== actorUserId) { actorChanged.current = true; previousActor.current = actorUserId }
   const detachInventory = () => {
     if (!everVerified.current && !actorChanged.current) return
+    setQuantityConfirmationScope(null)
     life.current.generation++; quantityOwner.current = null; pending.current = false; setBusy(false); setRejectedReload(false); setFormOpen(false); setSelectedId(undefined); setSelectedSnapshot(undefined); setDeleteTarget(undefined); setExpandedId(undefined); setDrafts({}); setQuantityErrors({}); setRecipes([]); setRecipesLoaded(false); onScopeDetached?.()
   }
   const operation = useMenuInventoryOperation({ actorUserId, onDetached: detachInventory })
+  const [quantityConfirmationScope, setQuantityConfirmationScope] = useState<typeof operation.verifiedScope>(null)
+  const latestVerifiedScope = useRef(operation.verifiedScope)
+  latestVerifiedScope.current = operation.verifiedScope
+  const requireQuantityConfirmation = () => setQuantityConfirmationScope(latestVerifiedScope.current ?? operation.verifiedScope)
+  useEffect(() => {
+    // 古い確認結果では解除せず、新しい確認成功だけを受け入れる。
+    if (operation.verifiedScope && operation.verifiedScope !== quantityConfirmationScope) setQuantityConfirmationScope(null)
+  }, [operation.verifiedScope, quantityConfirmationScope])
   const initialLinkUnverified = !everVerified.current && !actorChanged.current && !operation.verifiedScope && !operation.pending && (operation.outcome === null || operation.outcome.kind === 'detached' || operation.outcome.kind === 'blocked')
   useEffect(() => { if (operation.verifiedScope) everVerified.current = true }, [operation.verifiedScope])
   const loadRecipes = useCallback(async (force = false) => {
@@ -125,7 +134,7 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   }, [inventory, selectedId])
 
   const adjustQuantity = async (item: InventoryItem, delta: number, consumeDraft = false) => {
-    if (pending.current || uncertain.current.has(item.id) || operation.pending || !operation.verifiedScope) return
+    if (pending.current || uncertain.current.has(item.id) || operation.pending || operation.busy || !operation.verifiedScope || quantityConfirmationScope || linkSyncFailed) return
     const total = (item.menuLinks ?? []).reduce((sum, link) => sum + (link.remainingCount ?? 0), 0)
     if (Math.round((item.quantity + delta) * 10) < total * 10) {
       const message = '予定回数の合計が在庫個数を超えています。先に予定回数を減らしてください'
@@ -141,33 +150,51 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
     setQuantityErrors(previous => ({ ...previous, [item.id]: '' }))
     let success = false
     let unknown = false
-    try { try {
-      await verifyMenuScope(credentials, operation.verifiedScope, valid)
-      if (!valid()) { if (generation === life.current.generation) operation.invalidate(); return }
-      const { data } = await apiClient.patch<{ quantity: number }>(`/inventory-items/${item.id}/quantity`, { delta }, boundConfig(credentials))
-      if (!valid()) { if (generation === life.current.generation) operation.invalidate(); return }
-      if (!Number.isFinite(data?.quantity) || data.quantity < 0 || data.quantity > 99999.9 || Math.abs(data.quantity * 10 - Math.round(data.quantity * 10)) >= 1e-9) throw new Error('Invalid quantity response')
-      success = true
-      if (consumeDraft) setDrafts(previous => ({ ...previous, [item.id]: '' }))
-    } catch (err) {
-      if (!valid() || err instanceof PurchaseIdentityError) { if (generation === life.current.generation) operation.invalidate(); return }
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      if (status === 400 || status === 401 || status === 409) {
-        const message = getApiErrorMessage(err, '在庫個数の更新に失敗しました')
-        setQuantityErrors(previous => ({ ...previous, [item.id]: message }))
-        onNotify(message)
-      } else {
-        unknown = true
-        uncertain.current.add(item.id)
-        setUncertainIds(new Set(uncertain.current))
-        onNotify(uncertainMessage)
-      }
-    }
     try {
-      if (success || unknown) await onRefresh()
-    } catch {
-      if (valid()) onNotify(success ? '在庫個数を更新しました。一覧の再取得に失敗しました' : '数量変更の結果を確認できません。一覧の再取得にも失敗しました。画面を再読み込みしてください。')
-    } } finally {
+      try { await verifyMenuScope(credentials, operation.verifiedScope, valid) }
+      catch (error) {
+        if (generation !== life.current.generation) return
+        if (!valid() || error instanceof PurchaseIdentityError) operation.invalidate()
+        else {
+          requireQuantityConfirmation()
+          const message = '本人と世帯を再確認してください'
+          setQuantityErrors(previous => ({ ...previous, [item.id]: message })); onNotify(message)
+        }
+        return
+      }
+      if (!valid()) { if (generation === life.current.generation) operation.invalidate(); return }
+      try {
+        const { data } = await apiClient.patch<{ quantity: number }>(`/inventory-items/${item.id}/quantity`, { delta }, boundConfig(credentials))
+        if (!valid()) { if (generation === life.current.generation) operation.invalidate(); return }
+        if (!Number.isFinite(data?.quantity) || data.quantity < 0 || data.quantity > 99999.9 || Math.abs(data.quantity * 10 - Math.round(data.quantity * 10)) >= 1e-9) throw new Error('Invalid quantity response')
+        success = true
+        if (consumeDraft) setDrafts(previous => ({ ...previous, [item.id]: '' }))
+      } catch (err) {
+        if (!valid() || err instanceof PurchaseIdentityError) { if (generation === life.current.generation) operation.invalidate(); return }
+        const status = isAxiosError(err) ? err.response?.status : undefined
+        if (status === 401) requireQuantityConfirmation()
+        if (status === 400 || status === 401 || status === 409) {
+          const message = getApiErrorMessage(err, '在庫個数の更新に失敗しました')
+          setQuantityErrors(previous => ({ ...previous, [item.id]: message }))
+          onNotify(message)
+        } else {
+          unknown = true
+          uncertain.current.add(item.id)
+          setUncertainIds(new Set(uncertain.current))
+          onNotify(uncertainMessage)
+        }
+      }
+      try {
+        if (success || unknown) await onRefresh()
+      } catch {
+        if (generation !== life.current.generation) return
+        if (!valid()) operation.invalidate()
+        else {
+          if (success) setLinkSyncFailed(true)
+          onNotify(success ? '在庫個数を更新しました。一覧の再取得に失敗しました' : '数量変更の結果を確認できません。一覧の再取得にも失敗しました。画面を再読み込みしてください。')
+        }
+      }
+    } finally {
       if (quantityOwner.current === owner) { quantityOwner.current = null; pending.current = false; if (life.current.alive) setBusy(false) }
     }
   }
@@ -208,7 +235,7 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
     </fieldset>
     {!formOpen && operation.message && <p className={initialLinkUnverified ? 'hint' : undefined} role={initialLinkUnverified ? undefined : 'alert'}>{operation.message}</p>}
     {!formOpen && operation.pending && <button type="button" className="btn btn-secondary" disabled={operation.busy} onClick={() => void recoverLinked()}>前回の結果を確認</button>}
-    {!formOpen && !operation.verifiedScope && !operation.busy && <button type="button" className="btn btn-secondary" onClick={() => void operation.recheck()}>献立連携の本人と世帯を再確認</button>}
+    {!formOpen && (!operation.verifiedScope || quantityConfirmationScope) && <button type="button" className="btn btn-secondary" disabled={operation.busy || busy} onClick={() => void operation.recheck()}>献立連携の本人と世帯を再確認</button>}
     {!formOpen && rejectedReload && <div><p role="alert">保存が拒否されました。一覧を再取得してから編集し直してください。</p><button type="button" className="btn btn-secondary" disabled={!operation.verifiedScope || operation.busy} onClick={() => void refreshRejected()}>一覧を再取得</button></div>}
     {linkSyncFailed && <div><p role="alert">記録済みです。一覧を再取得してから次の操作をしてください。</p><button type="button" className="btn btn-secondary" onClick={() => void refreshLinked().catch(() => onNotify('一覧の再取得に失敗しました'))}>一覧を再取得</button></div>}
     <button ref={register} type="button" className="ui-action" disabled={!!operation.pending || linkSyncFailed} onClick={() => { origin.current = register.current; setSelectedId(undefined); setSelectedSnapshot(undefined); setFormOpen(true) }}><span aria-hidden="true">＋</span>在庫を登録</button>
@@ -244,20 +271,20 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
             <p className="inventory-expanded-title">在庫を変更</p>
             <p className="inventory-expanded-caption">現在の数量</p>
             <div className="inventory-stepper">
-              <button type="button" className="inventory-stepper-button" disabled={busy || stopped} aria-label={`${item.name}を減らす`} onClick={() => adjustStep(item, -1)}>－</button>
+              <button type="button" className="inventory-stepper-button" disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed} aria-label={`${item.name}を減らす`} onClick={() => adjustStep(item, -1)}>－</button>
               <span className="inventory-current-quantity" aria-live="polite">{item.quantity.toFixed(1)}</span>
-              <button type="button" className="inventory-stepper-button" disabled={busy || stopped} aria-label={`${item.name}を増やす`} onClick={() => adjustStep(item, 1)}>＋</button>
+              <button type="button" className="inventory-stepper-button" disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed} aria-label={`${item.name}を増やす`} onClick={() => adjustStep(item, 1)}>＋</button>
             </div>
-            <div className="inventory-step-options" role="group" aria-label="増減幅"><span>増減幅</span>{[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary" aria-pressed={(steps[item.id] ?? 1) === value} disabled={busy || stopped} onClick={() => setSteps(previous => ({ ...previous, [item.id]: value }))}>{value}</button>)}</div>
+            <div className="inventory-step-options" role="group" aria-label="増減幅"><span>増減幅</span>{[1, 0.1].map(value => <button key={value} type="button" className="btn btn-secondary" aria-pressed={(steps[item.id] ?? 1) === value} disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed} onClick={() => setSteps(previous => ({ ...previous, [item.id]: value }))}>{value}</button>)}</div>
             <form className="inventory-delta-form" noValidate onSubmit={event => { event.preventDefault(); applyDraft(item) }}>
               <div className="inventory-delta-row">
                 <label className="ui-tag" htmlFor={`inventory-delta-${item.id}`}>増減量</label>
-                <input id={`inventory-delta-${item.id}`} type="text" inputMode="text" placeholder="例：1、-0.5" value={drafts[item.id] ?? ''} disabled={busy || stopped}
+                <input id={`inventory-delta-${item.id}`} type="text" inputMode="text" placeholder="例：1、-0.5" value={drafts[item.id] ?? ''} disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed}
                   aria-describedby={`inventory-delta-hint-${item.id}`} aria-invalid={Boolean(quantityErrors[item.id])}
                   onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} />
               </div>
               <p id={`inventory-delta-hint-${item.id}`} className="hint">正の数は加算、負の数は減算します。適用後は取り消せません。</p>
-              <button type="submit" className="ui-action" disabled={busy || stopped}>数量を適用</button>
+              <button type="submit" className="ui-action" disabled={busy || stopped || !!quantityConfirmationScope || linkSyncFailed}>数量を適用</button>
             </form>
             {stopped ? <p className="error" role="alert">{uncertainMessage}</p> : quantityErrors[item.id] && <p className="error" role="alert">{quantityErrors[item.id]}</p>}
             <div className="inventory-expanded-footer">
