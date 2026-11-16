@@ -78,6 +78,9 @@ async function verifyHeader(page: Page, width: number) {
     expect(box!.x + box!.width).toBeLessThanOrEqual(width)
     boxes.push(box!)
   }
+  const columnGap = await page.locator('.nav-inner').evaluate(el => parseFloat(getComputedStyle(el).columnGap))
+  const accountGap = boxes[4].x - (boxes[3].x + boxes[3].width)
+  expect(Math.abs(accountGap - columnGap)).toBeLessThan(1)
   expect(boxes[1].width).toBeGreaterThanOrEqual(44)
   expect(boxes[1].height).toBeGreaterThanOrEqual(44)
   expect(boxes[4].width).toBeGreaterThanOrEqual(44)
