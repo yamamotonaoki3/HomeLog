@@ -11,6 +11,9 @@ import { LoginPage } from '../../pages/LoginPage'
 import { apiClient } from '../../api/client'
 import { clearTokens, getAccessToken, setTokens } from '../../api/tokenStorage'
 
+const updateState = vi.hoisted(() => ({ ready: false, applying: false, busy: false, online: true }))
+vi.mock('../../hooks/usePwaUpdate', () => ({ usePwaUpdate: () => updateState }))
+
 function renderWithLayout(initialPath: string, realLogin = false) {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -362,5 +365,27 @@ describe('AppLayout', () => {
 
     await waitFor(() => expect(screen.getByText('ログイン画面')).toBeInTheDocument())
     expect(getAccessToken()).toBeNull()
+  })
+})
+
+
+describe('ヘッダーの更新操作', () => {
+  afterEach(() => { updateState.ready = false; updateState.busy = false; updateState.applying = false; updateState.online = true })
+  it('通常は隠し、準備完了時だけタイトルlinkの外にSVG buttonを表示する', () => {
+    const view = renderWithLayout('/')
+    expect(screen.queryByRole('button', { name: 'アプリを更新' })).not.toBeInTheDocument()
+    updateState.ready = true
+    view.unmount(); renderWithLayout('/')
+    const button = screen.getByRole('button', { name: 'アプリを更新' })
+    expect(button.querySelector('svg')).toBeInTheDocument()
+    expect(button.closest('a')).toBeNull()
+  })
+  it.each(['busy', 'applying', 'offline'])('%sのとき更新buttonを無効にする', reason => {
+    updateState.ready = true
+    if (reason === 'offline') updateState.online = false
+    else updateState[reason as 'busy' | 'applying'] = true
+    renderWithLayout('/')
+    expect(screen.getByRole('button', { name: 'アプリを更新' })).toBeDisabled()
+    if (reason === 'applying') expect(document.querySelector('main')).toHaveAttribute('inert')
   })
 })

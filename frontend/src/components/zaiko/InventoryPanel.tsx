@@ -1,4 +1,5 @@
 import { isAxiosError } from 'axios'
+import { usePwaUpdateGuard } from '../../hooks/usePwaUpdateGuard'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
@@ -46,6 +47,7 @@ export function InventoryPanel({ inventory, categories, onCategoriesChange, stor
   const searchId = useId()
   const filterName = useId()
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem>()
+  usePwaUpdateGuard({ editing: Object.values(drafts).some(value => value !== '') || formOpen, busy })
   const deleteOrigin = useRef<HTMLButtonElement | null>(null)
   const pending = useRef(false)
   const quantityOwner = useRef<object | null>(null)

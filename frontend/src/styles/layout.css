@@ -344,3 +344,14 @@
 .demo-banner-error { flex:1 1 100%; margin:0; color:#b91c1c; }
 .demo-banner-highlights { flex:1 1 100%; margin:0; padding-left:20px; overflow-wrap:anywhere; }
 @media (max-width:480px) { .demo-banner { padding-left:8px; padding-right:8px; } }
+
+/* 更新操作はタイトルの隣に置き、狭い幅では本人名の列を縮める。 */
+.nav-inner { grid-template-columns: minmax(0,1fr) auto minmax(44px,auto); }
+.nav-inner .nav-brand { grid-area:brand; display:flex; align-items:center; min-width:0; justify-self:start; }
+.nav-brand .nav-logo { flex-shrink:0; }
+.pwa-update-button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 44px; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:transparent; color:#48617e; cursor:pointer; }
+.pwa-update-button:hover { color:#2866b8; background:#f7f9fc; }
+.pwa-update-button:disabled { opacity:.45; cursor:default; }
+.pwa-update-button:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
+.header-account, .header-account-button { min-width:44px; max-width:100%; }
+@media (max-width:480px) { .nav-inner { grid-template-columns:auto auto minmax(44px,1fr); } .header-account-button { width:100%; overflow:hidden; } }
