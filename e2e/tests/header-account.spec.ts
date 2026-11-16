@@ -38,6 +38,12 @@ for (const width of [1280, 390, 320]) {
           const a=boxes[i]!, b=boxes[j]!
           expect(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y).toBe(true)
         }
+        const brand = await page.locator('.nav-logo').boundingBox()
+        expect(brand).not.toBeNull()
+        expect(brand!.x + brand!.width).toBeLessThanOrEqual(boxes[0]!.x)
+        const columnGap = await page.locator('.nav-inner').evaluate(el => parseFloat(getComputedStyle(el).columnGap))
+        const accountGap = boxes[2]!.x - (boxes[1]!.x + boxes[1]!.width)
+        expect(Math.abs(accountGap - columnGap)).toBeLessThan(1)
         const metrics = await name.evaluate((el) => ({
           overflow: getComputedStyle(el).overflow, whiteSpace: getComputedStyle(el).whiteSpace,
           textOverflow: getComputedStyle(el).textOverflow, scroll: el.scrollWidth, client: el.clientWidth,
