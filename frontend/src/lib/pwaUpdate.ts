@@ -11,6 +11,7 @@ let checkFlight: Promise<void> | null = null
 let lastCheck = -Infinity
 let wasOffline = false
 const observed = new WeakSet<ServiceWorker>()
+const observedRegistrations = new WeakSet<ServiceWorkerRegistration>()
 
 function publish(ready = snapshot.ready, applying = snapshot.applying): void {
   if (snapshot.ready === ready && snapshot.applying === applying) return
@@ -47,23 +48,34 @@ export function startPwaUpdate(): void {
   window.addEventListener('pageshow', resume)
   window.addEventListener('offline', () => { wasOffline = true })
   window.addEventListener('online', () => { void checkPwaUpdate('online') })
-  const url = new URL('sw.js', new URL(import.meta.env.BASE_URL, location.href))
-  void navigator.serviceWorker.register(url.href).then(value => {
-    registration = value
-    observe(value.waiting); observe(value.installing)
-    value.addEventListener('updatefound', () => observe(value.installing))
-    void checkPwaUpdate('startup')
-  }).catch(() => { /* Leave the current screen available when registration fails. */ })
+  void checkPwaUpdate('startup')
 }
 export async function checkPwaUpdate(reason: 'startup' | 'resume' | 'online'): Promise<void> {
+  if (!started) return
   if (!navigator.onLine) { wasOffline = true; return }
-  if (!registration || document.visibilityState !== 'visible') return
+  if (document.visibilityState !== 'visible') return
   if (checkFlight) return checkFlight
-  const reconnect = reason === 'online' && wasOffline
-  if (!reconnect && Date.now() - lastCheck < 60000) return
-  lastCheck = Date.now(); wasOffline = false
   checkFlight = (async () => {
-    try { await registration!.update(); observe(registration!.waiting); observe(registration!.installing) }
+    try {
+      if (!registration) {
+        const url = new URL('sw.js', new URL(import.meta.env.BASE_URL, location.href))
+        registration = await navigator.serviceWorker.getRegistration(url.href)
+          ?? await navigator.serviceWorker.register(url.href)
+      }
+      const value = registration
+      observe(value.waiting); observe(value.installing)
+      if (!observedRegistrations.has(value)) {
+        observedRegistrations.add(value)
+        value.addEventListener('updatefound', () => observe(value.installing))
+      }
+      if (!navigator.onLine) { wasOffline = true; return }
+      if (document.visibilityState !== 'visible') return
+      const reconnect = reason === 'online' && wasOffline
+      if (!reconnect && Date.now() - lastCheck < 60000) return
+      lastCheck = Date.now(); wasOffline = false
+      await value.update()
+      observe(value.waiting); observe(value.installing)
+    }
     catch { lastCheck = -Infinity }
   })().finally(() => { checkFlight = null })
   return checkFlight

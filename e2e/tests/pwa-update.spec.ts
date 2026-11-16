@@ -9,6 +9,47 @@ const updateName = 'アプリを更新'
 const confirmation = '編集中の内容は更新すると失われます。アプリを更新しますか？'
 const versionOf = (page: Page) => page.locator('meta[name="pwa-test-version"]').getAttribute('content')
 
+interface PwaObservation {
+  registering: number
+  updating: number
+  updated: number
+  failures: number
+  connectivity: string[]
+}
+type ObservedWindow = Window & { pwaObservation: PwaObservation }
+
+// Fixtureだけでnative promiseの完了を観測し、製品の通信や戻り値は変更しない。
+async function observePwaStartup(page: Page) {
+  await page.addInitScript(() => {
+    const observation: PwaObservation = { registering: 0, updating: 0, updated: 0, failures: 0, connectivity: [] }
+    ;(window as ObservedWindow).pwaObservation = observation
+    const register = ServiceWorkerContainer.prototype.register
+    ServiceWorkerContainer.prototype.register = function (...args) {
+      const promise = register.apply(this, args)
+      observation.registering++
+      void promise.then(() => { observation.registering-- }, () => { observation.registering--; observation.failures++ })
+      return promise
+    }
+    const update = ServiceWorkerRegistration.prototype.update
+    ServiceWorkerRegistration.prototype.update = function (...args) {
+      const promise = update.apply(this, args)
+      observation.updating++
+      void promise.then(() => { observation.updating--; observation.updated++ }, () => { observation.updating--; observation.failures++ })
+      return promise
+    }
+    window.addEventListener('offline', () => observation.connectivity.push('offline'))
+    window.addEventListener('online', () => observation.connectivity.push('online'))
+  })
+}
+
+async function startupCompleted(page: Page) {
+  await expect.poll(() => page.evaluate(() => {
+    const state = (window as ObservedWindow).pwaObservation
+    return state.updated > 0 && state.registering === 0 && state.updating === 0 && state.failures === 0
+  })).toBe(true)
+  expect(await versionOf(page)).toBe('a')
+}
+
 // 検証失敗時にも認証値をログへ出さず、対象キーの完全一致をdigestで照合する。
 async function storageDigest(page: Page) {
   return page.evaluate(async () => {
@@ -40,6 +81,10 @@ async function verifyHeader(page: Page, width: number) {
   expect(boxes[1].width).toBeGreaterThanOrEqual(44)
   expect(boxes[1].height).toBeGreaterThanOrEqual(44)
   expect(boxes[4].width).toBeGreaterThanOrEqual(44)
+  expect(boxes[4].width).toBeLessThanOrEqual(144)
+  if (width >= 390) {
+    expect(await page.locator('.header-account-name').evaluate(name => name.scrollWidth > name.clientWidth)).toBe(true)
+  }
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
     const a = boxes[i], b = boxes[j]
     expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true)
@@ -80,6 +125,7 @@ test('旧PWAからの移行と二版の明示更新で入力・認証・pending�
   await expect.poll(() => nextWorker.evaluate(() => (globalThis as typeof globalThis & { pwaActivated?: boolean }).pwaActivated)).toBe(true)
 
   const first = await context.newPage()
+  await observePwaStartup(first)
   consoleGuard.watch(first)
   consoleGuard.allow({ url: /\/api\/households\/me$/, message: 'Failed to load resource: the server responded with a status of 404 (Not Found)' })
   const user = { ...newUser('pwa'), displayName: 'e2euser_' + 'A'.repeat(42) }
@@ -101,15 +147,30 @@ test('旧PWAからの移行と二版の明示更新で入力・認証・pending�
   await expect(first.getByRole('textbox', { name: '表示名', exact: true })).toHaveValue(user.displayName)
   await first.getByRole('textbox', { name: '表示名', exact: true }).fill('e2euser_unsaved_A')
   const second = await context.newPage()
+  await observePwaStartup(second)
   consoleGuard.watch(second)
   await second.goto('/settings/account')
   await expect(second.getByRole('textbox', { name: '表示名', exact: true })).toHaveValue(user.displayName)
   await second.getByRole('textbox', { name: '表示名', exact: true }).fill('e2euser_unsaved_B')
   const secondOrigin = await second.evaluate(() => performance.timeOrigin)
 
+  // 両tabがAの起動チェックを終えた後、実際の接続復帰でthrottleを解除する。
+  await Promise.all([startupCompleted(first), startupCompleted(second)])
+  await context.setOffline(true)
+  for (const page of [first, second]) {
+    await expect.poll(() => page.evaluate(() => ({
+      online: navigator.onLine,
+      events: (window as ObservedWindow).pwaObservation.connectivity,
+    }))).toEqual({ online: false, events: ['offline'] })
+  }
   expect((await request.post('/__pwa_fixture/version', { data: { version: 'b' } })).status()).toBe(204)
-  // オンライン復帰イベントを使い、製品の更新確認経路から新版を取得する。
-  await first.evaluate(() => window.dispatchEvent(new Event('online')))
+  await context.setOffline(false)
+  for (const page of [first, second]) {
+    await expect.poll(() => page.evaluate(() => ({
+      online: navigator.onLine,
+      events: (window as ObservedWindow).pwaObservation.connectivity,
+    }))).toEqual({ online: true, events: ['offline', 'online'] })
+  }
   const updateFirst = first.getByRole('button', { name: updateName, exact: true })
   const updateSecond = second.getByRole('button', { name: updateName, exact: true })
   await expect(updateFirst).toBeEnabled()

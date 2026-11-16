@@ -11,29 +11,98 @@ class Registration extends EventTarget {
   update = vi.fn().mockResolvedValue(undefined)
 }
 let registration: Registration
-let container: EventTarget & { controller: Worker | null; register: ReturnType<typeof vi.fn> }
+let container: EventTarget & { controller: Worker | null; register: ReturnType<typeof vi.fn>; getRegistration: ReturnType<typeof vi.fn> }
 let reload: ReturnType<typeof vi.fn>
+const removeEventListeners: (() => void)[] = []
 async function start(waiting = true, controlled = true) {
   if (waiting) registration.waiting = new Worker()
   if (!controlled) container.controller = null
   const controller = await import('../../lib/pwaUpdate')
   controller.startPwaUpdate()
   await vi.waitFor(() => expect(container.register).toHaveBeenCalledOnce())
-  await Promise.resolve(); await Promise.resolve()
+  await controller.checkPwaUpdate('startup')
   return controller
 }
 beforeEach(() => {
   vi.resetModules(); vi.stubEnv('PROD', true)
+  const windowAdd = window.addEventListener.bind(window)
+  vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+    windowAdd(type, listener, options)
+    removeEventListeners.push(() => window.removeEventListener(type, listener, options))
+  })
+  const documentAdd = document.addEventListener.bind(document)
+  vi.spyOn(document, 'addEventListener').mockImplementation((type, listener, options) => {
+    documentAdd(type, listener, options)
+    removeEventListeners.push(() => document.removeEventListener(type, listener, options))
+  })
   registration = new Registration()
-  container = Object.assign(new EventTarget(), { controller: new Worker() as Worker | null, register: vi.fn().mockResolvedValue(registration) })
+  container = Object.assign(new EventTarget(), { controller: new Worker() as Worker | null, register: vi.fn().mockResolvedValue(registration), getRegistration: vi.fn().mockResolvedValue(undefined) })
   Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: container })
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   reload = vi.fn(); vi.stubGlobal('location', { ...window.location, reload })
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   document.body.innerHTML = ''
 })
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+afterEach(() => {
+  removeEventListeners.splice(0).forEach(remove => remove())
+  vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs()
+})
 describe('PWAの明示更新', () => {
+  it('初回registerの一時失敗後にresumeで登録と更新確認を再試行する', async () => {
+    container.register.mockRejectedValueOnce(new Error('temporary failure'))
+    const pwa = await import('../../lib/pwaUpdate')
+    pwa.startPwaUpdate()
+    await pwa.checkPwaUpdate('startup')
+    expect(container.register).toHaveBeenCalledOnce()
+    expect(registration.update).not.toHaveBeenCalled()
+    window.dispatchEvent(new Event('pageshow'))
+    await pwa.checkPwaUpdate('resume')
+    expect(container.register).toHaveBeenCalledTimes(2)
+    expect(registration.update).toHaveBeenCalledOnce()
+    expect(reload).not.toHaveBeenCalled()
+  })
+  it('登録失敗後に見つかった既存registrationのwaitingを観測する', async () => {
+    container.register.mockRejectedValueOnce(new Error('temporary failure'))
+    const pwa = await import('../../lib/pwaUpdate')
+    pwa.startPwaUpdate()
+    await pwa.checkPwaUpdate('startup')
+    registration.waiting = new Worker()
+    container.getRegistration.mockResolvedValue(registration)
+    registration.update.mockRejectedValue(new Error('temporary update failure'))
+    await pwa.checkPwaUpdate('resume')
+    expect(container.register).toHaveBeenCalledOnce()
+    expect(registration.update).toHaveBeenCalledOnce()
+    expect(pwa.getPwaUpdateSnapshot()).toEqual({ ready: true, applying: false })
+    expect(reload).not.toHaveBeenCalled()
+  })
+  it('同時のstartup・resume・onlineで登録とlistenerを重複させない', async () => {
+    let complete!: (value: Registration) => void
+    container.register.mockReturnValue(new Promise<Registration>(resolve => { complete = resolve }))
+    const registrationListener = vi.spyOn(registration, 'addEventListener')
+    const containerListener = vi.spyOn(container, 'addEventListener')
+    const worker = new Worker(); worker.state = 'installing'; registration.installing = worker
+    const workerListener = vi.spyOn(worker, 'addEventListener')
+    const pwa = await import('../../lib/pwaUpdate')
+    pwa.startPwaUpdate(); pwa.startPwaUpdate()
+    const startup = pwa.checkPwaUpdate('startup')
+    window.dispatchEvent(new Event('pageshow'))
+    window.dispatchEvent(new Event('online'))
+    const resume = pwa.checkPwaUpdate('resume')
+    await vi.waitFor(() => expect(container.register).toHaveBeenCalledOnce())
+    complete(registration)
+    await Promise.all([startup, resume])
+    window.dispatchEvent(new Event('offline'))
+    await pwa.checkPwaUpdate('online')
+    registration.dispatchEvent(new Event('updatefound'))
+    registration.waiting = worker; worker.change('installed')
+    expect(container.getRegistration).toHaveBeenCalledOnce()
+    expect(container.register).toHaveBeenCalledOnce()
+    expect(registration.update).toHaveBeenCalledTimes(2)
+    expect(registrationListener.mock.calls.filter(([type]) => type === 'updatefound')).toHaveLength(1)
+    expect(containerListener.mock.calls.filter(([type]) => type === 'controllerchange')).toHaveLength(1)
+    expect(workerListener.mock.calls.filter(([type]) => type === 'statechange')).toHaveLength(1)
+    expect(pwa.getPwaUpdateSnapshot().ready).toBe(true)
+  })
   it('初回installやdownload中は通知しない', async () => {
     const pwa = await start(false, false)
     const worker = new Worker(); worker.state = 'installing'; registration.installing = worker

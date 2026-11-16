@@ -354,4 +354,5 @@
 .pwa-update-button:disabled { opacity:.45; cursor:default; }
 .pwa-update-button:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
 .header-account, .header-account-button { min-width:44px; max-width:100%; }
+.header-account-button { max-width:min(100%,clamp(96px,32vw,144px)); }
 @media (max-width:480px) { .nav-inner { grid-template-columns:auto auto minmax(44px,1fr); } .header-account-button { width:100%; overflow:hidden; } }
