@@ -146,3 +146,11 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 ## ホームの視覚修正見本（#462）
 
 `tests/home-visual-pilot.spec.ts` は通常DBとは異なる専用ローカルpreviewを対象とする、手動確認用の視覚比較テスト。通常の全E2Eでは環境変数未指定時に実行しない。外部の画像保存先と専用認証情報保存先を指定し、同じ架空世帯・幅・ブラウザ日付で修正前後を撮影する。提供資料01〜07の原画像は正解の参照として別に並べ、現状画面を無条件にgoldenへ採用しない。通常4状態は実APIの固定データ、0件・読込・失敗は日付詳細GETだけの局所表示fixtureで確認する。認証は正常register/login APIを使用し、trace・video・失敗時画像を無効にして秘密値を記録しない。フォント等の計測（`HOME_VISUAL_METRICS=1`）を行う場合は、参考資料の置き場所を `HOME_VISUAL_REFERENCE_DIR` に指定する。
+
+## PWAの手動更新（#561）
+
+`e2e/`で `npm test -- --config playwright.pwa.config.ts` を実行する。通常のVite devではSWが動かないため、専用のlocalhostサーバーが製品設定のproduction build A/Bを一時生成し、同じoriginで切り替えて配信する。APIは既存のローカルWorkers・E2E専用D1へ接続し、通常E2E等と直列で実行する。追加依存は不要。
+
+`tests/pwa-update.spec.ts`は、従来のautoUpdate登録から全client終了・再起動による移行と、新方式の二版更新を一つのシナリオで検証する。更新準備完了時だけの表示、入力確認のキャンセル、明示操作したタブだけの再読み込み、他タブの入力保持、認証・結果未確認の処理記録の保持、1280/390/320pxのヘッダー表示を確認する。`PWA_UPDATE_SCREENSHOT_DIR`にリポジトリ外の保存先を指定すると320pxの準備完了画面を保存する。
+
+実行前に`frontend`の`npm run build`を済ませる（Workers起動の共通前提）。テスト終了時に一時buildを削除し、既存runnerがサーバー停止・ポート閉鎖・専用D1の後始末を確認する。CIも専用stepで実行する。

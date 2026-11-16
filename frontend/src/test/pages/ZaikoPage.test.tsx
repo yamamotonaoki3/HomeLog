@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { ZaikoPage } from '../../pages/ZaikoPage'
+import { getPwaUpdateSafety } from '../../lib/pwaUpdateSafety'
 import { apiClient } from '../../api/client'
 import { clearTokens } from '../../api/tokenStorage'
 import type { InventoryItem, ShoppingListItem } from '../../api/zaikoTypes'
@@ -360,6 +361,7 @@ describe('ZaikoPage', () => {
     await user.clear(screen.getByRole('textbox', { name: '卵の実購入数' }))
     await user.type(screen.getByRole('textbox', { name: '卵の実購入数' }), '2')
     await openTab(user, '在庫一覧')
+    expect(getPwaUpdateSafety().editing).toBe(true)
     await openTab(user, '買い物リスト')
 
     const eggRow = screen.getByRole('dialog', { name: '買い物詳細' })

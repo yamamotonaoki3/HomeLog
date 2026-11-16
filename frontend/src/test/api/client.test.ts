@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { apiClient, setOnAuthExpired } from '../../api/client'
+import { getPwaUpdateSafety } from '../../lib/pwaUpdateSafety'
 import { clearTokens, getAccessToken, setTokens } from '../../api/tokenStorage'
 
 describe('apiClient', () => {
@@ -144,5 +145,52 @@ describe('購入の固定認証', () => {
     const config = { authMode: 'bound-no-refresh' as const }
     await expect(apiClient.get('/auth/me', config)).rejects.toBeTruthy()
     expect(gets).toBe(0)
+  })
+})
+
+
+describe('通信中の更新保護', () => {
+  it('401 refreshとretryの間も保護し成功後に解除する', async () => {
+    setTokens('expired-access-token', 'testuser_refresh')
+    const busy: boolean[] = []
+    server.use(
+      http.get('/api/pwa-busy', ({ request }) => {
+        busy.push(getPwaUpdateSafety().busy)
+        return request.headers.get('Authorization') === 'Bearer expired-access-token'
+          ? HttpResponse.json({}, { status: 401 }) : HttpResponse.json({ ok: true })
+      }),
+      http.post('/api/auth/refresh', () => { busy.push(getPwaUpdateSafety().busy); return HttpResponse.json({ accessToken: 'testuser_new', expiresIn: 900 }) }),
+    )
+    await apiClient.get('/pwa-busy')
+    expect(busy).toEqual([true, true, true])
+    expect(getPwaUpdateSafety().busy).toBe(false)
+    clearTokens()
+  })
+  it('reject・事前cancel・request検証エラー後はbusyを残さない', async () => {
+    server.use(http.get('/api/pwa-busy', () => HttpResponse.json({}, { status: 500 })))
+    await expect(apiClient.get('/pwa-busy')).rejects.toBeTruthy()
+    expect(getPwaUpdateSafety().busy).toBe(false)
+    const abort = new AbortController(); abort.abort()
+    await expect(apiClient.get('/pwa-busy', { signal: abort.signal })).rejects.toBeTruthy()
+    expect(getPwaUpdateSafety().busy).toBe(false)
+    await expect(apiClient.get('/pwa-busy', { authMode: 'bound-no-refresh' })).rejects.toBeTruthy()
+    expect(getPwaUpdateSafety().busy).toBe(false)
+  })
+})
+
+
+describe('更新保護と認証retryの既存契約', () => {
+  it('refresh後のretryが500でも更新済み認証を消さずbusyを解除する', async () => {
+    setTokens('expired-access-token', 'testuser_refresh')
+    const expired = vi.fn(); setOnAuthExpired(expired)
+    server.use(
+      http.get('/api/pwa-retry', ({ request }) => HttpResponse.json({}, { status: request.headers.get('Authorization') === 'Bearer expired-access-token' ? 401 : 500 })),
+      http.post('/api/auth/refresh', () => HttpResponse.json({ accessToken: 'testuser_new', expiresIn: 900 })),
+    )
+    await expect(apiClient.get('/pwa-retry')).rejects.toBeTruthy()
+    expect(getAccessToken()).toBe('testuser_new')
+    expect(expired).not.toHaveBeenCalled()
+    expect(getPwaUpdateSafety().busy).toBe(false)
+    clearTokens(); setOnAuthExpired(null)
   })
 })

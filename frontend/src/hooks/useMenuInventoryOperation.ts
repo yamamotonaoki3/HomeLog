@@ -1,3 +1,4 @@
+import { beginPwaBusy } from '../lib/pwaUpdateSafety'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { captureMenuCredentials, menuCredentialsMatch, sendMenuOperation, verifyMenuScope, type MenuOperationOutcome } from '../api/menuInventory'
 import type { InventoryCreateBody, MenuLinkDraft, MenuPlanLine } from '../api/zaikoTypes'
@@ -35,6 +36,7 @@ export function useMenuInventoryOperation(options:Options = {}) {
   let credentials=captureMenuCredentials()
   const refreshToken=credentials?.refreshToken
   running.current=true;setBusy(true)
+  const releasePwaBusy=beginPwaBusy()
   const sessionValid=()=>alive.current&&generation.current===epoch&&callbacks.current.actorUserId===expectedActor&&captureMenuCredentials()?.refreshToken===refreshToken
   const valid=()=>sessionValid()&&!!credentials&&menuCredentialsMatch(credentials)
   try{
@@ -62,7 +64,7 @@ export function useMenuInventoryOperation(options:Options = {}) {
    if(error instanceof PurchaseIdentityError || !valid()){detached();return}
    setVerifiedScope(null);setPending(null);setOutcome({kind:'blocked',message:'本人と世帯を確認できません。再確認してください'});setMessage('本人と世帯を確認できません。再確認してください')
   }}
-  finally{if(generation.current===epoch&&alive.current){running.current=false;setBusy(false)}}
+  finally{releasePwaBusy();if(generation.current===epoch&&alive.current){running.current=false;setBusy(false)}}
  },[detached])
  useEffect(()=>{alive.current=true;void recheck(false);return()=>{alive.current=false;generation.current++;running.current=false}},[options.actorUserId,recheck])
  useEffect(()=>{const check=()=>{if(session.current && captureMenuCredentials()?.refreshToken!==session.current){detached();return}if(!running.current)void recheck(false)};window.addEventListener('storage',check);window.addEventListener('focus',check);return()=>{window.removeEventListener('storage',check);window.removeEventListener('focus',check)}},[recheck,detached])
@@ -72,6 +74,7 @@ export function useMenuInventoryOperation(options:Options = {}) {
   const snapshot=input ? structuredClone(input) : null
   const expected=scope.current,epoch=++generation.current,credentials=captureMenuCredentials(),expectedActor=callbacks.current.actorUserId
   running.current=true;setBusy(true)
+  const releasePwaBusy=beginPwaBusy()
   const valid=()=>alive.current&&generation.current===epoch&&!!credentials&&menuCredentialsMatch(credentials)&&callbacks.current.actorUserId===expectedActor&&scope.current?.actorUserId===expected.actorUserId&&scope.current?.householdId===expected.householdId
   try{
    if(!credentials||session.current!==credentials.refreshToken)return detached()
@@ -105,7 +108,7 @@ export function useMenuInventoryOperation(options:Options = {}) {
    if(generation.current!==epoch||!alive.current)return blocked
    if(error instanceof PurchaseIdentityError || !valid())return detached()
    const result:MenuOperationOutcome={kind:'blocked',message:'本人と世帯を確認できません。再確認してください'};setOutcome(result);setMessage(result.message);return result
-  }finally{if(generation.current===epoch&&alive.current){running.current=false;setBusy(false)}}
+  }finally{releasePwaBusy();if(generation.current===epoch&&alive.current){running.current=false;setBusy(false)}}
  },[detached])
  return {run:useCallback((input:MenuOperationInput)=>execute(input),[execute]),recover:useCallback(()=>execute(null),[execute]),invalidate:detached,recheck,pending,busy,outcome,message,verifiedScope}
 }

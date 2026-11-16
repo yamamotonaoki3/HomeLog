@@ -15,9 +15,12 @@ export default defineConfig({
     // manifest自体は`generateManifest: false`にせず本体を生成させ、share_targetのみ
     // manifestオプションで追加する(injectManifest等の高度な構成は不要なため`generateSW`戦略)。
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'pwa-192.png', 'pwa-512.png', 'maskable-512.png'],
       workbox: {
+        skipWaiting: false,
+        clientsClaim: false,
         navigateFallbackDenylist: [/^\/api(\/|\?|$)/, /^\/health(\?|$)/],
       },
       manifest: {
