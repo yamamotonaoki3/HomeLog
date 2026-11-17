@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -49,10 +50,11 @@ function setup(options: Options = {}) {
 async function openModal(user: ReturnType<typeof userEvent.setup>) {
   render(
     <MemoryRouter initialEntries={['/accounts']}>
-      <AccountsPage />
+      <StrictMode><AccountsPage /></StrictMode>
     </MemoryRouter>,
   )
-  await user.click(await screen.findByRole('button', { name: BANK.name }))
+  await user.click(await screen.findByRole('button', { name: BANK.name + 'の詳細' }))
+  await user.click(screen.getByRole('button', { name: BANK.name + 'の取引履歴' }))
   return await screen.findByRole('dialog', { name: /取引履歴/ })
 }
 
@@ -61,20 +63,21 @@ describe('口座の削除(履歴モーダル)', () => {
     const user = userEvent.setup()
     const state = setup()
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     expect(within(dialog).getByText(/取引履歴は残ります/)).toBeInTheDocument()
     expect(within(dialog).getByText(/一覧・残高合計・新規入力の選択肢には表示されなくなります/)).toBeInTheDocument()
     expect(state.deleteCalls).toBe(0)
+    expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toHaveFocus()
   })
 
   it('キャンセルすると削除せず履歴表示へ戻る', async () => {
     const user = userEvent.setup()
     const state = setup()
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     await user.click(within(dialog).getByRole('button', { name: 'キャンセル' }))
     expect(state.deleteCalls).toBe(0)
-    expect(within(dialog).getByRole('button', { name: '口座を削除' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: BANK.name + 'を削除' })).toHaveFocus()
     expect(within(dialog).getByText('[E2E_TEST] 履歴')).toBeInTheDocument()
   })
 
@@ -82,33 +85,34 @@ describe('口座の削除(履歴モーダル)', () => {
     const user = userEvent.setup()
     const state = setup()
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     await user.click(within(dialog).getByRole('button', { name: '削除する' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(state.deleteCalls).toBe(1)
-    const table = screen.getByRole('table', { name: '口座一覧' })
+    const table = screen.getByRole('list', { name: '口座一覧' })
     expect(within(table).queryByText(BANK.name)).not.toBeInTheDocument()
     expect(within(table).getByText(OTHER.name)).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('口座を削除しました')
+    expect(screen.getByRole('button', { name: '口座を登録' })).toHaveFocus()
   })
 
   it('APIが拒否したらメッセージを表示し、口座は一覧に残したままモーダルを閉じない', async () => {
     const user = userEvent.setup()
     setup({ deleteStatus: 400, deleteMessage: '固定費で使われているため削除できません' })
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     await user.click(within(dialog).getByRole('button', { name: '削除する' }))
     expect(await within(dialog).findByText('固定費で使われているため削除できません')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
-    expect(within(screen.getByRole('table', { name: '口座一覧' })).getByText(BANK.name)).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: '口座一覧' })).getByText(BANK.name)).toBeInTheDocument()
   })
 
   it('処理中は連打してもDELETEは1回で、閉じる・Escapeでも閉じない', async () => {
     const user = userEvent.setup()
     const state = setup({ deleteDelayMs: 150 })
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     const confirm = within(dialog).getByRole('button', { name: '削除する' })
     await user.dblClick(confirm)
     expect(within(dialog).getByRole('button', { name: 'キャンセル' })).toBeDisabled()
@@ -122,13 +126,26 @@ describe('口座の削除(履歴モーダル)', () => {
     const user = userEvent.setup()
     const state = setup({ failRefetchAfterDelete: true })
     const dialog = await openModal(user)
-    await user.click(within(dialog).getByRole('button', { name: '口座を削除' }))
+    await user.click(within(dialog).getByRole('button', { name: BANK.name + 'を削除' }))
     await user.click(within(dialog).getByRole('button', { name: '削除する' }))
     expect(await within(dialog).findByText(/削除は完了しました/)).toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: '口座を削除' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: BANK.name + 'を削除' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
-    expect(within(screen.getByRole('table', { name: '口座一覧' })).queryByText(BANK.name)).not.toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: '口座一覧' })).queryByText(BANK.name)).not.toBeInTheDocument()
     expect(state.deleteCalls).toBe(1)
   })
+  it.each(['top', 'bottom', 'escape', 'background'])('StrictModeの履歴close %s は元の履歴起点へ戻す', async action => {
+    const user = userEvent.setup()
+    setup()
+    const dialog = await openModal(user)
+    expect(within(dialog).getByRole('button', { name: '取引履歴を閉じる' })).toHaveFocus()
+    const trigger = screen.getByRole('button', { name: BANK.name + 'の取引履歴' })
+    if (action === 'escape') await user.keyboard('{Escape}')
+    else if (action === 'background') await user.click(dialog.parentElement!)
+    else await user.click(within(dialog).getByRole('button', { name: action === 'top' ? '取引履歴を閉じる' : '閉じる' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
 })

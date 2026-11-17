@@ -11,7 +11,9 @@ for (const width of [1280, 390, 320]) {
     await expect(page).toHaveTitle('シェファミ')
     await expect(page.getByRole('heading', { name: 'シェファミ', exact: true })).toBeVisible()
     await setupUserWithHousehold(page, `app_name_${width}`)
-    const home = page.getByRole('link', { name: 'シェファミ', exact: true })
+    const home = page.locator('.nav-logo')
+    await expect(home).toHaveAccessibleName(width <= 480 ? 'シェファミ' : 'シェファミ HomeLog')
+    await expect(home).toHaveAttribute('href','/')
     await expect(home).toBeVisible()
     expect(await page.evaluate(() => Boolean(localStorage.getItem('homelog.accessToken')))).toBe(true)
     for (const path of ['/zaiko', '/menu', '/recipes']) {

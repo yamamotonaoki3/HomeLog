@@ -137,6 +137,40 @@ describe('RecipeDetailModal', () => {
     expect(screen.queryByRole('heading', { name: '材料' })).not.toBeInTheDocument()
   })
 
+  it.each(['javascript:0', 'data:text/html,test', '/relative', 'invalid', null])('#570 不正・欠落元URLはリンクにせず本文と操作を残す: %s', (url) => {
+    const title = '[E2E_TEST] <em>タイトル</em>'
+    const memo = '[E2E_TEST] <img src=x>メモ'
+    const view = render(<RecipeDetailModal recipe={{ ...webRecipe, title, memo, url, thumbnailUrl: 'http://cdn.example.com/a.png' }} onClose={vi.fn()} onEdit={vi.fn()} />)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: title })).toBeVisible()
+    expect(screen.getByText(memo)).toBeVisible()
+    expect(view.container.querySelector('em')).toBeNull()
+    expect(screen.getByRole('button', { name: '編集' })).toBeVisible()
+  })
+
+  it('#570 画像失敗後も本文と元リンクを保ち、解決後src変更で再表示する', () => {
+    const recipe = { ...webRecipe, url: 'http://RECIPE.example.com/a?q=%25&v=1#steps', thumbnailUrl: '//cdn.example.com/thumb.png?signature=a%2Fb&x=1', memo: '[E2E_TEST] メモ' }
+    const view = render(<RecipeDetailModal recipe={recipe} onClose={vi.fn()} />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: '元ページを開く' })
+    expect(link).toHaveAttribute('href', 'http://recipe.example.com/a?q=%25&v=1#steps')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://recipe.example.com/a/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    const image = screen.getByRole('img')
+    expect(image).toHaveAttribute('src', 'https://recipe.example.com/thumb.png?signature=a%2Fb&x=1')
+    fireEvent.error(image)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('[E2E_TEST] メモ')).toBeVisible()
+    expect(screen.getByRole('heading', { name: recipe.title })).toBeVisible()
+    expect(screen.getByRole('link')).toBeVisible()
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://recipe.example.com/b/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://other.example.com/b/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://other.example.com/thumb.png?signature=a%2Fb&x=1')
+  })
+
   it('編集・削除ボタンでそれぞれのハンドラーを呼ぶ', async () => {
     const user = userEvent.setup()
     const { onEdit, onDelete } = renderModal(manualRecipe)
@@ -161,4 +195,33 @@ describe('RecipeDetailModal', () => {
     await user.click(screen.getByRole('heading', { level: 2, name: '肉じゃが' }))
     expect(onClose).toHaveBeenCalledTimes(3)
   })
+  it('共通登録後のEscは最上位だけへ一度届き、cleanup後に古いfallbackが残らない', () => {
+    const parentClose = vi.fn()
+    const childClose = vi.fn()
+    const view = render(<><RecipeDetailModal recipe={manualRecipe} onClose={parentClose} /><RecipeDetailModal recipe={webRecipe} onClose={childClose} /></>)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(childClose).toHaveBeenCalledTimes(1)
+    expect(parentClose).not.toHaveBeenCalled()
+    view.rerender(<RecipeDetailModal recipe={manualRecipe} onClose={parentClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(parentClose).toHaveBeenCalledTimes(1)
+    expect(childClose).toHaveBeenCalledTimes(1)
+    view.unmount()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(parentClose).toHaveBeenCalledTimes(1)
+    expect(childClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('長文でも冒頭の明示閉じるを初期focusにし、末尾閉じるも維持する', async () => {
+    const onClose = vi.fn()
+    render(<RecipeDetailModal recipe={{ ...manualRecipe, ingredients: '材料\n'.repeat(80), steps: '手順\n'.repeat(80) }} onClose={onClose} />)
+    const topClose = screen.getByRole('button', { name: 'レシピ詳細を閉じる' })
+    const bottomClose = screen.getByRole('button', { name: '閉じる' })
+    expect(topClose).toHaveFocus()
+    expect(topClose.compareDocumentPosition(screen.getByRole('heading', { name: manualRecipe.title })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await userEvent.setup().click(topClose)
+    await userEvent.setup().click(bottomClose)
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
 })

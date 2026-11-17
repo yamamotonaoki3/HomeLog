@@ -54,3 +54,79 @@
   flex: 1 1 120px;
   width: 0;
 }
+
+.fixed-cost-titlebar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fixed-cost-titlebar h2 {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+.fixed-cost-delete-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+}
+.fixed-cost-empty {
+  padding: 20px 8px;
+  max-width: 36rem;
+}
+.fixed-cost-empty h3 {
+  margin-top: 0;
+}
+.fixed-cost-empty p,
+.fixed-cost-posting-note {
+  line-height: 1.7;
+}
+.fixed-cost-posting-note {
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.fixed-cost-settings-toggle {
+  width: 100%;
+  margin-top: 20px;
+  text-align: left;
+}
+.fixed-cost-settings-toggle::after {
+  content: '＋';
+  float: right;
+}
+.fixed-cost-settings-toggle[aria-expanded="true"]::after {
+  content: '－';
+}
+.modal.fixed-cost-modal {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.fixed-cost-modal input:not([type="checkbox"]):not([type="radio"]),
+.fixed-cost-modal select {
+  min-height: 44px;
+  font-size: 16px;
+}
+.fixed-cost-modal button,
+.fixed-cost-page .toolbar .btn,
+.fixed-cost-empty .btn {
+  min-height: 44px;
+}
+.fixed-cost-page .toolbar a {
+  display: inline-flex;
+  align-items: center;
+}
+.fixed-cost-modal label:has(> input[type="radio"]),
+.fixed-cost-modal label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.fixed-cost-modal button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}

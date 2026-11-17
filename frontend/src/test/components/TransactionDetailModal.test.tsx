@@ -13,13 +13,13 @@ describe('TransactionDetailModal', () => {
   it.each(['requested', 'payment_reported', 'pending', 'settled'] as const)('%s の内訳がある支出は編集・削除できない', (status) => {
     render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splits={[{ ...split, status }]} />)
     expect(screen.getByRole('button', { name: '編集' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /の支出を削除$/ })).not.toBeInTheDocument()
     expect(screen.getByText('請求中・精算済みの割り勘がある支出は編集・削除できません')).toBeInTheDocument()
   })
   it.each(['loading', 'error'] as const)('割り勘の取得状態が %s なら支出の操作を無効にする', (splitStatus) => {
     render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splitStatus={splitStatus} />)
     expect(screen.getByRole('button', { name: '編集' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /の支出を削除$/ })).not.toBeInTheDocument()
   })
   it('未請求だけなら編集・削除できる', async () => {
     const onEdit = vi.fn()
@@ -27,7 +27,7 @@ describe('TransactionDetailModal', () => {
     render(<TransactionDetailModal {...props} transaction={{ kind: 'expense', data: expense }} splits={[{ ...split, status: 'unpaid' }]} onEdit={onEdit} onDelete={onDelete} />)
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: '編集' }))
-    await user.click(screen.getByRole('button', { name: '削除' }))
+    await user.click(screen.getByRole('button', { name: expense.purpose + 'の支出を削除' }))
     expect(onEdit).toHaveBeenCalledOnce()
     expect(onDelete).toHaveBeenCalledOnce()
   })
@@ -61,7 +61,7 @@ describe('TransactionDetailModal', () => {
     const user = userEvent.setup()
     render(<TransactionDetailModal {...props} onClose={onClose} transaction={{ kind: 'expense', data: expense }} />)
     const close = screen.getByRole('button', { name: '閉じる' })
-    expect(close).toHaveFocus()
+    expect(screen.getByRole('button', { name: '支出詳細を閉じる' })).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: '編集' })).toHaveFocus()
     await user.click(screen.getByRole('heading'))

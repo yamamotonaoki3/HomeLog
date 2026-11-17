@@ -39,6 +39,10 @@ jobs:
         working-directory: e2e
         run: npx playwright install --with-deps chromium
 
+      - name: Run E2E runner script unit tests
+        working-directory: e2e
+        run: npm run test:scripts
+
       - name: Run E2E tests
         working-directory: e2e
         run: npm run test
@@ -47,9 +51,17 @@ jobs:
         working-directory: e2e
         run: npm test -- --config playwright.menu-cleanup.config.ts
 
+      - name: Run demo mode E2E tests
+        working-directory: e2e
+        run: npm test -- --config playwright.demo.config.ts
+
       - name: Run Workers static assets E2E tests
         working-directory: e2e
         run: npm test -- --config playwright.static-assets.config.ts
+
+      - name: Run PWA manual update E2E test
+        working-directory: e2e
+        run: npm test -- --config playwright.pwa.config.ts
 
       - name: Upload Playwright report
         if: always()

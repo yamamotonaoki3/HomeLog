@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
 import type { DashboardSummary } from '../api/dashboardTypes'
-import type { Recipe } from '../api/kondateTypes'
-import { RecipeDetailModal } from '../components/kondate/RecipeDetailModal'
 import type { Account } from '../api/kakeiboTypes'
 import type { InventoryItem, ShoppingListItem } from '../api/zaikoTypes'
 import { formatPrice } from '../components/zaiko/price'
@@ -13,6 +11,8 @@ import { CalendarPanel } from '../components/dashboard/CalendarPanel'
 import { DayDetailModal } from '../components/dashboard/DayDetailModal'
 import type { CalendarDay } from '../components/dashboard/CalendarPanel'
 import { ORDERABLE_CARDS, type DashboardCard, type DisplaySettings, type OrderableCard } from '../api/userSettingsTypes'
+import { AuthContext } from '../context/authContextValue'
+import { readCollapsedCards, writeCollapsedCards } from '../lib/dashboardCollapsedCards'
 
 const LIST_PREVIEW_COUNT = 8
 type EventSummaryPeriod = 'today' | 'month' | 'year'
@@ -35,6 +35,28 @@ function PreviewList<T>({ label, state, emptyText, valueLabel, render }: { label
   )
 }
 
+// カードの枠(#493)。見出しの行にタイトル・ボタン風のリンク・開閉ボタンを並べ、本文は閉じている間隠す。
+function SummaryCard({ id, title, className, action, collapsed, onToggle, children }: { id: OrderableCard; title: string; className?: string; action?: ReactNode; collapsed: boolean; onToggle: () => void; children: ReactNode }) {
+  const bodyId = 'dashboard-card-body-' + id
+  return (
+    <div className={'card dashboard-card' + (className ? ' ' + className : '') + (collapsed ? ' is-collapsed' : '')}>
+      <div className="dashboard-card-head">
+        <h2>{title}</h2>
+        {action}
+        <button type="button" className="dashboard-card-toggle" aria-label={title + 'の開閉'} aria-expanded={!collapsed} aria-controls={bodyId} onClick={onToggle}>
+          <span className="dashboard-card-chevron" aria-hidden="true" />
+        </button>
+      </div>
+      <div id={bodyId} className="dashboard-card-body" hidden={collapsed}>{children}</div>
+    </div>
+  )
+}
+
+// ボタン風のリンク。表示は短くし、読み上げ用の名前は従来の「…を見る」のままにする。
+function CardLink({ to, name, children }: { to: string; name: string; children: ReactNode }) {
+  return <Link to={to} className="dashboard-card-link" aria-label={name}>{children}<span aria-hidden="true">›</span></Link>
+}
+
 function accountTotal(accounts: Account[]): number {
   return accounts.reduce((total, account) => {
     const chargeCardBalance = account.cards
@@ -45,6 +67,22 @@ function accountTotal(accounts: Account[]): number {
 }
 
 export function DashboardPage() {
+  // 開閉の記憶は利用者ごとに分ける。認証の情報が無い(利用者が分からない)ときは記憶しない。
+  const auth = useContext(AuthContext)
+  const userId = auth?.userStatus === 'ready' ? auth.user?.id ?? null : null
+  const [collapsedState, setCollapsedState] = useState(() => ({ userId, cards: readCollapsedCards(userId) }))
+  let collapsedCards = collapsedState.cards
+  if (collapsedState.userId !== userId) {
+    // 利用者が変わった(確定した)ら、その利用者の記憶に切り替える。
+    collapsedCards = readCollapsedCards(userId)
+    setCollapsedState({ userId, cards: collapsedCards })
+  }
+  const toggleCard = (card: OrderableCard) => {
+    const next = collapsedCards.includes(card) ? collapsedCards.filter((entry) => entry !== card) : [...collapsedCards, card]
+    setCollapsedState({ userId, cards: next })
+    writeCollapsedCards(userId, next)
+  }
+  const frame = (card: OrderableCard) => ({ id: card, collapsed: collapsedCards.includes(card), onToggle: () => toggleCard(card) })
   const [summary, setSummary] = useState<Loadable<DashboardSummary>>({ status: 'loading' })
   const [eventSummaryPeriod, setEventSummaryPeriod] = useState<EventSummaryPeriod>('year')
   const [eventSummaries, setEventSummaries] = useState<Loadable<DashboardSummary['eventExpenseSummaries']>>({ status: 'loading' })
@@ -52,45 +90,9 @@ export function DashboardPage() {
   const [inventory, setInventory] = useState<Loadable<InventoryItem[]>>({ status: 'loading' })
   const [accountBalanceTotal, setAccountBalanceTotal] = useState<Loadable<number>>({ status: 'loading' })
   const [toast, setToast] = useState({ message: '', showKey: 0 })
+  const dayTrigger = useRef<HTMLElement | null>(null)
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings | null>(null)
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
-  const [recipeLoading, setRecipeLoading] = useState(false)
-  const recipeRequest = useRef<AbortController | null>(null)
-  const recipeTrigger = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => () => {
-    recipeRequest.current?.abort()
-    recipeRequest.current = null
-  }, [])
-
-  const openRecipe = async (recipeId: number, trigger: HTMLButtonElement) => {
-    if (recipeRequest.current) return
-    const controller = new AbortController()
-    recipeRequest.current = controller
-    recipeTrigger.current = trigger
-    setRecipeLoading(true)
-    try {
-      const response = await apiClient.get<Recipe[]>('/recipes', { signal: controller.signal })
-      if (controller.signal.aborted) return
-      const recipe = response.data.find((item) => item.id === recipeId)
-      if (recipe) setSelectedRecipe(recipe)
-      else setToast((prev) => ({ message: 'レシピが見つかりませんでした', showKey: prev.showKey + 1 }))
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        setToast((prev) => ({ message: getApiErrorMessage(error, 'レシピの取得に失敗しました。時間をおいて再度お試しください'), showKey: prev.showKey + 1 }))
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        recipeRequest.current = null
-        setRecipeLoading(false)
-      }
-    }
-  }
-
-  const closeRecipe = () => {
-    setSelectedRecipe(null)
-    recipeTrigger.current?.focus()
-  }
   useEffect(() => { apiClient.get<DisplaySettings>('/user-settings').then((response) => setDisplaySettings(response.data)).catch(() => undefined) }, [])
 
   useEffect(() => {
@@ -167,46 +169,27 @@ export function DashboardPage() {
   const items = displaySettings?.items
   const summaryData = summary.status === 'ok' ? summary.data : null
   const summaryFallback = summary.status === 'loading' ? <p>読み込み中...</p> : <p className="error">集計を取得できませんでした</p>
+  const openToday = (trigger: HTMLButtonElement) => {
+    dayTrigger.current = trigger
+    setSelectedDay({ date: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date()), events: [], fixedCosts: [], income: 0, expense: 0, balance: 0 })
+  }
 
   const cardContents: Record<OrderableCard, ReactNode> = {
     today: (
-      <div className="card" key="today">
-        <h2>今日の状況</h2>
+      <SummaryCard key="today" {...frame('today')} title="今日の状況" className="dashboard-today-card">
         {summaryData ? (
           <>
-            {items?.today.balance !== false && <p>収支: {summaryData.todayBalance}円</p>}
-            {items?.today.menu !== false &&
-              (summaryData.weeklyMenuEntries.length ? (
-                <>
-                  <p>今週の献立</p>
-                  <ul className="dashboard-list" aria-label="今週の献立">
-                    {summaryData.weeklyMenuEntries.map((entry, index) => (
-                      <li key={index}>
-                        {entry.recipeId !== null && entry.recipeTitle ? (
-                          <button type="button" className="dashboard-recipe-button" disabled={recipeLoading}
-                            onClick={(event) => void openRecipe(entry.recipeId!, event.currentTarget)}>
-                            {entry.recipeTitle}
-                          </button>
-                        ) : entry.recipeTitle ?? entry.freeTextMemo ?? '削除されたレシピ'}
-                      </li>
-                    ))}
-                  </ul>
-                  {recipeLoading && <p role="status">レシピを読み込み中...</p>}
-                </>
-              ) : (
-                <p>今週の献立: なし</p>
-              ))}
-            {items?.today.events !== false && <p>イベント: {summaryData.todayEvents.map((event) => event.name).join('・') || 'なし'}</p>}
+            {items?.today.menu !== false && <button type="button" className="dashboard-today-row" onClick={event => openToday(event.currentTarget)}><span>今週の献立</span>{' '}<span className="dashboard-today-count">{summaryData.weeklyMenuEntries.length}件</span></button>}
+            {items?.today.events !== false && <button type="button" className="dashboard-today-row" onClick={event => openToday(event.currentTarget)}><span>イベント</span>{' '}<span className="dashboard-today-count">{summaryData.todayEvents.length}件</span></button>}
           </>
         ) : summaryFallback}
-      </div>
+      </SummaryCard>
     ),
     stock: (
-      <div className="card" key="stock">
-        <h2>買い物・在庫</h2>
+      <SummaryCard key="stock" {...frame('stock')} title="買い物・在庫">
         {items?.stock.shoppingList !== false && (
           <>
-            <h3>買い物リスト</h3>
+            <div className="dashboard-sub-head"><h3>買い物リスト</h3><CardLink to="/zaiko/shopping" name="買い物リストを見る">買い物リスト</CardLink></div>
             <PreviewList
               label="買い物リスト"
               state={shoppingList}
@@ -218,7 +201,7 @@ export function DashboardPage() {
         )}
         {items?.stock.inventoryList !== false && (
           <>
-            <h3>在庫リスト</h3>
+            <div className="dashboard-sub-head"><h3>在庫リスト</h3><CardLink to="/zaiko" name="在庫一覧を見る">在庫一覧</CardLink></div>
             <PreviewList
               label="在庫リスト"
               state={inventory}
@@ -235,21 +218,18 @@ export function DashboardPage() {
             />
           </>
         )}
-      </div>
+      </SummaryCard>
     ),
     finance: (
-      <div className="card" key="finance">
-        <h2>個人の財政</h2>
+      <SummaryCard key="finance" {...frame('finance')} title="個人の財政" action={<CardLink to="/accounts" name="口座・カード管理を見る">口座・カード管理</CardLink>}>
         <p>
           口座残高合計:{' '}
           {accountBalanceTotal.status === 'ok' ? `${accountBalanceTotal.data}円` : accountBalanceTotal.status === 'loading' ? '読み込み中...' : '取得できませんでした'}
         </p>
-        <Link to="/accounts">口座・カード管理を見る</Link>
-      </div>
+      </SummaryCard>
     ),
     money: (
-      <div className="card" key="money">
-        <h2>今月のお金</h2>
+      <SummaryCard key="money" {...frame('money')} title="今月のお金" action={<CardLink to="/warikan" name="精算一覧を見る">精算一覧</CardLink>}>
         {summaryData ? (
           <>
             {items?.money.personal !== false && <p>個人支出: {summaryData.monthlyPersonalExpense}円</p>}
@@ -262,12 +242,10 @@ export function DashboardPage() {
             )}
           </>
         ) : summaryFallback}
-        <Link to="/warikan">精算一覧を見る</Link>
-      </div>
+      </SummaryCard>
     ),
     eventExpenses: (
-      <div className="card" key="eventExpenses">
-        <h2>イベント別支出</h2>
+      <SummaryCard key="eventExpenses" {...frame('eventExpenses')} title="イベント別支出" action={<CardLink to="/events" name="イベント一覧を見る">イベント一覧</CardLink>}>
         <label htmlFor="dashboard-event-period">イベント別支出（対象期間）</label>
         <select
           id="dashboard-event-period"
@@ -287,19 +265,21 @@ export function DashboardPage() {
         ) : (
           <p>イベント別支出: なし</p>
         )}
-        <Link to="/events">イベント一覧を見る</Link>
-      </div>
+      </SummaryCard>
     ),
   }
 
-  const visibleCards = cardOrder.filter(showCard)
+  const visibleCards = cardOrder.filter(card => showCard(card) && (card !== 'today' || items?.today.menu !== false || items?.today.events !== false))
 
   return (
-    <div className="page">
+    <div className="page dashboard-home">
       <div className="dashboard-layout">
         {showCard('calendar') && (
           <CalendarPanel
-            onSelectDate={setSelectedDay}
+            onSelectDate={(day) => {
+              dayTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+              setSelectedDay(day)
+            }}
             showEvents={items?.calendar.events !== false}
             showIncome={items?.calendar.income !== false}
             showExpense={items?.calendar.expense !== false}
@@ -312,8 +292,7 @@ export function DashboardPage() {
           </p>
         )}
       </div>
-      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
-      {selectedRecipe && <RecipeDetailModal recipe={selectedRecipe} onClose={closeRecipe} />}
+      {selectedDay && <DayDetailModal day={selectedDay} onClose={() => { setSelectedDay(null); dayTrigger.current?.focus({ preventScroll: true }) }} />}
       <Toast message={toast.message} showKey={toast.showKey} />
     </div>
   )

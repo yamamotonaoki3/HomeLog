@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useDialog } from '../../hooks/useDialog'
 import { apiClient } from '../../api/client'
 import { getApiErrorMessage } from '../../api/getApiErrorMessage'
 import type { Account, Card } from '../../api/kakeiboTypes'
@@ -15,9 +16,12 @@ export function ChargeModal({ card, accounts, onClose, onSaved }: Props) {
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const close = () => { if (!submitting) onClose() }
+  const ref = useDialog(close, '#charge-account')
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
     const amountValue = Number(amount)
     if (!Number.isInteger(amountValue) || amountValue < 1 || amountValue > 9_999_999_999) {
       setError('チャージ金額は1以上の整数で入力してください')
@@ -46,8 +50,8 @@ export function ChargeModal({ card, accounts, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
+    <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) close() }}>
+      <div ref={ref} className="modal accounts-form-modal" role="dialog" aria-modal="true" aria-label={card.name + 'にチャージ'}>
         <h2>{card.name}にチャージ</h2>
         <form onSubmit={handleSubmit} noValidate>
           <label htmlFor="charge-account">チャージ元口座</label>
@@ -71,12 +75,12 @@ export function ChargeModal({ card, accounts, onClose, onSaved }: Props) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
-          <p className="error">{error}</p>
+          {error && <p className="error" role="alert">{error}</p>}
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary" disabled={submitting || accounts.length === 0}>
               チャージする
             </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+            <button type="button" className="btn btn-secondary" onClick={close} disabled={submitting}>
               キャンセル
             </button>
           </div>

@@ -39,6 +39,7 @@ function setup(candidateMembers = members) {
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('金額'), '1000')
   await user.type(screen.getByLabelText('使用用途（任意）'), '[E2E_TEST] ランチ')
+  await user.click(screen.getByRole('button', { name: 'その他の設定' }))
 }
 
 describe('TransactionModal 使用用途', () => {
@@ -198,5 +199,88 @@ describe('TransactionModal 割り勘', () => {
 
     expect(calls).toHaveLength(0)
     expect(screen.getAllByText(/整数\(円\)で入力してください/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('TransactionModal の見た目に関わる構成 (#473)', () => {
+  it('新規登録の見出しは「収支を登録」で、操作はキャンセル・登録の順に並ぶ', () => {
+    setup()
+    const dialog = screen.getByRole('dialog', { name: '収支を登録' })
+    const cancel = screen.getByRole('button', { name: 'キャンセル' })
+    const submit = screen.getByRole('button', { name: '登録' })
+    expect(dialog).toContainElement(submit)
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('「その他の設定」は名前を変えず、含まれる内容を補足として表示する', () => {
+    setup()
+    const toggle = screen.getByRole('button', { name: 'その他の設定' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent('世帯合計・イベント・割り勘・メモ')
+  })
+})
+
+// #487: 「カテゴリー管理」「固定費」への入口を、使う場所の横に置く。
+describe('関連する設定への入口 (#487)', () => {
+  const incomeCategories = [{ id: 11, name: '給与', isDefault: true }]
+  const accounts = [{ id: 1, name: '[E2E_TEST] 口座', type: 'bank', balance: 0, cards: [] }]
+  const base = { expenseCategories: categories, incomeCategories, accounts, events: [], members, onClose: vi.fn(), onSaved: vi.fn() }
+  const expenseEditing = { kind: 'expense' as const, data: { id: 42, expenseDate: '2030-01-15', amount: 1000, purpose: '[E2E_TEST] 支出', categoryId: 1, memo: null, includeInHouseholdTotal: false, accountId: null, cardId: null, eventId: null } }
+
+  it('支出の登録では、カテゴリーの見出しの横に「カテゴリー管理」、その他の設定の下に「固定費で登録」を置く', () => {
+    render(<TransactionModal {...base} initialKind="expense" />)
+    const category = screen.getByRole('link', { name: 'カテゴリー管理' })
+    expect(category).toHaveAttribute('href', '/categories')
+    // 見出しと同じ行に置く。入力欄との結びつき(label for)は変えない。
+    expect(category.parentElement).toContainElement(screen.getByText('カテゴリー', { selector: 'label' }))
+    expect(screen.getByLabelText('カテゴリー')).toHaveValue('1')
+    const fixed = screen.getByRole('link', { name: '固定費で登録' })
+    expect(fixed).toHaveAttribute('href', '/fixed-costs')
+    expect(fixed.closest('p')).toHaveTextContent('毎月の支払いは')
+    const toggle = screen.getByRole('button', { name: /その他の設定/ })
+    expect(toggle.compareDocumentPosition(fixed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(fixed.compareDocumentPosition(screen.getByRole('button', { name: '登録' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('収入の登録では「固定費で登録」を出さず、「カテゴリー管理」は出す', async () => {
+    render(<TransactionModal {...base} initialKind="expense" />)
+    await userEvent.setup().click(screen.getByRole('tab', { name: '収入' }))
+    expect(screen.getByRole('link', { name: 'カテゴリー管理' })).toHaveAttribute('href', '/categories')
+    expect(screen.queryByRole('link', { name: '固定費で登録' })).not.toBeInTheDocument()
+  })
+
+  it('編集では「固定費で登録」を出さず、「カテゴリー管理」は出す', () => {
+    render(<TransactionModal {...base} initialKind="expense" editing={expenseEditing} />)
+    expect(screen.getByRole('dialog', { name: '支出を編集' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'カテゴリー管理' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '固定費で登録' })).not.toBeInTheDocument()
+  })
+
+  it('移動の処理を渡すと、再読み込みをせずにその処理で移動する', async () => {
+    const onNavigate = vi.fn()
+    render(<TransactionModal {...base} initialKind="expense" onNavigate={onNavigate} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'カテゴリー管理' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('/categories')
+    await user.click(screen.getByRole('link', { name: '固定費で登録' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('/fixed-costs')
+    expect(onNavigate).toHaveBeenCalledTimes(2)
+  })
+
+  it('保存の送信中は移動しない', async () => {
+    let release!: () => void
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    server.use(http.post('/api/expenses', async () => { await blocked; return HttpResponse.json({ id: 1 }, { status: 201 }) }))
+    const onNavigate = vi.fn()
+    render(<TransactionModal {...base} initialKind="expense" onNavigate={onNavigate} />)
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('金額'), '1000')
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '登録' })).toBeDisabled())
+    await user.click(screen.getByRole('link', { name: 'カテゴリー管理' }))
+    expect(onNavigate).not.toHaveBeenCalled()
+    release()
+    await waitFor(() => expect(base.onSaved).toHaveBeenCalled())
   })
 })

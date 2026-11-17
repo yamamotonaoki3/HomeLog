@@ -1,7 +1,8 @@
 import { isAxiosError } from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
+import { useAuth } from '../context/useAuth'
 import { getCurrentUserId } from '../api/tokenStorage'
 import type { DashboardSummary } from '../api/dashboardTypes'
 import type { Event, SummaryPeriod } from '../api/eventTypes'
@@ -33,6 +34,8 @@ function isInMonth(dateStr: string, year: number, month: number): boolean {
 }
 
 export function KakeiboPage() {
+  const { user, userStatus } = useAuth()
+  const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const [categories, setCategories] = useState<KakeiboCategory[]>([])
@@ -62,6 +65,12 @@ export function KakeiboPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const addButton = useRef<HTMLButtonElement>(null)
+  const focusAddButton = useCallback(() => {
+    const trigger = addButton.current
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus({ preventScroll: true })
+    }
+  }, [])
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   const closeDetail = useCallback(() => {
     setSelected(null)
@@ -398,10 +407,12 @@ export function KakeiboPage() {
       fetchDashboardSummary().catch(() => undefined)
       fetchEventSummaries(events, eventPeriod).catch(() => undefined)
       setModalOpen(false)
+      focusAddButton()
       showToast('支出を登録しました')
       return
     }
     setModalOpen(false)
+    focusAddButton()
     showToast('収入を登録しました')
     const results = await Promise.allSettled([
       fetchIncomes(incomeCategoryFilter),
@@ -481,6 +492,8 @@ export function KakeiboPage() {
   const monthlyIncomeTotal = allIncomes
     .filter((income) => isInMonth(income.incomeDate, currentYear, currentMonth))
     .reduce((sum, income) => sum + income.amount, 0)
+  const monthlyBalance = monthlyIncomeTotal - monthlyExpenseTotal
+  const yen = (value: number) => value.toLocaleString('ja-JP') + '円'
   const dashboardEvents = events.filter((event) => event.showOnDashboard)
   const editingSplits = editing?.kind === 'expense'
     ? splits.filter((split) => split.expenseId === editing.data.id && split.role === 'payer')
@@ -497,13 +510,30 @@ export function KakeiboPage() {
 
   return (
     <div className="page kakeibo-page">
-      <div className="panel kakeibo-monthly-summary" data-testid="monthly-summary">
-        <p>今月支出：{monthlyExpenseTotal}円</p>
-        <p>今月収入：{monthlyIncomeTotal}円</p>
-        <p>世帯合計対象額：{dashboardSummary?.householdExpenseTotal ?? 0}円</p>
-        <p>今月の固定費予定額：{fixedCostTotal}円</p>
-      </div>
-      <div className="panel" data-testid="event-summary">
+      <div className="ui-narrow">
+      <header className="ui-page-head">
+        <div>
+          <h2>家計簿</h2>
+          <p className="ui-page-sub">収支履歴は全期間・新しい順</p>
+        </div>
+      </header>
+      <section className="ui-card kakeibo-monthly-summary" data-testid="monthly-summary" aria-labelledby="kakeibo-summary-title">
+        <div className="kakeibo-summary-head">
+          <h3 id="kakeibo-summary-title">{currentYear}年{currentMonth}月の集計</h3>
+          <span className="ui-tag">月間</span>
+        </div>
+        {/* 読み上げと検索では「今月収入：1,000円」と続けて読めるよう、区切りの「：」は文字として残す。 */}
+        <div className="kakeibo-summary-main">
+          <p><span className="kakeibo-summary-label">今月収入<span className="visually-hidden">：</span></span><strong className="kakeibo-amount-income">{yen(monthlyIncomeTotal)}</strong></p>
+          <p><span className="kakeibo-summary-label">今月支出<span className="visually-hidden">：</span></span><strong className="kakeibo-amount-expense">{yen(monthlyExpenseTotal)}</strong></p>
+          <p><span className="kakeibo-summary-label">今月差額<span className="visually-hidden">：</span></span><strong className={monthlyBalance < 0 ? 'kakeibo-amount-expense' : 'kakeibo-amount-balance'}>{yen(monthlyBalance)}</strong></p>
+        </div>
+        <div className="kakeibo-summary-sub">
+          <p>世帯合計対象額：{yen(dashboardSummary?.householdExpenseTotal ?? 0)}</p>
+          <p>今月の固定費予定額：{yen(fixedCostTotal)}</p>
+        </div>
+      </section>
+      <div className="ui-card kakeibo-sub-card" data-testid="event-summary">
         <label htmlFor="kakeibo-event-period">イベント支出（対象期間）</label>
         <select
           id="kakeibo-event-period"
@@ -528,7 +558,7 @@ export function KakeiboPage() {
           </ul>
         )}
       </div>
-      <div className="panel" data-testid="warikan-summary">
+      <div className="ui-card kakeibo-sub-card kakeibo-warikan-summary" data-testid="warikan-summary">
         <p>
           未精算：支払う {owedByMe.length}件 {sumAmount(owedByMe)}円 ／ 受け取る {owedToMe.length}件{' '}
           {sumAmount(owedToMe)}円
@@ -550,10 +580,13 @@ export function KakeiboPage() {
         onAddClick={() => setModalOpen(true)}
         addDisabled={addDisabled}
       />
-      {detail && !editing && !deleting && <TransactionDetailModal transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} onEdit={() => setEditing(detail)} onDelete={() => { setDeleteError(''); setDeleting(detail) }} />}
+      </div>
+      {detail && <TransactionDetailModal hidden={!!editing || !!deleting} transaction={detail} accounts={accounts} expenseCategories={categories} incomeCategories={incomeCategories} events={events} splits={splits} splitStatus={splitStatus} onClose={closeDetail} onEdit={() => setEditing(detail)} onDelete={() => { setDeleteError(''); setDeleting(detail) }} />}
       {deleting && <TransactionDeleteModal transaction={deleting} busy={deleteBusy} error={deleteError} onClose={() => setDeleting(null)} onDelete={handleDelete} />}
       {(modalOpen || editing) && (
         <TransactionModal
+          userId={userStatus === 'ready' ? user?.id ?? null : null}
+          identityLoading={userStatus === 'loading'}
           expenseCategories={categories}
           incomeCategories={incomeCategories}
           accounts={accounts}
@@ -561,6 +594,7 @@ export function KakeiboPage() {
           events={events}
           members={members}
           membersLoaded={membersLoaded}
+          onNavigate={navigate}
           editing={editing ?? undefined}
           initialSplits={editingSplits.map((split) => ({
             debtorUserId: split.debtorUserId,
@@ -571,7 +605,7 @@ export function KakeiboPage() {
           }))}
           initialSplitInputType={editingSplits[0]?.splitInputType}
           initialKind={initialKind}
-          onClose={() => { setModalOpen(false); setEditing(null) }}
+          onClose={() => { setModalOpen(false); setEditing(null); if (!editing) focusAddButton() }}
           onSaved={editing ? handleEdited : handleSaved}
         />
       )}

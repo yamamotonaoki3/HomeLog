@@ -1,9 +1,10 @@
-import { and, eq, isNull, or } from 'drizzle-orm'
+import { and, eq, isNull, or, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import { Hono } from 'hono'
 import { events, fixedCosts, menuEntries, recipes } from '../db/schema'
 import { currentMonthRange, currentWeekStart, formatJstToday, getJstToday, isValidCalendarDate } from '../lib/date'
 import { errorResponse } from '../lib/errors'
+import { dashboardDayDetail } from '../lib/dashboard-day-detail'
 import { resolveOccurrences, type RecurrenceType } from '../lib/event-recurrence'
 import { resolveHouseholdId } from '../lib/household-context'
 import { requireAuth } from '../middleware/auth'
@@ -77,7 +78,7 @@ dashboardRoute.get('/summary', async (c) => {
 
   // 献立は世帯共有の情報のため、当週の全エントリをレシピID・名前と自由メモの形で返す。
   const weeklyMenuEntries = await db
-    .select({ recipeId: menuEntries.recipeId, recipeTitle: recipes.title, freeTextMemo: menuEntries.freeTextMemo })
+    .select({ recipeId: menuEntries.recipeId, recipeTitle: sql<string | null>`CASE WHEN ${menuEntries.inventoryMenuLinkId} IS NOT NULL OR ${menuEntries.usageTenths} IS NOT NULL OR ${menuEntries.recipeTitleSnapshot} IS NOT NULL OR ${menuEntries.consumedEventId} IS NOT NULL THEN ${menuEntries.recipeTitleSnapshot} ELSE ${recipes.title} END`, freeTextMemo: menuEntries.freeTextMemo })
     .from(menuEntries)
     .leftJoin(recipes, eq(menuEntries.recipeId, recipes.id))
     .where(and(eq(menuEntries.householdId, householdId), eq(menuEntries.weekStartDate, currentWeekStart(jstToday))))
@@ -164,6 +165,20 @@ dashboardRoute.get('/notifications/today', async (c) => {
   ).length
 
   return c.json({ notificationCount })
+})
+
+dashboardRoute.get('/day-detail', async (c) => {
+  const date = c.req.query('date')
+  if (!date || !isValidCalendarDate(date)) {
+    return c.json(errorResponse('VALIDATION_ERROR', 'dateは実在するYYYY-MM-DD形式で指定してください'), 400)
+  }
+  const userId = c.get('userId')
+  const householdId = await resolveHouseholdId(drizzle(c.env.DB), userId)
+  if (householdId === null) {
+    return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+  const today = getJstToday().toISOString().slice(0, 10)
+  return c.json(await dashboardDayDetail(c.env.DB, householdId, userId, date, today))
 })
 
 dashboardRoute.get('/calendar', async (c) => {

@@ -1,5 +1,10 @@
+import { beginPwaBusy } from '../lib/pwaUpdateSafety'
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { clearTokens, getAccessToken, getRefreshToken, setAccessToken } from './tokenStorage'
+
+declare module 'axios' {
+  interface AxiosRequestConfig { authMode?: 'bound-no-refresh'; _pwaBusyRelease?: () => void }
+}
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
@@ -41,44 +46,47 @@ async function refreshAccessToken(): Promise<string> {
 class StaleSessionError extends Error {}
 
 apiClient.interceptors.request.use((config) => {
+  if (config.authMode === 'bound-no-refresh') {
+    const authorization = config.headers.get('Authorization')
+    if (typeof authorization !== 'string' || !/^Bearer \S+$/.test(authorization)) throw new Error('購入の認証確認が必要です')
+    config._pwaBusyRelease = beginPwaBusy()
+    return config
+  }
   const accessToken = getAccessToken()
   if (accessToken) {
     config.headers.set('Authorization', `Bearer ${accessToken}`)
   }
+  config._pwaBusyRelease = beginPwaBusy()
   return config
 })
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => { response.config._pwaBusyRelease?.(); return response },
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryableRequestConfig | undefined
-    const isAuthEndpoint =
-      originalRequest?.url?.includes(REFRESH_PATH) || originalRequest?.url?.includes(LOGIN_PATH)
-
-    if (error.response?.status !== 401 || !originalRequest || originalRequest._retry || isAuthEndpoint) {
-      return Promise.reject(error)
-    }
-
-    originalRequest._retry = true
-
-    const sessionRefreshToken = getRefreshToken()
+    const release = originalRequest?._pwaBusyRelease
     try {
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null
-        })
-      }
-      const newAccessToken = await refreshPromise
-      originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`)
-      return apiClient(originalRequest)
-    } catch (refreshError) {
-      // 失敗したのが古いセッションなら、新しいセッションを消さない。
-      if (refreshError instanceof StaleSessionError || getRefreshToken() !== sessionRefreshToken) {
+      if (originalRequest?.authMode === 'bound-no-refresh') return Promise.reject(error)
+      const isAuthEndpoint = originalRequest?.url?.includes(REFRESH_PATH) || originalRequest?.url?.includes(LOGIN_PATH)
+      if (error.response?.status !== 401 || !originalRequest || originalRequest._retry || isAuthEndpoint) return Promise.reject(error)
+      originalRequest._retry = true
+      const sessionRefreshToken = getRefreshToken()
+      let newAccessToken: string
+      try {
+        if (!refreshPromise) {
+          refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null })
+        }
+        newAccessToken = await refreshPromise
+      } catch (refreshError) {
+        // 失敗したのが古いセッションなら、新しいセッションを消さない。
+        if (refreshError instanceof StaleSessionError || getRefreshToken() !== sessionRefreshToken) return Promise.reject(refreshError)
+        clearTokens()
+        authExpiredHandler?.()
         return Promise.reject(refreshError)
       }
-      clearTokens()
-      authExpiredHandler?.()
-      return Promise.reject(refreshError)
-    }
+      originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`)
+      // Keep the outer request busy through retry, but keep retry errors outside refresh failure handling.
+      return await apiClient(originalRequest)
+    } finally { release?.() }
   },
 )

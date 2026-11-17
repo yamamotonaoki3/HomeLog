@@ -16,13 +16,13 @@ describe('GET /api/auth/me', () => {
         headers: { Authorization: `Bearer ${token}` },
       }, env)
       expect(res.status).toBe(200)
-      expect(await res.json()).toEqual({ id: user.id, displayName: name })
+      expect(await res.json()).toEqual({ id: user.id, displayName: name, demo: null })
     }
     // 古いJWTに表示名を埋め込まず、DBの現在値を返す。
     const token = await signAccessToken(a!.id, env.JWT_SECRET, 60)
     await env.DB.prepare('UPDATE users SET display_name = ? WHERE id = ?').bind('testuser_updated', a!.id).run()
     const updated = await app.request('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } }, env)
-    expect(await updated.json()).toEqual({ id: a!.id, displayName: 'testuser_updated' })
+    expect(await updated.json()).toEqual({ id: a!.id, displayName: 'testuser_updated', demo: null })
   })
 
   it.each([undefined, 'Bearer invalid', 'Basic invalid', 'Bearer '])('認証なし・不正な認証を401にする (%s)', async (authorization) => {

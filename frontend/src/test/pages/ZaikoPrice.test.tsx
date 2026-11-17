@@ -1,6 +1,10 @@
+import { makeInventoryPlanResult } from '../mocks/inventoryPlan'
+import type { InventoryPlanCreateBody } from '../../api/zaikoTypes'
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { Link, MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { server } from '../mocks/server'
@@ -13,30 +17,36 @@ function setup(path = '/zaiko') {
     http.get('/api/zaiko-categories', () => HttpResponse.json([{ id: 1, name: '食品', isDefault: true }])),
     http.get('/api/stores', () => HttpResponse.json([])),
     http.get('/api/inventory-items', () => HttpResponse.json(inventory)),
-    http.get('/api/shopping-list-items', () => HttpResponse.json([{ id: 10, inventoryItemId: 1, name: inventory[0].name, price: inventory[0].price, isManual: false, purchased: false, purchasedQuantity: 0 }])),
-    http.patch('/api/inventory-items/:id', async ({ request }) => {
+    http.get('/api/shopping-list-items', () => HttpResponse.json([{ id: 10, inventoryItemId: 1, name: inventory[0].name, price: inventory[0].price, isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }])),
+    http.put('/api/inventory-items/:id', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>; bodies.push(body)
       inventory[0].price = body.price as number | null
-      return HttpResponse.json(inventory[0])
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody,{id:1}))
     }),
-    http.post('/api/inventory-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json(inventory[0], { status: 201 }) }),
+    http.post('/api/inventory-items', async ({ request }) => { const body=await request.json() as InventoryPlanCreateBody; bodies.push(body as unknown as Record<string, unknown>); return HttpResponse.json(makeInventoryPlanResult(body), { status: 201 }) }),
     http.post('/api/shopping-list-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json({}, { status: 201 }) }),
   )
-  render(<MemoryRouter initialEntries={[path]}><ZaikoPage /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={[path]}><Link to="/zaiko/shopping">買い物リストへ</Link><ZaikoPage /></MemoryRouter>)
   return { bodies, inventory }
 }
 
+async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>) {
+  const row = await screen.findByRole('button', { name: 'testuser_牛乳の詳細' })
+  if (row.getAttribute('aria-expanded') !== 'true') await user.click(row)
+  await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細を編集' }))
+}
+
 describe('値段入力', () => {
-  it('編集初期値を表示しPATCHで0と空欄nullを保存、数量を送らない', async () => {
+  it('編集初期値を表示しPUTで0と空欄nullと数量を一括保存', async () => {
     const { bodies } = setup(); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '0')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(bodies[0]).toMatchObject({ price: 0 }))
-    expect(bodies[0]).not.toHaveProperty('quantity')
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    expect(bodies[0]).toHaveProperty('quantity', 0)
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('0')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -61,7 +71,7 @@ describe('値段入力', () => {
   })
   it('手動追加は選択品目の値段を切り替え、空欄なら省略する', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '1')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.selectOptions(screen.getByLabelText('追加する品目'), '2')
@@ -71,33 +81,36 @@ describe('値段入力', () => {
   })
   it('編集のキャンセルと保存失敗では表示を維持し、再試行で両一覧を更新する', async () => {
     const { bodies } = setup(); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(bodies).toHaveLength(0)
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
-    server.use(http.patch('/api/inventory-items/:id', () => HttpResponse.json({ message: '保存失敗' }, { status: 500 }), { once: true }))
+    server.use(http.put('/api/inventory-items/:id', () => HttpResponse.json({ code: 'VALIDATION_ERROR', message: '保存失敗' }, { status: 400 }), { once: true }))
     await user.click(screen.getByRole('button', { name: '保存' }))
     await screen.findByText('保存失敗')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('980')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
-    await user.click(screen.getByRole('button', { name: 'testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: '一覧を再取得' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '一覧を再取得' })).not.toBeInTheDocument())
+    await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    fireEvent.click(within(screen.getByTestId('shopping-panel')).getByRole('button', { name: 'testuser_牛乳の詳細', hidden: true }))
+    await user.click(screen.getByRole('link', { name: '買い物リストへ' }))
+    await user.click(within(screen.getByTestId('shopping-panel')).getByRole('button', { name: 'testuser_牛乳の詳細' }))
     expect(within(screen.getByTestId('shopping-panel')).getByText('980円')).toBeInTheDocument()
     expect(screen.queryByText('1,280円')).not.toBeInTheDocument()
   })
   it('手動追加の値段0を送信し、不正な値段ではAPIを呼ばない', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '2')
     await user.type(screen.getByLabelText('値段（円・任意）'), '-1')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))
@@ -110,12 +123,12 @@ describe('値段入力', () => {
   })
   it('追加成功後の入力をリセットして古い価格の再送信を防ぐ', async () => {
     const { bodies } = setup('/zaiko/shopping'); const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '品目を手動追加' }))
+    await user.click(await screen.findByRole('button', { name: '品目を追加' }))
     await user.selectOptions(screen.getByLabelText('追加する品目'), '1')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))
     await waitFor(() => expect(bodies).toHaveLength(1))
     await waitFor(() => expect(screen.queryByLabelText('追加する品目')).not.toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: '品目を手動追加' }))
+    await user.click(screen.getByRole('button', { name: '品目を追加' }))
     expect(screen.getByLabelText('追加する品目')).toHaveValue('')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('')
     await user.click(screen.getByRole('button', { name: /^追加$/ }))

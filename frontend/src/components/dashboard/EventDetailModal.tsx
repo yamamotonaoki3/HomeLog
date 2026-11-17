@@ -1,39 +1,37 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from '../../api/client'
 import { RECURRENCE_LABELS, timeRangeLabel, type Event } from '../../api/eventTypes'
+import { useDialog } from '../../hooks/useDialog'
 import type { CalendarEvent } from './CalendarPanel'
 
 // カレンダーのイベントボタンから開く詳細モーダル。詳細はGET /api/events(世帯共有+本人所有のみ)から
 // IDで引くため、カレンダーAPIと同じ権限境界の範囲でしか表示されない。
 export function EventDetailModal({ event, date, onClose }: { event: CalendarEvent; date: string; onClose: () => void }) {
+  return <EventDetailContent key={event.id} event={event} date={date} onClose={onClose} />
+}
+
+function EventDetailContent({ event, date, onClose }: { event: CalendarEvent; date: string; onClose: () => void }) {
+  const modalRef = useDialog(onClose, '[data-event-close]')
   const [detail, setDetail] = useState<Event | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     apiClient
-      .get<Event[]>('/events')
+      .get<Event[]>('/events', { signal: controller.signal })
       .then((response) => {
-        if (cancelled) return
+        if (controller.signal.aborted) return
         const found = response.data.find((item) => item.id === event.id)
         if (found) setDetail(found)
         else setError(true)
       })
       .catch(() => {
-        if (!cancelled) setError(true)
+        if (!controller.signal.aborted) setError(true)
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [event.id])
-
-  useEffect(() => {
-    const onKeyDown = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
 
   return (
     <div
@@ -45,7 +43,7 @@ export function EventDetailModal({ event, date, onClose }: { event: CalendarEven
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="modal">
+      <div className="modal day-event-detail" ref={modalRef}>
         <h2>{detail?.name ?? event.name}</h2>
         {error ? (
           <p role="alert" className="error">イベントの詳細を取得できませんでした</p>
@@ -68,7 +66,7 @@ export function EventDetailModal({ event, date, onClose }: { event: CalendarEven
           </dl>
         )}
         <div className="modal-actions">
-          <button type="button" onClick={onClose} autoFocus>
+          <button type="button" onClick={onClose} data-event-close>
             閉じる
           </button>
         </div>

@@ -115,8 +115,11 @@
   padding: 24px;
   border-radius: 10px;
   width: 420px;
+  max-width: calc(100vw - 24px);
   max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .modal h2 {
   margin-top: 0;
@@ -181,4 +184,18 @@ input[type="radio"] {
   background: #fca5a5;
   border-color: #fca5a5;
   cursor: not-allowed;
+}
+
+/* 狭い画面でも入力時に自動拡大されないサイズを共通化する。
+ * 機能別フォームの既存14px指定より優先し、在庫の数量表示も入力と揃える。 */
+:root .app-shell input,
+:root .app-shell select,
+:root .app-shell textarea,
+:root .app-shell .inventory-quantity-inline .qty-value {
+  font-size: 16px;
+}
+
+/* 16px × 1.25 + 既存の上下padding 16px・border 2px = 自然高38px。 */
+:root .app-shell .inventory-quantity-inline .qty-value {
+  line-height: 1.25;
 }

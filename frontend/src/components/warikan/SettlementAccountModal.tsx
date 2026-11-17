@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDialog } from '../../hooks/useDialog'
 import type { Account } from '../../api/kakeiboTypes'
 
 interface Props {
@@ -17,10 +18,12 @@ interface Props {
  */
 export function SettlementAccountModal({ title, description, submitLabel, accounts, submitting, onSubmit, onClose }: Props) {
   const [selection, setSelection] = useState('')
+  const close = () => { if (!submitting) onClose() }
+  const ref = useDialog(close, '#settlement-account')
 
   return (
-    <div className="modal-overlay">
-      <div className="modal" data-testid="settlement-account-modal">
+    <div className="modal-overlay" onClick={event => { if (event.target === event.currentTarget) close() }}>
+      <div ref={ref} className="modal warikan-child-modal" role="dialog" aria-modal="true" aria-label={title} data-testid="settlement-account-modal">
         <h2>{title}</h2>
         <p className="hint">{description}</p>
         <label htmlFor="settlement-account">口座（任意）</label>
@@ -41,7 +44,7 @@ export function SettlementAccountModal({ title, description, submitLabel, accoun
           >
             {submitLabel}
           </button>
-          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onClose}>
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={close}>
             キャンセル
           </button>
         </div>

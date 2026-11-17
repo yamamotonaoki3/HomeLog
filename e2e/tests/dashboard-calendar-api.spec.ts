@@ -1,10 +1,12 @@
 import { expect, test } from './console-guard'
 import { addIncomeViaApi, addTransaction, setupUserWithHousehold } from './support/flows'
 
-test.describe('S-04 ダッシュボードカレンダーAPI', () => {
+for (const width of [1280, 390, 320]) {
+test.describe('S-04 ダッシュボードカレンダーAPI ' + width + 'px', () => {
+  test.use({ viewport: { width, height: 844 }, hasTouch: width < 500 })
   test('実UIで登録した当日の収支・固定費・通知イベントを返す', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
-    await setupUserWithHousehold(page, 'dashboard_calendar_api')
+    await setupUserWithHousehold(page, 'dashboard_calendar_api_' + width)
     const jstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const jstMonth = jstToday.slice(0, 7)
     const jstDay = String(Number(jstToday.slice(8, 10)))
@@ -25,9 +27,18 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     await page.getByRole('button', { name: 'イベントを登録' }).click()
     await page.getByLabel('イベント名').fill('[E2E_TEST] カレンダーイベント')
     await page.getByLabel('日付').fill(jstToday)
-    await page.getByLabel('通知する').check()
+    await expect(page.getByLabel('通知する')).not.toBeChecked()
+    await expect(page.getByLabel('通知する')).toBeDisabled()
     await page.getByRole('button', { name: '登録', exact: true }).click()
     await expect(page.getByTestId('events-panel').locator('.list-row-button').filter({ hasText: '[E2E_TEST] カレンダーイベント' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'イベントを登録' }).click()
+    await page.getByLabel('イベント名').fill('[E2E_TEST] カレンダー通知イベント')
+    await page.getByLabel('日付').fill(jstToday)
+    await page.getByLabel('繰り返し', { exact: true }).selectOption('daily')
+    await page.getByLabel('通知する').check()
+    await page.getByRole('button', { name: '登録', exact: true }).click()
+    await expect(page.getByRole('button', { name: '[E2E_TEST] カレンダー通知イベントの詳細', exact: true })).toBeVisible()
 
     const accessToken = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     expect(accessToken).toBeTruthy()
@@ -41,12 +52,17 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     }>()
     expect(body.days.find((day) => day.date === jstToday)).toMatchObject({
       fixedCosts: ['[E2E_TEST] カレンダー固定費'],
-      events: [{ name: '[E2E_TEST] カレンダーイベント', isRecurring: false, recurrenceType: 'none', eventDate: jstToday }],
+      events: [
+        { name: '[E2E_TEST] カレンダーイベント', isRecurring: false, recurrenceType: 'none', eventDate: jstToday },
+        { name: '[E2E_TEST] カレンダー通知イベント', isRecurring: true, recurrenceType: 'daily', eventDate: jstToday },
+      ],
       income: 3000,
       expense: 1200,
       balance: 1800,
     })
+    expect(body.days.find((day) => day.date === jstToday)?.events).toHaveLength(2)
     expect(body.days.find((day) => day.date === jstToday)?.events[0].id).toEqual(expect.any(Number))
+    expect(body.days.find((day) => day.date === jstToday)?.events[1].id).toEqual(expect.any(Number))
     expect(body.notificationCount).toBe(1)
     const notificationResponse = await page.request.get('/api/dashboard/notifications/today', {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -57,25 +73,50 @@ test.describe('S-04 ダッシュボードカレンダーAPI', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: '月間カレンダー' })).toBeVisible()
     await expect(page.getByRole('img', { name: '通知アラーム（1件）' })).toBeVisible()
+    await expect(page.getByRole('img', { name: '通知アラーム（1件）' }).locator('.notification-alarm-count')).toHaveText('1')
     await expect(page.getByText('通知: 1件')).not.toBeVisible()
-    await page.getByRole('button', { name: jstToday }).click()
-    await expect(page.getByRole('dialog', { name: '日次詳細' })).toBeVisible()
-    await expect(page.getByRole('link', { name: '支出を登録' })).toHaveAttribute('href', '/kakeibo')
-    await expect(page.getByRole('link', { name: 'イベントを追加' })).toHaveAttribute('href', '/events')
-    await expect(page.getByRole('link', { name: 'この週の献立を編集' })).toHaveAttribute('href', /\/menu\?week=/)
-    await page.getByRole('dialog', { name: '日次詳細' }).getByRole('button', { name: '閉じる' }).click()
-
-    const todayCell = page.getByRole('button', { name: jstToday })
-    await expect(todayCell.getByText('+3000円')).toBeVisible()
-    await expect(todayCell.getByText('-1200円')).toBeVisible()
-    await page.getByRole('button', { name: 'イベント「[E2E_TEST] カレンダーイベント」の詳細' }).click()
+    const todayCell = page.getByRole('button', { name: new RegExp('^' + jstToday) })
+    await expect(todayCell).toHaveAccessibleName(new RegExp(jstToday + '.*イベント.*収入.*支出.*固定費'))
+    await expect(todayCell).not.toContainText('+3000円')
+    await expect(todayCell).not.toContainText('-1200円')
+    await todayCell.click()
+    const dayDialog = page.getByRole('dialog', { name: '日次詳細', includeHidden: true })
+    await expect(dayDialog).toBeVisible()
+    for (const section of ['今週の献立', 'イベント', '収支', '固定費']) {
+      const toggle = dayDialog.getByRole('button', { name: new RegExp('^' + section + ' [0-9]+件') })
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    }
+    await expect(dayDialog.getByRole('link', { name: '支出を登録' })).toHaveAttribute('href', '/kakeibo')
+    await expect(dayDialog.getByRole('link', { name: 'イベントを追加' })).toHaveAttribute('href', '/events')
+    await expect(dayDialog.getByRole('link', { name: 'この週の献立を編集' })).toHaveAttribute('href', /\/menu\?week=/)
+    const eventTrigger = dayDialog.getByRole('button').filter({ hasText: '[E2E_TEST] カレンダーイベント' })
+    await eventTrigger.click()
     const eventDialog = page.getByRole('dialog', { name: 'イベント詳細' })
     await expect(eventDialog.getByRole('heading', { name: '[E2E_TEST] カレンダーイベント' })).toBeVisible()
     await expect(eventDialog.getByText(jstToday)).toBeVisible()
     await expect(eventDialog.getByText('単発')).toBeVisible()
-    await expect(eventDialog.getByText('あり')).toBeVisible()
-    await expect(page.getByRole('dialog', { name: '日次詳細' })).toHaveCount(0)
+    await expect(eventDialog.getByText('なし', { exact: true })).toBeVisible()
+    await expect(dayDialog).toBeVisible()
     await eventDialog.getByRole('button', { name: '閉じる' }).click()
     await expect(eventDialog).toHaveCount(0)
+    await expect(eventTrigger).toBeFocused()
+    const notificationTrigger = dayDialog.getByRole('button').filter({ hasText: '[E2E_TEST] カレンダー通知イベント' })
+    await notificationTrigger.click()
+    const notificationDialog = page.getByRole('dialog', { name: 'イベント詳細' })
+    await expect(notificationDialog.getByRole('heading', { name: '[E2E_TEST] カレンダー通知イベント' })).toBeVisible()
+    await expect(notificationDialog.getByText(jstToday)).toBeVisible()
+    await expect(notificationDialog.getByText('毎日', { exact: true })).toBeVisible()
+    await expect(notificationDialog.getByText('あり', { exact: true })).toBeVisible()
+    await expect(dayDialog).toBeVisible()
+    await notificationDialog.getByRole('button', { name: '閉じる' }).click()
+    await expect(notificationDialog).toHaveCount(0)
+    await expect(notificationTrigger).toBeFocused()
+    await dayDialog.getByRole('button', { name: '閉じる', exact: true }).click()
+    await expect(dayDialog).toHaveCount(0)
+    await expect(todayCell).toBeFocused()
   })
 })
+
+}

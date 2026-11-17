@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -39,7 +40,7 @@ for (const width of [1280, 390, 320]) {
       await expectNoOverflow(page)
       if (dir) await page.screenshot({ path: join(dir, `deletion-pending-${width}.png`) })
       await notice.getByRole('button', { name: '退会を取り消してログイン' }).click()
-      await expect(page.getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
+      await expect((await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
       await expect(page.locator('.header-account-name')).toHaveText(user.displayName)
     })
   })

@@ -12,7 +12,7 @@ export function inventoryShoppingSync(db: D1Database, itemId: number | null, hou
       ON CONFLICT(inventory_item_id) DO NOTHING`).bind(...(itemId === null ? [] : [itemId]), householdId)
   if (itemId === null) return [insert]
   return [insert,
-    db.prepare(`DELETE FROM shopping_list_items WHERE inventory_item_id = ? AND household_id = ? AND is_manual = 0
+    db.prepare(`DELETE FROM shopping_list_items WHERE inventory_item_id = ? AND household_id = ? AND is_manual = 0 AND planned_quantity_explicit = 0
       AND EXISTS (SELECT 1 FROM inventory_items WHERE id = ? AND household_id = ? AND quantity_tenths > threshold_tenths)`)
       .bind(itemId, householdId, itemId, householdId),
   ]

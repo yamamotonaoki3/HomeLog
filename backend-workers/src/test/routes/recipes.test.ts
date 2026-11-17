@@ -55,7 +55,10 @@ async function joinHousehold(userId: number, headers: Record<string, string>, ow
 
 beforeEach(async () => {
   await resetDb()
+  vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Unexpected external fetch in recipes test') }))
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('POST /api/recipes', () => {
   it('201でレシピを登録できる', async () => {
@@ -309,6 +312,79 @@ describe('POST /api/recipes/from-url', () => {
     }, env)
     expect(res.status).toBe(201)
     expect(await res.json()).toMatchObject({ title: '[E2E_TEST] HTMLのタイトル' })
+  })
+
+  describe('画像URLの保存契約 (#569)', () => {
+    const originalUrl = 'https://recipe.example.com/recipes/original?view=full#steps'
+    const signedImageUrl = `https://cdn.example.com/image.jpg?signature=${'a'.repeat(2300)}&size=large#photo`
+    const cases: {
+      label: string; image?: string; responseUrl?: string; sourceUrl?: string; expected: string | null
+    }[] = [
+      { label: '絶対HTTPS', image: 'https://cdn.example.com/photo.jpg', expected: 'https://cdn.example.com/photo.jpg' },
+      { label: '登録URL基準の相対パス', image: '../images/photo.jpg', expected: 'https://recipe.example.com/images/photo.jpg' },
+      { label: 'protocol-relative', image: '//cdn.example.com/photo.jpg', expected: 'https://cdn.example.com/photo.jpg' },
+      { label: 'redirect後URL基準の相対パス', image: 'photo.jpg', responseUrl: 'https://redirect.example.com/final/page', expected: 'https://redirect.example.com/final/photo.jpg' },
+      { label: '不正response URLの登録URL fallback', image: '/photo.jpg', responseUrl: 'not-a-url', expected: 'https://recipe.example.com/photo.jpg' },
+      { label: '非HTTP(S) response URLの登録URL fallback', image: '/photo.jpg', responseUrl: 'ftp://redirect.example.com/page', expected: 'https://recipe.example.com/photo.jpg' },
+      { label: 'HTTP元ページの絶対HTTPS画像', image: 'https://cdn.example.com/photo.jpg', sourceUrl: 'http://recipe.example.com/page', expected: 'https://cdn.example.com/photo.jpg' },
+      { label: 'HTTP最終ページから解決した相対画像', image: 'photo.jpg', responseUrl: 'http://redirect.example.com/final/page', expected: null },
+      { label: 'HTTP元ページのprotocol-relative画像', image: '//cdn.example.com/photo.jpg', sourceUrl: 'http://recipe.example.com/page', expected: null },
+      { label: 'HTTP画像', image: 'http://cdn.example.com/photo.jpg', expected: null },
+      { label: 'data画像', image: 'data:image/png;base64,AA==', expected: null },
+      { label: 'blob画像', image: 'blob:https://recipe.example.com/id', expected: null },
+      { label: 'javascript画像', image: 'javascript:alert(1)', expected: null },
+      { label: '不正画像URL', image: 'https://[broken', expected: null },
+      { label: '空白画像', image: '   ', expected: null },
+      { label: '欠落画像', expected: null },
+      { label: '2048文字を超える署名query', image: signedImageUrl, expected: signedImageUrl },
+    ]
+
+    it.each(cases)('$labelはHTTPS画像だけを保存し、タイトル・元URL・メモを維持する', async ({ image, responseUrl = '', sourceUrl = originalUrl, expected }) => {
+      const { headers } = await createUserWithHousehold('testuser_thumbnail@example.com')
+      const imageMeta = image === undefined ? '' : `<meta property="og:image" content="${image.replaceAll('&', '&amp;')}">`
+      const response = htmlResponse(`<html><head><title>[E2E_TEST] 画像契約</title>${imageMeta}<base href="https://ignored.example.com/"></head></html>`)
+      Object.defineProperty(response, 'url', { value: responseUrl })
+      const fetchMock = vi.fn().mockRejectedValue(new Error('Unexpected external fetch')).mockResolvedValueOnce(response)
+      vi.stubGlobal('fetch', fetchMock)
+
+      const res = await app.request('/api/recipes/from-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ url: sourceUrl, memo: '[E2E_TEST] 画像が無くても維持' }),
+      }, env)
+      expect(res.status).toBe(201)
+      const saved = { title: '[E2E_TEST] 画像契約', thumbnailUrl: expected, url: sourceUrl, memo: '[E2E_TEST] 画像が無くても維持', sourceType: 'web' }
+      expect(await res.json()).toMatchObject(saved)
+      const list = await app.request('/api/recipes', { headers }, env)
+      expect(list.status).toBe(200)
+      expect(await list.json()).toEqual(expect.arrayContaining([expect.objectContaining(saved)]))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledWith(sourceUrl, expect.any(Object))
+    })
+
+    it.each([
+      'http://cdn.example.com/photo.jpg', '//cdn.example.com/photo.jpg', '/photo.jpg',
+      'data:image/png;base64,AA==', 'https://[broken', '   ', null, undefined,
+    ])('YouTubeの不正画像(%s)でもoEmbedタイトルを保存し追加取得しない', async (thumbnail) => {
+      const { headers } = await createUserWithHousehold('testuser_youtube_thumbnail@example.com')
+      const url = 'https://youtu.be/test-thumbnail'
+      const fetchMock = vi.fn().mockRejectedValue(new Error('Unexpected external fetch')).mockResolvedValueOnce(
+        new Response(JSON.stringify({ title: '[E2E_TEST] 動画タイトルを維持', thumbnail_url: thumbnail }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        }),
+      )
+      vi.stubGlobal('fetch', fetchMock)
+      const res = await app.request('/api/recipes/from-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url }),
+      }, env)
+      expect(res.status).toBe(201)
+      const saved = { title: '[E2E_TEST] 動画タイトルを維持', thumbnailUrl: null, url }
+      expect(await res.json()).toMatchObject(saved)
+      const list = await app.request('/api/recipes', { headers }, env)
+      expect(await list.json()).toEqual(expect.arrayContaining([expect.objectContaining(saved)]))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const requested = new URL(fetchMock.mock.calls[0][0] as string)
+      expect(requested.origin + requested.pathname).toBe('https://www.youtube.com/oembed')
+    })
   })
 
   it('og:titleとog:imageを抽出して201で保存できる', async () => {

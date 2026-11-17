@@ -1,5 +1,9 @@
 /* イベント画面とイベントのモーダル。.event-modal と .transaction-modal は同じ要素に付くため、kakeibo.css より前に読み込む */
 
+.event-detail-close {
+  min-height: 44px;
+}
+
 .event-detail-list {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -13,7 +17,7 @@
   margin: 0;
 }
 
-/* イベント一覧は3列を狭幅でも折り返し、詳細・編集操作も画面内に収める。 */
+/* モーダルの既存レイアウト。イベント一覧の表示規則とは分離する。 */
 .event-modal {
   width: min(560px, calc(100vw - 32px));
   overflow-wrap: anywhere;
@@ -41,20 +45,77 @@
     padding: 16px;
   }
 }
-.events-grid {
+.events-page .event-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.events-page .event-list-row {
   display: grid;
-  grid-template-columns: minmax(0, 40fr) minmax(7em, 38fr) minmax(0, 22fr);
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-height: 68px;
   overflow-wrap: anywhere;
 }
-.event-datetime {
+.events-page .event-date-block {
+  min-width: 0;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: #f1f5f9;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.events-page .event-date-block time {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 2px;
+}
+.events-page .event-date-year {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.events-page .event-date-month-day {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+.events-page .event-row-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+.events-page .event-row-title {
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.events-page .event-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #555;
+}
+.events-page .event-row-meta > span {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.events-page .event-row-description {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.events-page .events-empty {
+  padding: 12px 8px;
+  line-height: 1.7;
 }
 .events-page,
 .events-page .panel,
@@ -73,3 +134,179 @@
   padding: 12px;
   margin-top: 12px;
 }
+
+/* イベント登録ボタンのみ黒にする（他画面のプライマリボタンは変更しない）。 */
+.events-page .event-register-button {
+  min-height: 44px;
+  background: #000;
+  color: #fff;
+}
+.events-page .event-register-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* 登録・編集に限定。取引フォームも使う .event-modal へ波及させない。 */
+.event-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.event-editor-header h2 {
+  margin: 0;
+  min-width: 0;
+}
+.event-editor-trash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 1px solid #b91c1c;
+  border-radius: 6px;
+  background: #fff;
+  color: #b91c1c;
+  cursor: pointer;
+}
+.event-editor-trash:disabled { opacity: 0.5; cursor: not-allowed; }
+.event-editor button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.event-editor-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.event-editor input,
+.event-editor select {
+  font-size: 16px;
+  min-height: 44px;
+}
+.event-editor input[type="checkbox"],
+.event-editor input[type="radio"] { min-height: 0; }
+.event-editor label:has(input[type="checkbox"]),
+.event-editor label:has(input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.event-editor .event-time-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.event-time-inputs > div { min-width: 0; }
+.event-editor .event-visibility {
+  min-width: 0;
+  margin: 14px 0;
+}
+.event-editor .event-visibility label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 12px 0 0;
+}
+.event-notify-reason { margin: 4px 0; font-size: 13px; color: #555; }
+.event-other-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f8fafc;
+  font: inherit;
+  cursor: pointer;
+}
+.event-other-toggle span { display: block; font-size: 13px; color: #555; }
+.event-other-settings[hidden] { display: none; }
+.event-editor .event-editor-actions > button { min-height: 44px; }
+.event-editor .event-delete-confirm button { min-height: 44px; }
+@media (max-width: 600px) {
+  .modal.event-editor {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+    max-height: 85dvh;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .event-editor-header { flex-shrink: 0; }
+  .event-editor-form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .event-editor-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 2px 16px;
+    scroll-padding-block: 12px;
+  }
+  .event-editor .event-editor-actions {
+    flex-shrink: 0;
+    margin-top: 0;
+    padding: 12px 0 max(16px, env(safe-area-inset-bottom));
+    border-top: 1px solid #d1d5db;
+    background: #fff;
+  }
+}
+
+/* 追加画像資料16〜18に合わせた一覧(1件1カード・公開範囲の印)とフォーム。先にある指定を上書きする。 */
+.events-page .event-register-button { min-height: 48px; }
+.events-page .event-list { display: grid; gap: 10px; }
+.events-page .event-card { min-width: 0; padding: 0; }
+/* 行は従来どおり hover とフォーカスで同じ地色・outline を使い、カードの丸みに沿わせる。 */
+.events-page .event-card .event-list-row { position: relative; align-items: center; min-height: 72px; padding: 12px 34px 12px 12px; border: 0; border-radius: 15px; }
+.events-page .event-card .event-list-row:not(:hover):not(:focus-visible) { background: none; }
+.events-page .event-card .event-list-row::after { content: '›'; position: absolute; top: 50%; right: 14px; color: #6c7c92; font-size: 18px; line-height: 1; transform: translateY(-50%); }
+.events-page .event-card .event-date-block { padding: 8px 4px; border-radius: 12px; background: #eaf2fd; color: var(--ui-primary-strong); text-align: center; }
+.events-page .event-card .event-row-title { font-size: 15px; font-weight: 800; }
+.events-page .event-card .event-row-meta { color: var(--ui-muted); font-size: 13px; }
+.events-page .event-row-scope { align-self: flex-start; justify-self: start; width: fit-content; margin-top: 2px; }
+.events-page .events-empty { padding: 16px; color: var(--ui-muted); }
+.events-page .events-empty p { margin: 0; }
+@media (max-width: 480px) { .events-page .ui-narrow { padding: 0; } }
+
+.modal.event-editor { border-radius: 18px; color: var(--ui-text); }
+.event-editor-header h2 { font-size: 22px; font-weight: 800; line-height: 1.35; }
+.event-editor .event-editor-trash { border-radius: 12px; }
+.event-editor-fields > label,
+.event-editor .event-time-inputs label,
+.event-editor .event-other-settings > label { margin-top: 14px; color: #42536a; font-weight: 700; }
+.event-editor input:not([type="checkbox"]):not([type="radio"]),
+.event-editor select { min-height: 48px; margin-top: 5px; padding: 10px 12px; border-color: var(--ui-control-border); border-radius: 12px; background-color: var(--ui-surface); color: var(--ui-text); }
+/* 終日・通知・サマリー表示は、チェックボックスのまま切り替えスイッチの見た目にする(役割と操作は変えない)。 */
+.event-editor label[for="event-all-day"],
+.event-editor label[for="event-notify"],
+.event-editor label[for="event-show-on-dashboard"] { flex-direction: row-reverse; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 8px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font-size: 15px; font-weight: 800; cursor: pointer; }
+.event-editor #event-all-day,
+.event-editor #event-notify,
+.event-editor #event-show-on-dashboard { appearance: none; -webkit-appearance: none; position: relative; flex: 0 0 46px; width: 46px; height: 26px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px; background: #7d8da1; cursor: pointer; transition: background-color 0.15s; }
+.event-editor #event-all-day::after,
+.event-editor #event-notify::after,
+.event-editor #event-show-on-dashboard::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.15s; }
+.event-editor #event-all-day:checked,
+.event-editor #event-notify:checked,
+.event-editor #event-show-on-dashboard:checked { background: var(--ui-primary); }
+.event-editor #event-all-day:checked::after,
+.event-editor #event-notify:checked::after,
+.event-editor #event-show-on-dashboard:checked::after { transform: translateX(20px); }
+.event-editor #event-all-day:disabled,
+.event-editor #event-notify:disabled,
+.event-editor #event-show-on-dashboard:disabled { opacity: 0.45; cursor: not-allowed; }
+.event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard), .event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard)::after { transition: none; } }
+.event-editor .event-notify-reason { margin: 6px 2px 0; color: var(--ui-muted); }
+.event-editor .event-visibility { padding: 6px 14px; border: 1px solid var(--ui-border); border-radius: 14px; }
+.event-editor .event-visibility legend { padding: 0 4px; color: #42536a; font-size: 13px; font-weight: 700; }
+.event-editor .event-other-toggle { position: relative; padding: 12px 40px 12px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font-size: 15px; font-weight: 800; }
+.event-editor .event-other-toggle span { margin-top: 2px; color: var(--ui-muted); font-weight: 400; }
+.event-editor .event-other-toggle::after { content: ''; position: absolute; top: 50%; right: 16px; width: 8px; height: 8px; margin-top: -7px; border-right: 2px solid #6c7c92; border-bottom: 2px solid #6c7c92; transform: rotate(45deg); }
+.event-editor .event-other-toggle[aria-expanded="true"]::after { margin-top: -2px; transform: rotate(-135deg); }

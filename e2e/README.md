@@ -15,12 +15,13 @@ npx playwright install chromium   # 初回のみ
 npm test
 ```
 
-`npm test` は `scripts/run-e2e.mjs` を通じて以下を自動で行う。Playwright が失敗した場合も、`finally` で E2E 専用DBを削除してから Playwright と同じ終了コードで終了する。
+`npm test` は `scripts/run-e2e.mjs` を通じて以下を自動で行う。Playwright が失敗した場合も、終了後に E2E 専用DBを削除してから Playwright と同じ終了コードで終了する。
 
 1. `scripts/cleanup.mjs` で E2E 専用ローカルDB（`backend-workers/.wrangler/e2e-state`）を削除
 2. backend-workers をそのDBへマイグレーション適用して `wrangler dev`（8787）で起動
-3. frontend を `VITE_API_PROXY_TARGET=http://localhost:8787` で起動（5173）
-4. Playwright の成否にかかわらず、テスト実行後に再び E2E 専用DBを削除（残数0を確認）
+3. frontend を `VITE_API_PROXY_TARGET=http://localhost:8787` で起動（既定は 5173。使用中なら 5174 以降の空きポートを自動で選ぶ）
+4. テスト終了後、今回起動したサーバーのポートが閉じたことを確認（開いたままなら失敗として知らせる）
+5. Playwright の成否にかかわらず、テスト実行後に再び E2E 専用DBを削除（残数0を確認）
 
 Playwright の引数はそのまま渡せる。
 
@@ -29,7 +30,10 @@ npm test -- tests/zaiko.spec.ts
 ```
 
 - 接続先は常にローカル。開発用DB（`.wrangler/state`）や本番DBには触れない
-- 8787 / 5173 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
+- 8787 で既にサーバーが起動していると失敗する（既存サーバーは再利用しない）ので、先に停止しておく
+- 5173 が別の作業（他プロジェクトの開発サーバーなど）で使用中のときは、そのサーバーを止めずに別のポートで並行して実行する。選んだポートは実行開始時に表示する。ポートを指定したいときは `E2E_FRONTEND_PORT` を設定する
+- 空きポートの自動選択は `npm test`（`scripts/run-e2e.mjs`）経由のときだけ働く。`npx playwright test` を直接実行した場合は 5173（または `E2E_FRONTEND_PORT`）固定になる
+- ポート判定（`scripts/ports.mjs`）の単体テストは `npm run test:scripts` で実行する
 
 ## アプリ名称変更（#386）
 
@@ -59,6 +63,10 @@ Viteを起動せず8787の実Workersからbuild済みassetsを配信する。同
 `STATIC_ASSETS_SCREENSHOT_DIR`にリポジトリ外の保存先を指定すると各幅3画面のfullPage画像を保存する。
 本番の準備・公開判断は[deployment.md](../docs/deployment.md)参照。
 
+## デモ環境（#532）
+
+`e2e/`で `npm test -- --config playwright.demo.config.ts` を実行する。ローカルWorkersを`DEMO_MODE=true`で起動し、`tests/demo*.spec.ts`を実行する。本番・公開デモには接続しない。通常E2E・献立削除・静的配信と同じ専用ローカルD1を使うため、同時実行せず順番に実行する。CIでも通常E2Eとは別ステップで実行する。
+
 ## テストデータ規約
 
 ### iPhoneショートカット案内（#223）
@@ -84,13 +92,13 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 ## シナリオ
 
-`header-account.spec.ts` は1280／390／320px（390／320はタッチ対応）で、通常名・50文字の日本語名／連続英字名を実登録する。ヘッダーの本人名、1行省略、通知・設定・ログアウトの配置、ページ全体の横はみ出し、再読込・遷移・ユーザー切替、キーボード到達を確認する。`HEADER_ACCOUNT_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると、各幅・名前のダッシュボード全体とヘッダー画像を保存する。
+`header-account.spec.ts` は1280／390／320px（390／320はタッチ対応）で、通常名・50文字の日本語名／連続英字名を実登録する。常時ヘッダーの人物アイコン付き本人名button全文（DOM/title）と1行省略、内容幅に応じたコンパクト表示（長名は最大144px、アイコン16px・名前13px）、通知・設定との非衝突、アカウント専用モーダル内の設定・ログアウト到達性、全幅1段（480px以下は英語HomeLog補助のみ省略）、キーボード順、ページ全体の横はみ出し、再読込・遷移・ユーザー切替を確認する。`HEADER_ACCOUNT_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると、各幅・名前の画面全体とヘッダー画像を保存する。
 
-`auth-me-api.spec.ts` は1280／390／320pxで、実ローカルWorkersへの登録・ログイン・本人取得・refresh後の取得を検証する。世帯未所属のA/Bの識別、返却キー限定、ID指定によるなりすまし不可、未認証／不正トークンの401を確認する。既存ダッシュボードのヘッダー操作表示とページ全体の横はみ出しも検証する（390／320はタッチ対応）。`AUTH_ME_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると各幅の画面を保存する。本人名のヘッダー表示は後続#257の対象。
+`auth-me-api.spec.ts` は1280／390／320pxで、実ローカルWorkersへの登録・ログイン・本人取得・refresh後の取得を検証する。世帯未所属のA/Bの識別、返却キー限定、ID指定によるなりすまし不可、未認証／不正トークンの401を確認する。既存ダッシュボードのヘッダー操作表示とページ全体の横はみ出しも検証する（390／320はタッチ対応）。`AUTH_ME_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると各幅の画面を保存する。本人名のヘッダー表示は`header-account.spec.ts`で検証する。
 
 `fixed-cost-external-ui.spec.ts` は1280／390／320px（390／320はタッチ対応）で、1人世帯の外部2人登録、世帯内外の混在編集、割合／金額、外部ID保持、名称変更による差し替えと既存マスタ不変、追加・削除・割り勘OFF、キャンセル、再読込後の永続化、他者非公開を実ローカルWorkersで確認する。ページ・モーダル・fieldset・内訳行の横はみ出し、詳細の初期位置・Tab巡回・Escape復帰、フォーム末尾の操作到達も検証する。`FIXED_EXTERNAL_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると登録（世帯外入力）・編集・詳細とフォーム末尾の画像を保存する。
 
-イベント一覧の検証は、末尾の「直接編集（#332 / #333）」を参照する。支出・収入の一覧は引き続き詳細から編集するため、イベントと戻り先が異なる。
+イベント一覧の検証は、末尾の「在庫の数量操作・詳細編集／イベントの直接編集」を参照する。支出・収入の一覧は引き続き詳細から編集するため、イベントと戻り先が異なる。
 
 `income-account-api.spec.ts` は1280／390／320pxで実Workersへの収入POST、口座残高、履歴、ダッシュボード集計、口座論理削除と名前保持・再利用拒否を検証する。長い内容/口座名と上限金額の一覧・詳細・口座一覧・履歴でページ横はみ出しを検査する。`INCOME_ACCOUNT_SCREENSHOT_DIR`でリポジトリ外の画像保存先を指定する。
 
@@ -100,7 +108,7 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 
 `shopping-detail.spec.ts` は1280／390／320pxで買い物3列の行全域、Enter/Space、詳細のフォーカス巡回と復帰、購入個数の保持・一括反映（実在庫数と自動残留・手動除外）、削除・手動追加・横はみ出しを検証する。390／320pxはタッチ対応コンテキストで実行する。`SHOPPING_SCREENSHOT_DIR` にリポジトリ外の保存先を指定すると一覧・詳細・手動追加の画像を保存する。
 
-在庫一覧の検証と画像保存先は、末尾の「直接編集（#332 / #333）」を参照する。数量・値段の既存E2Eも一覧行から直接開く「在庫詳細・編集」を操作する。
+在庫一覧の検証と画像保存先は、末尾の「在庫の数量操作・詳細編集／イベントの直接編集」を参照する。数量・値段の既存E2Eも、一覧行の数量操作欄から「詳細を編集」で開く「在庫の詳細編集」を操作する。
 
 | Tier | ファイル | 内容 |
 |---|---|---|
@@ -119,11 +127,11 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 | 3 | `events.spec.ts` | 登録 → 一覧から直接編集・集計・同じモーダル内の削除確認、共有イベントの閲覧権限 |
 | 3 | `accounts.spec.ts` | 口座登録 → 口座指定の支出が残高・取引履歴に反映 |
 
-`zaiko-price-api.spec.ts` の画面画像はPlaywrightのテスト別出力先（`test-results/` 配下）へ保存する。値段の入力・表示UIは後続Issueのため、このspecの画面検証は既存一覧の表示と横幅を対象とする。
+`zaiko-price-api.spec.ts` の画面画像はPlaywrightのテスト別出力先（`test-results/` 配下）へ保存する。このspecではAPI契約と一覧の表示・横幅を確認し、値段の入力・表示UIは`zaiko-price-ui.spec.ts`で検証する。
 
-### 直接編集（#332 / #333）
+### 在庫の数量操作・詳細編集／イベントの直接編集
 
-- 在庫：[inventory-detail.spec.ts](tests/inventory-detail.spec.ts)は1280／390／320pxで行全域・Enter／Spaceから直接編集を開き、個数の即時増減・増減幅選択・未保存入力保持・キャンセル・保存・再読込後の永続化を検証する。個数は他の入力欄と同じ文字サイズ、数値は左、枠外の右に小型の上下＋／－、増減幅1／0.1は同じ行という配置も確認する。Tab巡回・Escape／背景クリック・起点復帰と横はみ出しを確認する。390／320pxはタッチ対応。`INVENTORY_SCREENSHOT_DIR`をリポジトリ外に指定すると、各幅の編集画面を`inventory-edit-<幅>.png`へ保存する。
+- 在庫：[inventory-detail.spec.ts](tests/inventory-detail.spec.ts)は1280／390／320pxで行全域・Enter／Spaceから数量操作欄を開き、「詳細を編集」から詳細編集モーダルを開く操作、個数の即時増減・増減幅選択・未保存入力保持・キャンセル・保存・再読込後の永続化を検証する。個数は他の入力欄と同じ文字サイズ、数値は左、枠外の右に上下＋／－、増減幅1／0.1は同じ行という配置と、操作対象が44px以上であることも確認する。Tab巡回・Escape／背景クリック・起点復帰と横はみ出しを確認する。390／320pxはタッチ対応。`INVENTORY_SCREENSHOT_DIR`をリポジトリ外に指定すると、各幅の編集画面を`inventory-edit-<幅>.png`へ保存する。
 - イベント：[events.spec.ts](tests/events.spec.ts)は1280／390／320pxで登録者の行から編集を直接開き、集計の期間変更・更新・同じモーダル内の削除確認／取りやめ・入力保持・削除・起点復帰を検証する。他の登録者の共有イベントは閲覧でき、変更操作が出ないことも確認する。`ISSUE_246_SHOTS_DIR`をリポジトリ外に指定すると`event-edit-top-<幅>.png`と`event-edit-delete-<幅>.png`を保存する。
 - 支出・収入の[kakeibo-detail.spec.ts](tests/kakeibo-detail.spec.ts)は従来どおり詳細を開く行操作を検証する。イベント統合に合わせてその操作を変更しない。
 
@@ -134,3 +142,15 @@ Chromiumは全specを実行し、Playwright用FirefoxまたはMicrosoft Edgeが�
 ### 在庫モーダル内のカテゴリー追加（#338）
 
 [zaiko-categories-ui.spec.ts](tests/zaiko-categories-ui.spec.ts)は1280／390／320pxで、登録・編集の追加フォーム、重複409の入力保持、同じモーダル内での追加と自動選択、追加中の操作ガード、Enter追加、在庫キャンセル後もカテゴリーが残ること、再読込後の在庫との関連を実ローカルAPIで検証する。390／320pxはタッチ対応。CATEGORY_SCREENSHOT_DIRをリポジトリ外に指定すると、重複エラー・追加選択後・編集画面をcategory-duplicate-<幅>.png、category-selected-<幅>.png、category-edit-<幅>.pngへ保存する。
+
+## ホームの視覚修正見本（#462）
+
+`tests/home-visual-pilot.spec.ts` は通常DBとは異なる専用ローカルpreviewを対象とする、手動確認用の視覚比較テスト。通常の全E2Eでは環境変数未指定時に実行しない。外部の画像保存先と専用認証情報保存先を指定し、同じ架空世帯・幅・ブラウザ日付で修正前後を撮影する。提供資料01〜07の原画像は正解の参照として別に並べ、現状画面を無条件にgoldenへ採用しない。通常4状態は実APIの固定データ、0件・読込・失敗は日付詳細GETだけの局所表示fixtureで確認する。認証は正常register/login APIを使用し、trace・video・失敗時画像を無効にして秘密値を記録しない。フォント等の計測（`HOME_VISUAL_METRICS=1`）を行う場合は、参考資料の置き場所を `HOME_VISUAL_REFERENCE_DIR` に指定する。
+
+## PWAの手動更新（#561）
+
+`e2e/`で `npm test -- --config playwright.pwa.config.ts` を実行する。通常のVite devではSWが動かないため、専用のlocalhostサーバーが製品設定のproduction build A/Bを一時生成し、同じoriginで切り替えて配信する。APIは既存のローカルWorkers・E2E専用D1へ接続し、通常E2E等と直列で実行する。追加依存は不要。
+
+`tests/pwa-update.spec.ts`は、従来のautoUpdate登録から全client終了・再起動による移行と、新方式の二版更新を一つのシナリオで検証する。更新準備完了時だけの表示、入力確認のキャンセル、明示操作したタブだけの再読み込み、他タブの入力保持、認証・結果未確認の処理記録の保持、1280/390/320pxのヘッダー表示を確認する。`PWA_UPDATE_SCREENSHOT_DIR`にリポジトリ外の保存先を指定すると320pxの準備完了画面を保存する。
+
+実行前に`frontend`の`npm run build`を済ませる（Workers起動の共通前提）。テスト終了時に一時buildを削除し、既存runnerがサーバー停止・ポート閉鎖・専用D1の後始末を確認する。CIも専用stepで実行する。

@@ -1,3 +1,7 @@
+import { makeInventoryPlanResult } from '../mocks/inventoryPlan'
+import type { InventoryPlanCreateBody } from '../../api/zaikoTypes'
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { act, render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -26,13 +30,13 @@ function setup(edit = false) {
     http.post('/api/inventory-items', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>
       saved.push(body)
-      return HttpResponse.json({ id: 22, ...body }, { status: 201 })
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody, {id:22}), { status: 201 })
     }),
-    http.patch('/api/inventory-items/1', async ({ request }) => {
+    http.put('/api/inventory-items/1', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>
       saved.push(body)
       Object.assign(inventory[0], body)
-      return HttpResponse.json(inventory[0])
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody, {id:1}))
     }),
   )
   render(<MemoryRouter><ZaikoPage /></MemoryRouter>)
@@ -41,6 +45,7 @@ function setup(edit = false) {
 
 async function open(user: ReturnType<typeof userEvent.setup>, edit = false) {
   await user.click(await screen.findByRole('button', { name: edit ? '[E2E_TEST] testuser_牛乳の詳細' : '在庫を登録' }))
+  if (edit) await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細を編集' }))
   await user.click(screen.getByRole('button', { name: '＋カテゴリーを登録' }))
 }
 
@@ -129,7 +134,8 @@ describe('在庫モーダル内のカテゴリー追加', () => {
     expect(screen.getByLabelText('品名')).toHaveValue('[E2E_TEST] testuser_牛乳')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
-    await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細' }))
+    if (screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細' }).getAttribute('aria-expanded') !== 'true') await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細' }))
+    await user.click(screen.getByRole('button', { name: '[E2E_TEST] testuser_牛乳の詳細を編集' }))
     expect(within(screen.getByLabelText('カテゴリー')).getByRole('option', { name: 'testuser_乳製品' })).toBeInTheDocument()
   })
 

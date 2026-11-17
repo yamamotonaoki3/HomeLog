@@ -14,12 +14,12 @@ function HeaderName() {
   return <p data-testid="header-name">{user?.displayName}</p>
 }
 
-function setup() {
+function setup(demo: { expiresAt: string; partnerName: string } | null = null) {
   setTokens('access-token', 'testuser-refresh-token')
   const calls: { method: string; path: string; body: unknown }[] = []
   const account = { id: 1, email: 'testuser_001@example.com', displayName: 'テスト太郎' }
   server.use(
-    http.get('/api/auth/me', () => HttpResponse.json({ id: account.id, displayName: account.displayName })),
+    http.get('/api/auth/me', () => HttpResponse.json({ id: account.id, displayName: account.displayName, demo })),
     http.get('/api/auth/account', () => HttpResponse.json(account)),
     http.patch('/api/auth/account', async ({ request }) => {
       const body = (await request.json()) as { displayName: string }
@@ -153,5 +153,77 @@ describe('AccountSettingsPage (#292)', () => {
     await user.click(within(area).getByRole('button', { name: 'メールアドレスを変更' }))
     await waitFor(() => expect(within(area).getByRole('alert')).toHaveTextContent('このメールアドレスは既に登録されています'))
     expect(screen.getByText('testuser_001@example.com')).toBeInTheDocument()
+  })
+})
+
+describe('アカウント設定の構成とページ内の移動 (#505)', () => {
+  const sections = [
+    ['表示名', 'サービス内で表示される名前です。', '保存'],
+    ['パスワード', 'ログインに使用するパスワードを変更します。', 'パスワードを変更'],
+    ['メールアドレス', 'ログインに使用するメールアドレスを変更します。', 'メールアドレスを変更'],
+    ['退会', 'アカウントを削除し、シェファミの利用を終了します。', '退会を申し込む'],
+  ] as const
+
+  it('設定に戻る導線を上に置き、4区画を説明付きのカードで順に並べる', async () => {
+    setup()
+    expect(screen.getByRole('heading', { level: 2, name: 'アカウント設定' })).toBeInTheDocument()
+    expect(screen.getByText('表示名・メールアドレス・パスワードの変更、退会の手続きができます')).toBeInTheDocument()
+    const back = screen.getByRole('link', { name: '設定に戻る' })
+    expect(back).toHaveAttribute('href', '/settings')
+    expect(back.compareDocumentPosition(screen.getByRole('heading', { level: 2, name: 'アカウント設定' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await screen.findByText('testuser_001@example.com')
+    expect(screen.getAllByRole('region').map(area => within(area).getByRole('heading', { level: 3 }).textContent)).toEqual(sections.map(([title]) => title))
+    for (const [title, description, action] of sections) {
+      const area = screen.getByRole('region', { name: title })
+      expect(area).toHaveClass('ui-card')
+      expect(within(area).getByText(description)).toBeInTheDocument()
+      // 各区画の操作は、その区画の中の幅いっぱいのボタンで行う。
+      const button = within(area).getByRole('button', { name: action })
+      expect(button).toHaveClass('ui-action')
+      expect(button.classList.contains('is-danger')).toBe(title === '退会')
+    }
+    expect(screen.getByRole('region', { name: '退会' })).toHaveClass('is-danger')
+  })
+
+  it('上部のリンクで区画へ移動でき、入力途中の内容は消えない', async () => {
+    const { user } = setup()
+    const nav = screen.getByRole('navigation', { name: 'アカウント設定の項目' })
+    expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['表示名', 'パスワード', 'メール', '退会'])
+    const passwordArea = await region('パスワード')
+    await user.type(within(passwordArea).getByLabelText('現在のパスワード'), 'TestPass123!')
+    await user.type(await screen.findByRole('textbox', { name: '表示名' }), '_入力途中')
+    for (const [link, title] of [['退会', '退会'], ['メール', 'メールアドレス'], ['パスワード', 'パスワード'], ['表示名', '表示名']] as const) {
+      await user.click(within(nav).getByRole('link', { name: link }))
+      // 移動先の見出しへフォーカスを移し、読み上げとキーボードの位置を合わせる。
+      expect(within(screen.getByRole('region', { name: title })).getByRole('heading', { level: 3, name: title })).toHaveFocus()
+    }
+    // 切り替え式のタブではないので、4区画とも表示されたままで、入力も残る。
+    expect(screen.getAllByRole('region')).toHaveLength(4)
+    expect(within(passwordArea).getByLabelText('現在のパスワード')).toHaveValue('TestPass123!')
+    expect(screen.getByRole('textbox', { name: '表示名' })).toHaveValue('テスト太郎_入力途中')
+  })
+
+  it('メール変更と退会の案内文を省かない', async () => {
+    setup()
+    const emailArea = await region('メールアドレス')
+    expect(within(emailArea).getByText('確認メールは送信されません。変更するとすぐに新しいアドレスでログインするようになります。')).toBeInTheDocument()
+    expect(within(emailArea).getByText('現在のメールアドレス')).toBeInTheDocument()
+    const deletionArea = screen.getByRole('region', { name: '退会' })
+    expect(deletionArea).toHaveTextContent('退会を申し込むと、すぐにログインできなくなります。30日以内に同じメールアドレスとパスワードでログインすると取り消せます。')
+    expect(deletionArea).toHaveTextContent('世帯のメンバーがあなただけの場合は、世帯とそのデータもすべて削除されます。')
+    expect(within(deletionArea).getByLabelText('現在のパスワード')).toBeInTheDocument()
+  })
+})
+
+describe('AccountSettingsPage のデモ注記(#534)', () => {
+  it('デモ中だけ「デモでは表示名以外は変更できません」を表示する', async () => {
+    setup({ expiresAt: '2099-01-01T00:00:00.000Z', partnerName: 'デモ花子' })
+    expect(await screen.findByText('デモでは表示名以外は変更できません')).toBeVisible()
+  })
+
+  it('デモでなければ注記を出さない', async () => {
+    setup()
+    await region('表示名')
+    expect(screen.queryByText('デモでは表示名以外は変更できません')).not.toBeInTheDocument()
   })
 })

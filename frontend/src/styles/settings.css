@@ -1,116 +1,366 @@
 /* 設定画面・表示設定(カードの並び替え) */
 
-.settings-page h1 {
-  margin: 0 0 16px;
-  font-size: 24px;
-}
-.settings-grid {
+/* 設定トップ(S-25、#499)。入口を同じ形のカードで縦に並べる。 */
+.settings-menu {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-}
-.settings-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.settings-card h2,
-.settings-card p {
+  gap: 12px;
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.settings-card p {
-  line-height: 1.6;
-}
-
-/* 表示設定（S-21） */
-.display-settings {
-  display: flex;
-  flex-direction: column;
+.settings-menu-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
 }
-.display-settings h2,
-.display-settings h3 {
+.settings-menu-text {
+  min-width: 0;
+}
+.settings-menu-text h3 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
 }
-.display-settings h3 {
-  font-size: 15px;
-  margin-top: 8px;
+.settings-menu-text p {
+  margin: 2px 0 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
-.display-settings > button {
-  align-self: flex-start;
-  min-width: 120px;
+.settings-menu .settings-menu-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--ui-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
 }
-.display-settings-group {
-  border: none;
+.settings-menu .settings-menu-open:hover {
+  background: var(--ui-primary-strong);
+}
+.settings-menu .settings-menu-open:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+/* 狭い画面では、説明文の幅を保つために「開く」を下の段へ回す。 */
+@media (max-width: 380px) {
+  .settings-menu-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .settings-menu .settings-menu-open {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 表示設定(S-21、#503)。表示するカードを1枚ずつの枠に分け、内訳はその中にまとめる。 */
+.display-settings .ui-section-label {
+  margin-top: 18px;
+}
+.display-card {
+  margin-bottom: 10px;
+}
+/* 親項目の行。行全体がラベルなので、どこを押しても切り替わる。 */
+.display-card-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
   margin: 0;
-  padding: 0;
+  cursor: pointer;
 }
-.display-settings-group legend {
-  padding: 0;
-  font-weight: 600;
+.display-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
-.display-settings-group > label {
-  font-weight: 600;
-}
-.display-settings-items {
+/* 内訳は親の見出しの下にそろえて、親子の関係を位置で示す。 */
+.display-card-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
-  padding: 6px 0 0 24px;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 56px;
 }
-.display-settings-items.is-disabled {
-  color: #94a3b8;
+.display-card-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 14px 6px 12px;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #33455c;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.display-card-item input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ui-primary);
+}
+.display-card-item:has(input:focus-visible) {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.display-card-items.is-disabled .display-card-item {
+  color: #7b8798;
+  cursor: not-allowed;
 }
 .display-settings-hint {
-  margin: 0;
-  color: #64748b;
+  margin: 8px 0 0;
+  color: var(--ui-muted);
   font-size: 13px;
+  line-height: 1.6;
+}
+.display-card .display-settings-hint {
+  padding-left: 56px;
 }
 .card-order-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
 }
 .card-order-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #f8fafc;
+  gap: 10px;
+  padding: 8px 10px;
   cursor: grab;
 }
 .card-order-item.is-dragging {
   opacity: 0.5;
   border-style: dashed;
 }
+.card-order-handle {
+  flex: 0 0 10px;
+  color: #8a98ab;
+}
+.card-order-item .ui-icon-tile {
+  flex-basis: 36px;
+  width: 36px;
+  height: 36px;
+}
+.card-order-item .ui-icon-tile svg {
+  width: 20px;
+  height: 20px;
+}
 .card-order-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
+.card-order-body strong {
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
 .card-order-body span {
-  color: #64748b;
+  color: var(--ui-muted);
   font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .card-order-actions {
   display: flex;
-  gap: 4px;
   flex-shrink: 0;
+  gap: 6px;
 }
-.card-order-actions button {
-  min-width: 36px;
-  min-height: 36px;
+.display-settings-unsaved,
+.display-settings > .error {
+  margin: 14px 0 0;
 }
-@media (max-width: 800px) {
-  .card-order-grid {
-    grid-template-columns: 1fr;
+.display-settings > .ui-action {
+  margin-top: 14px;
+}
+/* 狭い画面では、飾りのアイコンを省いて、見出し・内訳・並べ替えの行に幅を回す。 */
+@media (max-width: 380px) {
+  .display-card-items,
+  .display-card .display-settings-hint {
+    padding-left: 0;
+  }
+  .display-card-head .ui-icon-tile,
+  .card-order-item .ui-icon-tile {
+    display: none;
+  }
+}
+
+/* 世帯設定(S-27、#501)。情報を1枚のカードにまとめ、退出は下の赤い枠に分ける。 */
+.household-fact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0 14px;
+}
+.household-fact + .household-fact {
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+.household-fact-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.household-fact-text dt {
+  color: var(--ui-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.household-fact-text dd {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* 招待コードは1文字ずつ見分けやすい等幅にし、押すと全体を選択できるようにする。 */
+.household-fact-text .household-invite-code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+.household-copy {
+  flex-shrink: 0;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: #f4f8fd;
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.household-copy:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.household-copy-result {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.household-copy-result:not(:empty) {
+  margin-bottom: 12px;
+}
+.household-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+.household-members-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+.household-members {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.household-members li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.household-members li > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.household-members .ui-icon-tile {
+  flex-basis: 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.household-members .ui-icon-tile svg {
+  width: 18px;
+  height: 18px;
+}
+.household-info .ui-empty {
+  margin: 10px 0 0;
+}
+.household-danger {
+  margin-top: 16px;
+  padding: 14px 15px;
+  border: 1px solid #f1c7c2;
+  border-radius: 16px;
+  background: #fff6f5;
+}
+.household-danger-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.household-danger-head > div {
+  min-width: 0;
+}
+.household-danger h3 {
+  margin: 0;
+  color: #a12a1f;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.household-danger-head p {
+  margin: 2px 0 0;
+  color: #5b4a48;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.household-danger .error {
+  margin: 10px 0 0;
+}
+.household-danger .ui-danger-outline {
+  margin-top: 12px;
+}
+.household-leave-modal .ui-form-actions {
+  margin-top: 18px;
+}
+/* 狭い画面では、招待コードが1行に収まるよう「コピー」を下の段へ回す。 */
+@media (max-width: 380px) {
+  .household-fact {
+    flex-wrap: wrap;
+  }
+  .household-copy {
+    flex-basis: 100%;
   }
 }

@@ -219,6 +219,23 @@ describe('PATCH/DELETE /api/events/:id', () => {
     const deleteRes = await app.request(`/api/events/${event.id}`, { method: 'DELETE', headers }, env)
     expect(deleteRes.status).toBe(204)
   })
+
+  it('イベントを削除しても結び付けた支出は残り、イベントとの結び付きだけが外れる (#516)', async () => {
+    const { headers } = await createUserWithHousehold('taro@example.com')
+    const json = { 'Content-Type': 'application/json', ...headers }
+    const event = await (await app.request('/api/events', { method: 'POST', headers: json, body: JSON.stringify({ name: '[E2E_TEST] 旅行', eventDate: '2026-09-20', personal: false }) }, env)).json<{ id: number }>()
+    const categoryId = (await (await app.request('/api/kakeibo-categories', { headers }, env)).json<{ id: number }[]>())[0].id
+    const expense = await (await app.request('/api/expenses', {
+      method: 'POST', headers: json, body: JSON.stringify({ expenseDate: '2026-09-20', amount: 12000, purpose: '[E2E_TEST] 宿泊費', categoryId, eventId: event.id }),
+    }, env)).json<{ id: number; eventId: number | null }>()
+    expect(expense.eventId).toBe(event.id)
+
+    expect((await app.request(`/api/events/${event.id}`, { method: 'DELETE', headers }, env)).status).toBe(204)
+
+    const remaining = await (await app.request('/api/expenses', { headers }, env)).json<{ id: number; amount: number; eventId: number | null }[]>()
+    expect(remaining).toEqual([expect.objectContaining({ id: expense.id, amount: 12000, eventId: null })])
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM events').first<{ n: number }>()).toEqual({ n: 0 })
+  })
 })
 
 describe('PATCH /api/events/:id/show-on-dashboard', () => {

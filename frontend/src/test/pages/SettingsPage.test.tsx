@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
-import { DisplaySettingsPage } from '../../pages/SettingsPage'
+import { getPwaUpdateSafety } from '../../lib/pwaUpdateSafety'
+import { apiClient } from '../../api/client'
+import { DisplaySettingsPage, SettingsPage } from '../../pages/SettingsPage'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
 
 function makeSettings(): DisplaySettings {
@@ -35,6 +37,7 @@ function renderPage(initial: DisplaySettings = makeSettings()) {
       <Routes>
         <Route path="/settings/display" element={<DisplaySettingsPage />} />
         <Route path="/" element={<p>ダッシュボード画面</p>} />
+        <Route path="/settings" element={<p>設定トップ画面</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -54,7 +57,8 @@ describe('DisplaySettingsPage', () => {
   it('再設計後の全表示項目をチェックリストで表示し、よく使う品目は表示しない', async () => {
     renderPage()
     const today = await screen.findByRole('group', { name: '今日の状況' })
-    expect(within(today).getByLabelText('収支')).toBeChecked()
+    expect(within(today).queryByLabelText('収支')).not.toBeInTheDocument()
+    expect(within(today).getByText('今日の収支はカレンダーの日付詳細で確認できます')).toBeVisible()
     expect(within(today).getByLabelText('今週の献立')).toBeChecked()
     expect(within(today).getByLabelText('イベント')).toBeChecked()
     const stock = screen.getByRole('group', { name: '買い物・在庫' })
@@ -69,6 +73,18 @@ describe('DisplaySettingsPage', () => {
     expect(within(calendar).getByLabelText('支出')).toBeChecked()
     expect(within(calendar).getByLabelText('イベント')).toBeChecked()
     expect(screen.queryByText('よく使う品目')).not.toBeInTheDocument()
+  })
+
+  it.each([true, false])('旧収支設定%sは操作を表示せず保存値を保持する', async balance => {
+    const settings = makeSettings()
+    settings.items.today.balance = balance
+    const { user, saved } = renderPage(settings)
+    const today = await screen.findByRole('group', { name: '今日の状況' })
+    expect(within(today).queryByRole('checkbox', { name: '収支' })).not.toBeInTheDocument()
+    await user.click(within(today).getByRole('checkbox', { name: 'イベント' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('ダッシュボード画面')
+    expect(saved[0].items.today).toEqual({ balance, menu: true, events: false })
   })
 
   it('編集グリッドには表示ONの確認系カードだけを保存順に並べ、カレンダーは含めない', async () => {
@@ -162,5 +178,112 @@ describe('DisplaySettingsPage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+})
+
+describe('SettingsPage 設定トップ (#499)', () => {
+  const entries = [
+    ['世帯設定', '世帯グループ名・招待コード・メンバーを確認できます。', '/household/settings'],
+    ['表示設定', 'ダッシュボードに表示するカードや項目、並び順を調整できます。', '/settings/display'],
+    ['アカウント設定', '表示名・メールアドレス・パスワードの変更、退会の手続きができます。', '/settings/account'],
+  ] as const
+
+  it('見出しと補足の下に、3つの入口を同じ形のカードで順に並べる', () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 2, name: '設定' })).toBeInTheDocument()
+    expect(screen.getByText('世帯・表示・アカウントの設定を開きます')).toBeInTheDocument()
+    const items = within(screen.getByRole('list', { name: '設定の種類' })).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    entries.forEach(([title, description, href], index) => {
+      const item = within(items[index])
+      expect(item.getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
+      expect(item.getByText(description)).toBeInTheDocument()
+      // 表示は短い「開く」、読み上げ名は行き先が分かる従来の名前のままにする。
+      const link = item.getByRole('link', { name: title + 'を開く' })
+      expect(link).toHaveAttribute('href', href)
+      expect(link).toHaveTextContent('開く')
+      expect(item.getAllByRole('link')).toHaveLength(1)
+    })
+  })
+
+  it('入口の画面なのでAPIを呼ばず、人数や設定済みなどの概要は出さない', () => {
+    const calls = (['get', 'post', 'put', 'patch', 'delete'] as const).map(method => vi.spyOn(apiClient, method))
+    try {
+      render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+      for (const call of calls) expect(call).not.toHaveBeenCalled()
+      expect(screen.queryByText(/設定済み|発行中|\d+人|\d+項目/)).not.toBeInTheDocument()
+    } finally { for (const call of calls) call.mockRestore() }
+  })
+})
+
+describe('DisplaySettingsPage の構成と未保存の表示 (#503)', () => {
+  const cards = ['今日の状況', '買い物・在庫', '個人の財政', '今月のお金', 'イベント別支出', 'カレンダー']
+
+  it('設定に戻る導線と補足を置き、表示するカードを1枚ずつの枠に分ける', async () => {
+    const { user } = renderPage()
+    expect(screen.getByRole('heading', { level: 2, name: '表示設定' })).toBeInTheDocument()
+    expect(screen.getByText('ダッシュボードに表示する項目を選び、順番を並べ替えられます')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '設定に戻る' })).toHaveAttribute('href', '/settings')
+    // 読み込み中も同じ枠の中に表示する。
+    expect(screen.getByRole('status')).toHaveTextContent('読み込み中...')
+    await screen.findByRole('group', { name: '今日の状況' })
+    expect(screen.getAllByRole('group').map(group => group.getAttribute('aria-label'))).toEqual(cards)
+    for (const card of cards) {
+      const group = screen.getByRole('group', { name: card })
+      expect(group).toHaveClass('ui-card')
+      expect(within(group).getByRole('checkbox', { name: card })).toBeInTheDocument()
+    }
+    await user.click(screen.getByRole('link', { name: '設定に戻る' }))
+    expect(screen.getByText('設定トップ画面')).toBeInTheDocument()
+  })
+
+  it('親項目はスイッチの見た目でもチェックボックスのままで、状態を文字でも示す', async () => {
+    const { user } = renderPage()
+    const group = await screen.findByRole('group', { name: '個人の財政' })
+    const parent = within(group).getByRole('checkbox', { name: '個人の財政' })
+    expect(parent).toHaveClass('ui-switch-input')
+    expect(parent).toBeChecked()
+    expect(within(group).getByText('表示')).toBeInTheDocument()
+    parent.focus()
+    await user.keyboard(' ')
+    expect(parent).not.toBeChecked()
+    expect(within(group).getByText('非表示')).toBeInTheDocument()
+    expect(within(group).queryByText('表示')).not.toBeInTheDocument()
+  })
+
+  it('切り替えただけでは保存せず、未保存の変更があることを文字で示す。元へ戻すと消える', async () => {
+    const { user, saved } = renderPage()
+    const parent = await screen.findByRole('checkbox', { name: 'イベント別支出' })
+    const note = '未保存の変更があります。「保存」を押すとダッシュボードに反映されます。'
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+    expect(getPwaUpdateSafety().editing).toBe(false)
+    await user.click(parent)
+    expect(screen.getByText(note)).toBeInTheDocument()
+    expect(saved).toHaveLength(0)
+    await user.click(parent)
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+    // 並べ替えも未保存の変更として扱う。
+    await user.click(screen.getByRole('button', { name: '「今日の状況」を下へ移動' }))
+    expect(screen.getByText(note)).toBeInTheDocument()
+    expect(getPwaUpdateSafety().editing).toBe(true)
+    expect(saved).toHaveLength(0)
+  })
+
+  it('保存ボタンは並べ替えの後のページ末尾に1つだけ置く', async () => {
+    renderPage()
+    const list = await screen.findByRole('list', { name: 'ダッシュボードのカード順' })
+    const save = screen.getByRole('button', { name: '保存' })
+    expect(save).toHaveClass('ui-action')
+    expect(list.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('ドラッグするか、上へ・下へボタンで並べ替えます。カレンダーは常に最上部に表示されます。')).toBeInTheDocument()
+  })
+
+  it('取得に失敗しても、戻る導線のある枠の中に理由を表示する', async () => {
+    server.use(http.get('/api/user-settings', () => HttpResponse.json({ message: 'testuser_settings_failure' }, { status: 500 })))
+    render(<MemoryRouter><DisplaySettingsPage /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent('testuser_settings_failure')
+    expect(screen.getByRole('heading', { level: 2, name: '表示設定' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '設定に戻る' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
   })
 })

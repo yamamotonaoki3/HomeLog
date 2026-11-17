@@ -32,6 +32,9 @@ dist/
 
 # Claude Code（内部設定・スキル等はリポジトリに上げない）
 .claude/
+# Codexの監督記録と、手元だけで参照するUI/UX設計資料（リポジトリには上げない）
+.codex/
+シェファミuiux設計資料/
 
 # OS
 .DS_Store

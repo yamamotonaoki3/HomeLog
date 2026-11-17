@@ -1,3 +1,4 @@
+import { testImages } from '../helpers/bindings'
 import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
@@ -74,6 +75,22 @@ afterEach(() => {
 })
 
 describe('POST /api/recipes/ocr/upload', () => {
+  it('RECIPE_IMAGESが無い場合は503を返す', async () => {
+    const { headers } = await createUser('testuser_ocr_upload_no_binding@example.com')
+    const res = await app.request(
+      '/api/recipes/ocr/upload',
+      { method: 'POST', headers },
+      { ...env, DEMO_MODE: undefined, RECIPE_IMAGES: undefined },
+    )
+
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({
+      code: 'EXTERNAL_SERVICE_ERROR',
+      message: '現在、画像の解析を利用できません',
+      details: [],
+    })
+  })
+
   it('未認証は401を返す', async () => {
     const form = new FormData()
     form.append('file', pngFile())
@@ -88,7 +105,7 @@ describe('POST /api/recipes/ocr/upload', () => {
     expect(res.status).toBe(201)
     const body = await res.json<{ key: string }>()
     expect(body.key).toMatch(new RegExp(`^ocr/${householdId}/[0-9a-f-]{36}\\.png$`))
-    const stored = await env.RECIPE_IMAGES.get(body.key)
+    const stored = await testImages().get(body.key)
     expect(stored).not.toBeNull()
     expect(stored?.httpMetadata?.contentType).toBe('image/png')
     await stored?.arrayBuffer()
@@ -152,11 +169,27 @@ describe('POST /api/recipes/ocr/upload', () => {
       message: '画像はJPEG・PNG・WebP形式、5MB以下のファイルを選択してください',
       details: [],
     })
-    expect((await env.RECIPE_IMAGES.list({ prefix: `ocr/${householdId}/` })).objects).toEqual([])
+    expect((await testImages().list({ prefix: `ocr/${householdId}/` })).objects).toEqual([])
   })
 })
 
 describe('POST /api/recipes/ocr/analyze', () => {
+  it.each(['RECIPE_IMAGES', 'AI'] as const)('%sが無い場合は503を返す', async (binding) => {
+    const { headers } = await createUser('testuser_ocr_analyze_no_binding@example.com')
+    const res = await app.request(
+      '/api/recipes/ocr/analyze',
+      { method: 'POST', headers },
+      { ...env, DEMO_MODE: undefined, [binding]: undefined },
+    )
+
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({
+      code: 'EXTERNAL_SERVICE_ERROR',
+      message: '現在、画像の解析を利用できません',
+      details: [],
+    })
+  })
+
   async function uploaded(email: string) {
     const user = await createUser(email)
     const res = await upload(user.headers, pngFile())
@@ -190,7 +223,7 @@ describe('POST /api/recipes/ocr/analyze', () => {
     expect(JSON.stringify(run.mock.calls[0])).toContain('肉じゃが')
     const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM recipes').first<{ n: number }>()
     expect(count?.n).toBe(0)
-    expect(await env.RECIPE_IMAGES.head(key)).toBeNull()
+    expect(await testImages().head(key)).toBeNull()
   })
 
   it('AIの応答が文字列のJSONでも構造化結果として扱う', async () => {
@@ -230,7 +263,7 @@ describe('POST /api/recipes/ocr/analyze', () => {
     const res = await analyze(headers, { key }, overrideEnv)
     expect(res.status).toBe(400)
     expect(run).not.toHaveBeenCalled()
-    expect(await env.RECIPE_IMAGES.head(key)).toBeNull()
+    expect(await testImages().head(key)).toBeNull()
   })
 
   it('Visionがエラーを返した場合は502を返す', async () => {
@@ -255,7 +288,7 @@ describe('POST /api/recipes/ocr/analyze', () => {
     expect(res.status).toBe(502)
     expect((await res.json<{ code: string }>()).code).toBe('EXTERNAL_SERVICE_ERROR')
     expect(run).not.toHaveBeenCalled()
-    expect(await env.RECIPE_IMAGES.head(key)).toBeNull()
+    expect(await testImages().head(key)).toBeNull()
   })
 
   it('APIキーが未設定の場合は外部APIを呼ばず502を返す', async () => {
@@ -277,7 +310,7 @@ describe('POST /api/recipes/ocr/analyze', () => {
 
     expect((await analyze(other.headers, { key: owner.key }, overrideEnv)).status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(await env.RECIPE_IMAGES.head(owner.key)).not.toBeNull()
+    expect(await testImages().head(owner.key)).not.toBeNull()
   })
 
   it('存在しないkeyは404を返す', async () => {

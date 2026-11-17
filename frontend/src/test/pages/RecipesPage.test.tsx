@@ -1,11 +1,12 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { server } from '../mocks/server'
 import { RecipesPage } from '../../pages/RecipesPage'
 import type { Recipe } from '../../api/kondateTypes'
+import { AuthContext, type AuthContextValue, type DemoInfo } from '../../context/authContextValue'
 
 function setupApi(initial: { recipes?: Recipe[] } = {}) {
   const state = { recipes: initial.recipes ?? [] }
@@ -91,6 +92,27 @@ function renderRecipesPage(initialPath = '/recipes') {
 }
 
 describe('RecipesPage', () => {
+  it('#570 一覧・詳細・WEB編集で画像失敗を隠し、不正元URLでも本文とメモ編集を残す', async () => {
+    const recipe: Recipe = { id: 1, title: '[E2E_TEST] WEB料理', ingredients: null, steps: null, sourceType: 'web', url: 'data:text/plain,recipe', thumbnailUrl: 'https://cdn.example.com/broken.png', memo: '[E2E_TEST] 残すメモ', isFavorite: false }
+    setupApi({ recipes: [recipe] })
+    const user = userEvent.setup()
+    const view = renderRecipesPage()
+    await screen.findByRole('button', { name: recipe.title })
+    fireEvent.error(view.container.querySelector('.recipe-list-thumbnail')!)
+    expect(view.container.querySelector('.recipe-list-thumbnail')).toBeNull()
+    await user.click(screen.getByRole('button', { name: recipe.title }))
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '元ページを開く' })).not.toBeInTheDocument()
+    expect(screen.getByText(recipe.memo!)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    fireEvent.error(view.container.querySelector('form img')!)
+    expect(view.container.querySelector('form img')).toBeNull()
+    expect(screen.queryByRole('link', { name: '元ページを開く' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('メモ')).toHaveValue(recipe.memo)
+    expect(screen.getByRole('button', { name: '更新' })).toBeEnabled()
+  })
+
   it('URL登録で409ならモーダル内にサーバーのエラーを表示しURLとメモを保持する', async () => {
     setupApi()
     server.use(http.post('/api/recipes/from-url', () => HttpResponse.json({
@@ -144,6 +166,32 @@ describe('RecipesPage', () => {
     setupApi()
     renderRecipesPage(`/recipes/share?text=${encodeURIComponent('[E2E_TEST] https://recipe.example.com/text?q=1&b=2#steps')}`)
     expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/text?q=1&b=2#steps')
+  })
+
+  // Androidの共有では、URLが url ではなく text に入り、url は空で届くことがある(#520)。
+  it.each([
+    ['urlが空の', `url=&text=${encodeURIComponent('https://recipe.example.com/android')}`],
+    ['urlが空白だけの', `url=${encodeURIComponent('  ')}&text=${encodeURIComponent('https://recipe.example.com/android')}`],
+    ['urlが空で、textにURL以外の文字もある', `title=&text=${encodeURIComponent('[E2E_TEST] おいしい肉じゃが https://recipe.example.com/android')}&url=`],
+  ])('%sときは、textのURLで登録画面を開く', async (_label, query) => {
+    const { calls } = setupApi()
+    renderRecipesPage(`/recipes/share?${query}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/android')
+    expect(screen.getByRole('tab', { name: 'WEB', selected: true })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+
+  it('urlに値があるときは、textよりurlを優先する', async () => {
+    setupApi()
+    renderRecipesPage(`/recipes/share?url=${encodeURIComponent('https://recipe.example.com/url')}&text=${encodeURIComponent('https://recipe.example.com/text')}`)
+    expect(await screen.findByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/url')
+  })
+
+  it('urlが空で、textにもURLが無いときは、登録画面を開かない', async () => {
+    setupApi()
+    renderRecipesPage(`/recipes/share?url=&text=${encodeURIComponent('[E2E_TEST] URLのない文章')}`)
+    expect(await screen.findByText('レシピはありません')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'レシピを登録' })).not.toBeInTheDocument()
   })
   it('レシピがない場合はプレースホルダーを表示する', async () => {
     setupApi()
@@ -226,6 +274,32 @@ describe('RecipesPage', () => {
 
     await waitFor(() => expect(screen.getByText('タイトルは1〜100文字で入力してください')).toBeInTheDocument())
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(false)
+  })
+
+  it.each([
+    ['材料', '手順'],
+    ['手順', '材料'],
+  ])('%sが10,000文字を超えるとクライアント側でエラー表示しAPIを呼ばない (#513)', async (longField, otherField) => {
+    const { calls } = setupApi()
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await waitFor(() => expect(screen.getByText('レシピはありません')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'レシピを登録' }))
+    await user.type(screen.getByLabelText('タイトル'), '[E2E_TEST] 長いレシピ')
+    // 入力欄の上限(maxLength)は手入力だけを止める。画像解析の結果や貼り付けで超えた場合を想定し、値を直接入れる。
+    expect(screen.getByLabelText(longField)).toHaveAttribute('maxlength', '10000')
+    fireEvent.change(screen.getByLabelText(longField), { target: { value: 'あ'.repeat(10_001) } })
+    fireEvent.change(screen.getByLabelText(otherField), { target: { value: 'い'.repeat(10_000) } })
+    await user.click(screen.getByRole('button', { name: '登録' }))
+
+    expect(await screen.findByText('材料と手順は、それぞれ10,000文字以内で入力してください')).toBeInTheDocument()
+    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(false)
+
+    // 上限ちょうどに直すと登録できる(境界値)。
+    fireEvent.change(screen.getByLabelText(longField), { target: { value: 'あ'.repeat(10_000) } })
+    await user.click(screen.getByRole('button', { name: '登録' }))
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url === '/api/recipes')).toBe(true))
   })
 
   it('レシピを編集すると一覧に反映される', async () => {
@@ -371,5 +445,185 @@ describe('RecipesPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'レシピを登録' })).toBeInTheDocument())
     expect(screen.getByRole('tab', { name: 'WEB', selected: true })).toBeInTheDocument()
     expect(screen.getByLabelText('レシピURL')).toHaveValue('https://recipe.example.com/shared')
+  })
+})
+
+describe('レシピ一覧の見た目に関わる構成 (#489)', () => {
+  const recipe = (id: number, title: string, isFavorite = false): Recipe => ({ id, title, ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite })
+
+  it('補足・全幅の登録・件数つきの見出しを表示し、1件を1つのリスト項目にする', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] カレー')] })
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(within(panel).getByRole('heading', { level: 2, name: 'レシピ一覧' })).toBeInTheDocument()
+    expect(within(panel).getByText('タイトルを押すと材料と手順を確認できます')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'レシピを登録' })).toHaveClass('ui-action')
+    expect(within(panel).getByRole('heading', { level: 3, name: '登録済みのレシピ（2件）' })).toBeInTheDocument()
+    const items = within(within(panel).getByRole('list', { name: 'レシピ' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveClass('ui-card', 'recipe-list-item')
+    // 行のボタン名はタイトルのまま。お気に入りは行のボタンの外に置き、文言を変えない。
+    const row = within(items[0]).getByRole('button', { name: '[E2E_TEST] 肉じゃが' })
+    const favorite = within(items[0]).getByRole('button', { name: '★ お気に入り' })
+    expect(favorite).toHaveAttribute('aria-pressed', 'true')
+    // 見た目は星だけ。読み上げ用の名前は従来の文言のまま。
+    expect(favorite).toHaveTextContent(/^★$/)
+    expect(row).not.toContainElement(favorite)
+    expect(within(items[1]).getByRole('button', { name: '☆ お気に入りにする' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('0件のときは見出しと一覧を出さず、案内だけを表示する', async () => {
+    setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(within(panel).getByText('レシピはありません')).toHaveClass('ui-empty')
+    expect(within(panel).queryByRole('heading', { level: 3, name: /登録済みのレシピ/ })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('list', { name: 'レシピ' })).not.toBeInTheDocument()
+  })
+
+  it('PC・iPhoneの案内を「ほかの登録方法」の下に、同じ幅のカードで表示する', async () => {
+    setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const label = within(panel).getByText('ほかの登録方法')
+    const pc = within(panel).getByRole('region', { name: 'PCからレシピを登録' })
+    const iphone = within(panel).getByRole('region', { name: 'iPhoneからレシピを登録' })
+    expect(pc).toHaveClass('ui-card')
+    expect(iphone).toHaveClass('ui-card')
+    expect(label.compareDocumentPosition(pc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(pc.compareDocumentPosition(iphone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(pc).getByRole('link', { name: 'シェファミに登録' })).toBeInTheDocument()
+    expect(within(iphone).getByRole('link', { name: 'ショートカットを追加する' })).toHaveAttribute('href', '/recipes/iphone-shortcut')
+  })
+
+  it('iPhoneの案内の下に、Androidの共有メニューから登録する案内を同じ形のカードで表示する (#520)', async () => {
+    const { calls } = setupApi()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const iphone = within(panel).getByRole('region', { name: 'iPhoneからレシピを登録' })
+    const android = within(panel).getByRole('region', { name: 'Androidからレシピを登録' })
+    expect(android).toHaveClass('ui-card', 'recipe-guide')
+    expect(iphone.compareDocumentPosition(android) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const steps = within(android).getAllByRole('listitem').map((item) => item.textContent)
+    expect(steps).toHaveLength(3)
+    expect(steps[0]).toContain('Chrome')
+    expect(steps[0]).toContain('インストール')
+    expect(steps[1]).toContain('共有')
+    expect(steps[1]).toContain('「シェファミ」')
+    expect(steps[2]).toContain('「登録」')
+    // 使えないときの代わりの方法も案内する。
+    expect(android).toHaveTextContent('WEBタブにURLを貼り付けて')
+    expect(calls).toEqual([])
+  })
+})
+
+describe('デモではiPhone・Androidの登録案内に注記を出す (#541)', () => {
+  const NOTE = 'デモでは使えません（本番のシェファミで使えます）'
+  function renderAs(demo: DemoInfo | null) {
+    const value: AuthContextValue = {
+      isAuthenticated: true,
+      user: { id: 1, displayName: 'testuser_demo', demo },
+      userStatus: 'ready',
+      login: vi.fn(),
+      cancelDeletion: vi.fn(),
+      logout: vi.fn(),
+      startDemo: vi.fn(),
+      switchDemo: vi.fn(),
+      updateDisplayName: vi.fn(),
+    }
+    return render(
+      <AuthContext.Provider value={value}>
+        <MemoryRouter initialEntries={['/recipes']}>
+          <RecipesPage />
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+  }
+
+  it('デモ利用者には、iPhoneとAndroidのカードにだけ注記を出す', async () => {
+    setupApi()
+    renderAs({ expiresAt: '2026-11-15T00:00:00.000Z', partnerName: 'デモ花子' })
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(within(panel).getByRole('region', { name: 'iPhoneからレシピを登録' })).toHaveTextContent(NOTE)
+    expect(within(panel).getByRole('region', { name: 'Androidからレシピを登録' })).toHaveTextContent(NOTE)
+    expect(within(panel).getByRole('region', { name: 'PCからレシピを登録' })).not.toHaveTextContent(NOTE)
+  })
+
+  it('通常の利用者には注記を出さない', async () => {
+    setupApi()
+    renderAs(null)
+    const panel = await screen.findByTestId('recipes-panel')
+    expect(panel).not.toHaveTextContent(NOTE)
+  })
+})
+
+describe('レシピ一覧の「すべて／お気に入り」の切り替え (#495)', () => {
+  const recipe = (id: number, title: string, isFavorite = false): Recipe => ({ id, title, ingredients: null, steps: null, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null, isFavorite })
+  const titles = () => within(screen.getByRole('list', { name: 'レシピ' })).getAllByRole('listitem').map((item) => within(item).getAllByRole('button')[0].textContent)
+
+  it('最初は「すべて」が選ばれ、「お気に入り」で星を付けたレシピだけを件数つきの見出しで表示する', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] カレー'), recipe(3, '[E2E_TEST] 親子丼', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const panel = await screen.findByTestId('recipes-panel')
+    const filter = within(panel).getByRole('group', { name: '表示するレシピ' })
+    const all = within(filter).getByRole('radio', { name: 'すべて' })
+    const favorites = within(filter).getByRole('radio', { name: 'お気に入り' })
+    expect(all).toBeChecked()
+    expect(favorites).not.toBeChecked()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] カレー', '[E2E_TEST] 親子丼'])
+    await user.click(favorites)
+    expect(favorites).toBeChecked()
+    expect(screen.getByRole('heading', { level: 3, name: 'お気に入りのレシピ（2件）' })).toBeInTheDocument()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] 親子丼'])
+    await user.click(all)
+    expect(screen.getByRole('heading', { level: 3, name: '登録済みのレシピ（3件）' })).toBeInTheDocument()
+    expect(titles()).toHaveLength(3)
+  })
+
+  it('お気に入りが0件のときは、案内と星の付け方を表示する', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが')] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    await user.click(await screen.findByRole('radio', { name: 'お気に入り' }))
+    expect(screen.getByText('お気に入りのレシピはありません')).toBeInTheDocument()
+    expect(screen.getByText(/「すべて」で星（☆）を押すと/)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'レシピ' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 3, name: /のレシピ（/ })).not.toBeInTheDocument()
+  })
+
+  it('「お気に入り」を表示中に星を外すと一覧から消え、フォーカスを切り替えへ移す', async () => {
+    const { calls } = setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true), recipe(2, '[E2E_TEST] 親子丼', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const favorites = await screen.findByRole('radio', { name: 'お気に入り' })
+    await user.click(favorites)
+    const first = within(screen.getByRole('list', { name: 'レシピ' })).getAllByRole('listitem')[0]
+    await user.click(within(first).getByRole('button', { name: '★ お気に入り' }))
+    await waitFor(() => expect(titles()).toEqual(['[E2E_TEST] 親子丼']))
+    expect(screen.getByRole('heading', { level: 3, name: 'お気に入りのレシピ（1件）' })).toBeInTheDocument()
+    expect(favorites).toHaveFocus()
+    expect(calls.find((call) => call.method === 'PATCH' && call.url === '/api/recipes/1/favorite')?.body).toMatchObject({ isFavorite: false })
+    // 「すべて」に戻すと、星を外したレシピは残っている。
+    await user.click(screen.getByRole('radio', { name: 'すべて' }))
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが', '[E2E_TEST] 親子丼'])
+  })
+
+  it('「すべて」を表示中に星を付け外ししても、一覧からは消えずフォーカスも動かない', async () => {
+    setupApi({ recipes: [recipe(1, '[E2E_TEST] 肉じゃが', true)] })
+    const user = userEvent.setup()
+    renderRecipesPage()
+    const star = await screen.findByRole('button', { name: '★ お気に入り' })
+    await user.click(star)
+    const off = await screen.findByRole('button', { name: '☆ お気に入りにする' })
+    expect(off).toHaveFocus()
+    expect(titles()).toEqual(['[E2E_TEST] 肉じゃが'])
+  })
+
+  it('レシピが1件も無いときは切り替えを出さない', async () => {
+    setupApi()
+    renderRecipesPage()
+    await screen.findByText('レシピはありません')
+    expect(screen.queryByRole('group', { name: '表示するレシピ' })).not.toBeInTheDocument()
   })
 })

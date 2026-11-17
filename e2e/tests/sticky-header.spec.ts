@@ -1,3 +1,4 @@
+import { openAccountMenu } from './support/flows'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './console-guard'
@@ -56,7 +57,7 @@ for (const width of [1280, 390, 320]) {
 
     await page.getByRole('link', { name: '設定を開く' }).click()
     await expect(page).toHaveURL(/\/settings$/)
-    await page.getByRole('link', { name: 'シェファミ', exact: true }).click()
+    await page.getByRole('link', { name: width <= 480 ? 'シェファミ' : 'シェファミ HomeLog', exact: true }).click()
     await expect(page).toHaveURL(/\/$/)
 
     await page.goto('/zaiko')
@@ -66,7 +67,7 @@ for (const width of [1280, 390, 320]) {
     expect(await page.evaluate(() => Boolean(document.elementFromPoint(10, 10)?.closest('.modal-overlay')))).toBe(true)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).not.toBeVisible()
-    await page.getByRole('button', { name: 'ログアウト', exact: true }).click()
+    await (await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true }).click()
     await expect(page).toHaveURL(/\/login$/)
   })
 }
