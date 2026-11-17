@@ -2,8 +2,18 @@ import { expect, test } from './console-guard'
 import { setupUserWithHousehold } from './support/flows'
 
 for (const width of [1280, 390, 320]) {
-  test(`重複登録のエラーと入力をモーダル内に保持する ${width}px (#319)`, async ({ page, consoleGuard }) => {
+  test(`重複登録のエラーと入力をモーダル内に保持する ${width}px (#319)`, async ({ page, context, baseURL, consoleGuard }) => {
     consoleGuard.watch(page)
+    expect(baseURL).toBeTruthy()
+    const localOrigin = new URL(baseURL!).origin
+    expect(new URL(localOrigin).hostname).toBe('localhost')
+    // ブラウザの外部通信も遮断する。Workers fetchには効かないためfixtureは手動APIだけを使う。
+    await context.route('**/*', async (route) => {
+      const requestUrl = new URL(route.request().url())
+      // 後段のpage mockが一致しないfrom-urlも実Workersへ流さない。
+      if (requestUrl.origin !== localOrigin || requestUrl.pathname === '/api/recipes/from-url') await route.abort('blockedbyclient')
+      else await route.continue()
+    })
     await page.setViewportSize({ width, height: 900 })
     consoleGuard.allow({ url: /\/api\/inventory-items$/, message: /Failed to load resource:.*409/ })
     consoleGuard.allow({ url: /\/api\/recipes\/from-url$/, message: /Failed to load resource:.*409/ })
@@ -45,17 +55,25 @@ for (const width of [1280, 390, 320]) {
     await page.reload()
     await expect(rows).toHaveCount(1)
 
-    // 通常の作成APIはURLを受け付けないため、初回だけfrom-urlで外部取得する。
-    // 再登録時は実Workersが外部取得より先に409を返すことを検証する。
+    // 一覧のfixtureは外部取得しない手動APIで作る。WEB409はブラウザmockでUIの保持を検証する。
+    // 実WorkersのURL重複409/外部取得前の拒否はrecipes.test.tsのfetch stubテストが担当する。
     const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
     const headers = { Authorization: `Bearer ${token}` }
-    const url = `https://example.com/?e2e=${encodeURIComponent(`[E2E_TEST] duplicate_${width}`)}`
-    const created = await page.request.post('/api/recipes/from-url', {
-      headers, data: { url, memo: '[E2E_TEST] 初回登録' },
-    })
+    const title = '[E2E_TEST] 保持する既存レシピ'
+    const url = `https://recipe.example.com/?e2e=${encodeURIComponent(`[E2E_TEST] duplicate_${width}`)}`
+    const created = await page.request.post('/api/recipes', { headers, data: { title } })
     expect(created.status()).toBe(201)
+    await page.route(localOrigin + '/api/recipes/from-url', async (route) => {
+      expect(route.request().method()).toBe('POST')
+      expect(route.request().postDataJSON()).toEqual({ url, memo: '[E2E_TEST] 保持するメモ' })
+      await route.fulfill({
+        status: 409,
+        json: { code: 'DUPLICATE_RECIPE_URL', message: 'このURLのレシピは既に登録されています', details: [] },
+      })
+    })
     await page.goto('/recipes')
     await expect(page.locator('.recipe-list-item')).toHaveCount(1)
+    await expect(page.locator('.recipe-list-item')).toContainText(title)
     await page.getByRole('button', { name: 'レシピを登録' }).click()
     await page.getByRole('tab', { name: 'WEB' }).click()
     const recipeModal = page.locator('.modal').filter({ has: page.getByRole('heading', { name: 'レシピを登録' }) })
@@ -72,6 +90,6 @@ for (const width of [1280, 390, 320]) {
     await assertFits()
     const listed = await page.request.get('/api/recipes', { headers })
     expect(listed.status()).toBe(200)
-    expect(await listed.json()).toHaveLength(1)
+    expect(await listed.json()).toEqual([expect.objectContaining({ title, sourceType: 'manual' })])
   })
 }

@@ -122,7 +122,9 @@ S-12のレシピ一覧では、「すべて／お気に入り」の切り替え�
 
 - YouTube（youtube.com・youtu.be・m.youtube.com・music.youtube.com）のURLは、Workersからページを取得すると同意画面などが返りタイトルが「YouTube」になるため、YouTubeの oEmbed API から動画タイトルとサムネイルを取得する。失敗したときは下記のHTML解析に戻る（#285）
 - タイトルは `og:title` → `<title>` → URL文字列 の優先順で必ず何か確定する。HTMLRewriter は文字参照を戻さないため、取り出した値の数値文字参照（`&#x30ec;` など）と主な名前付き文字参照（`&amp;` `&quot;` など）は元の文字に戻してから保存する（Instagram の文字化け対策、#312）
-- サムネイルは `og:image` が無ければ保存しない（NULL）
+- `og:image` はHTMLの最終レスポンスURL（有効なHTTP/HTTPS）を基準に相対パス・`//` を解決し、HTTPSの画像URLだけを保存する。最終レスポンスURLが空または無効なら登録URLを基準にする。HTMLの `base` タグは使わず、保存する元URLは登録URLの正規化値のままとする（#569）。
+- YouTubeの oEmbed サムネイルは絶対HTTPSのみ採用する。画像が欠落・不正でも有効な oEmbed タイトルを保持し、画像を理由にHTMLの追加取得はしない（#569）。
+- サムネイルが空白・欠落・不正、または解決後HTTPS以外なら保存しない（NULL）。画像異常だけで登録を失敗させず、タイトル・元URL・メモを保持する。画像には元レシピURLの2048文字制限を流用せず、長い署名付きクエリも切り捨てない。画像自体の事前GET/HEAD・ダウンロードや既存DBの一括書換えは行わない（#569）。
 - `http:`/`https:` 以外のスキーム、`localhost`/ループバック/プライベートIP帯を指定したURL、
   非HTMLレスポンス、fetch失敗（タイムアウト・DNS失敗・非2xx）は400エラーとする（SSRF対策）
 - 取得したタイトル・サムネイル・元URL・任意メモを `source_type='web'` で保存する
