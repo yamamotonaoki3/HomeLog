@@ -62,6 +62,27 @@ function renderMenuPage() {
 }
 
 describe('MenuPage', () => {
+  it.each([
+    ['javascript:0', null],
+    ['http://RECIPE.example.com/a?q=%25&x=1#steps', 'http://recipe.example.com/a?q=%25&x=1#steps'],
+  ])('#570 献立の元リンクも検証し、本文と削除・詳細導線を残す: %s', async (url, href) => {
+    const monday = getMondayOf(new Date())
+    const title = '[E2E_TEST] WEB料理'
+    setupApi({ recipes: [{ id: 10, title, ingredients: null, steps: null, sourceType: 'web', url, thumbnailUrl: null, memo: '[E2E_TEST] メモ', isFavorite: false }], entries: { [monday]: [{ id: 1, recipeId: 10, recipeTitle: title, freeTextMemo: null, weekStartDate: monday }] } })
+    const user = userEvent.setup()
+    renderMenuPage()
+    await user.click(await screen.findByRole('button', { name: title }))
+    if (href) {
+      expect(screen.getByRole('link', { name: 'レシピを見る' })).toHaveAttribute('href', href)
+      expect(screen.getByRole('link', { name: 'レシピを見る' })).toHaveAttribute('rel', 'noopener noreferrer')
+    } else {
+      expect(screen.queryByRole('link', { name: 'レシピを見る' })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'レシピを見る' }))
+      expect(screen.getByRole('dialog', { name: 'レシピ詳細' })).toHaveTextContent('[E2E_TEST] メモ')
+    }
+    expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument()
+  })
+
   it('週ボタンは表示どおりの読み上げ名を持ち、矢印は読み上げない', async () => {
     setupApi()
     renderMenuPage()
