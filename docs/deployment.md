@@ -61,9 +61,9 @@ dry-runはローカルのbundle・assets構成を検証するもので、D1/R2�
 
 注意: `wrangler secret put`は既存Workerでも新バージョンを即時デプロイする。初回Worker未作成時はWranglerがWorker作成を提案するため、作成確認も外部操作として扱う。公開準備の単なるローカル検証として実行しない。初回はsecret操作より前にもfrontend buildを済ませる。作成・配信対象のWorker名は`homelog-backend-workers`。
 
-Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01:00：固定費計上（今月の支払日を過ぎた未計上分の回収を含む、#396）・在庫消費・OCR一時画像削除・退会処理・パスワード再設定の回数制限の清掃）に加え、献立の期限切れ削除（#362）が動く。献立削除はUTC毎日15:00（JST翌00:00）に単独実行し、既存の01:00の処理でも再試行する。
+Cronも公開対象となる。UTC毎日15:00（JST翌00:00）は、対象の連携献立を今週に持ち越し（#547）、成功した場合に先週以前の献立登録を物理削除する（#362）。持ち越しに失敗した回は旧週の献立を保持し、UTC毎日16:00（JST翌01:00）の処理でも同じ順序で再試行する。01:00には固定費計上（今月の支払日を過ぎた未計上分の回収を含む、#396）、在庫の日次自動消費、OCR一時画像・退会期限を過ぎたアカウント・保持期間を過ぎた回数制限データの削除も行う。
 
-**本番反映後の初回実行では、全世帯の先週以前の献立登録が物理削除される。** 今週と未来の献立・元のレシピは残るが、削除した献立の復元機能はない。Cronの実行時刻は遅れる場合があり、実行時点のJSTの週を基準に削除する。公開先D1/R2と自動処理開始・既存データへの影響を確認し、ユーザーから本番反映の指示を受けてから実行する。
+**本番反映後は、献立の定期処理が成功した回に全世帯の先週以前の献立登録が物理削除される。** 今週と未来の献立・元のレシピは残る。削除した献立の復元機能はない。Cronの実行時刻は遅れる場合があり、実行時点のJSTの週を基準に持ち越しと削除を行う。公開先D1/R2と自動処理開始・既存データへの影響を確認し、ユーザーから本番反映の指示を受けてから実行する。
 
 **パスワード再設定メール（#401）**はGASのMailApp経由。`PASSWORD_RESET_MAIL_ENABLED`は初期値`"false"`（停止）で、停止中・secret未設定のあいだ申請APIは利用不可（503）を返す。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。GAS公開・送信用Googleアカウントの認可・`PASSWORD_RESET_GAS_URL`/`PASSWORD_RESET_GAS_SECRET`のsecret登録・有効化の手順は[password-reset-gas-setup.md](details/password-reset-gas-setup.md)を参照する（実値はコミット・チャット・Issueに書かない）。D1マイグレーション0023（`password_reset_attempts`）を含む未適用マイグレーションは、Workers Buildsのデプロイコマンドが配信前に適用する。`npm run deploy`単独ではマイグレーションは適用しないため、手動公開時は先に`npx wrangler d1 migrations apply DB --remote`を実行する。
 
@@ -120,7 +120,7 @@ npx wrangler deploy --env demo
 
 - `GET https://homelog-demo.nyproducts.workers.dev/api/demo` が `{ "enabled": true }` を返す。本番の同じ API は `{ "enabled": false }` を返す。
 - `https://homelog-demo.nyproducts.workers.dev/demo` を PC で開くとスマホの枠の中にログイン画面が出て、「デモを試す（登録不要）」でデモ太郎として始まる。
-- 期限切れのデモは毎時の Cron で削除される。Cloudflare のダッシュボードで `homelog-demo` の Cron の実行を確認できる。
+- デモの利用期限は作成から24時間。期限切れのデモは毎時の Cron で削除される。Cloudflare のダッシュボードで `homelog-demo` の Cron の実行を確認できる。
 
 ## 公開後の確認・残作業
 
@@ -153,15 +153,14 @@ secret（`JWT_SECRET` など）は Worker に登録済みのものがそのま�
 ### 公開の手順
 
 1. 通常どおり PR を作り、CI が通ったら `main` にマージする。
-2. 公開したい時点で、`main` を `production` に反映する。
+2. ユーザーから本番反映の指示を受けたら、`git fetch origin` の成功を確認してから `origin/main` を `production` に fast-forward で反映する。
    ```sh
    git fetch origin
    git push origin origin/main:production
    ```
-   GitHub 上で `main` → `production` の PR を作ってマージしてもよい。
 3. Cloudflare の Builds 画面でビルドとデプロイの成功を確認し、公開 URL で `/health` などを確認する。
 
-`production` へは `main` 以外のコミットを入れない（fast-forward のみ）。`main` と食い違った場合は、`main` 側を正として修正する。
+`production` へは `main` 以外のコミットを入れない（fast-forward のみ）。履歴の分岐で push が拒否された場合は、公開を止めて `main` と `production` の差分を確認する。
 
 ### 切り戻し
 

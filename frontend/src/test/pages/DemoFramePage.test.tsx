@@ -47,7 +47,7 @@ describe('DemoFramePage', () => {
     expect(frame.tagName).toBe('IFRAME')
     expect(frame).toHaveAttribute('src', '/login')
     expect(screen.getByRole('heading', { name: 'シェファミのデモ' })).toBeVisible()
-    expect(screen.getByText('架空の2人（デモ太郎・デモ花子）の世帯で、登録なしでお試しできます。データは24時間で消えます。')).toBeVisible()
+    expect(screen.getByText('架空の2人（デモ太郎・デモ花子）の世帯で、登録なしでお試しできます。デモは24時間利用でき、期限後のデータは定期処理で削除されます。')).toBeVisible()
     for (const line of DEMO_HIGHLIGHTS) expect(screen.getByText(line)).toBeVisible()
     expect(screen.getAllByRole('listitem')).toHaveLength(4)
     expect(screen.getByRole('button', { name: '最初の画面に戻す' })).toBeVisible()

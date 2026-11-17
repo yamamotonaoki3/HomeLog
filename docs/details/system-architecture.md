@@ -31,20 +31,22 @@ flowchart TB
     Worker --> AI
     Worker -- 画像の文字認識 --> Vision
     Worker -- タイトル・サムネイル取得 --> Web
-    Cron -- 献立の期限切れ削除・在庫の自動消費・固定費の自動計上など --> Worker
+    Cron -- 献立の持ち越し・過去週の削除・在庫の自動消費・固定費の自動計上など --> Worker
 ```
 
 - 画面（SPA）と API は同じ Worker・同じオリジンから配信する。`/api` と `/health` は Worker の処理を先に通し、それ以外のパスは `index.html` に戻す（SPA フォールバック）。
 - デプロイは `production` ブランチへの push を契機に Cloudflare Workers Builds が行う（マイグレーション適用 → デプロイ）。
-- JST 0:00は期限切れの献立だけを削除する。JST 1:00は献立削除を再試行し、在庫の日次自動消費、固定費の自動計上、古いOCR画像、退会期限を過ぎたアカウント、保持期間を過ぎた回数制限データの削除を行う。デモ環境は別のWorker・D1を使い、毎時のCronで期限切れのデモ世帯を削除する（[deployment.md](../deployment.md)の「デモ環境」）。
+- JST 0:00は連携献立の残り予定を持ち越し、成功した場合に過去週の献立を削除する。持ち越しに失敗した回は過去週を保持する。JST 1:00は同じ順序で再試行し、在庫の日次自動消費、固定費の自動計上、古いOCR画像、退会期限を過ぎたアカウント、保持期間を過ぎた回数制限データの削除も行う。デモ環境は別のWorker・D1を使い、毎時のCronで期限切れのデモ世帯を削除する（[deployment.md](../deployment.md)の「デモ環境」）。
 
 ## 2. 開発環境
 
 | 役割 | 起動方法 |
 | --- | --- |
-| API | `backend-workers/` で `npx wrangler dev --local --port 8787`（ローカルの D1・R2 を使用） |
-| 画面 | `frontend/` で `VITE_API_PROXY_TARGET=http://localhost:8787 npx vite --port 5181` |
-| E2E | `e2e/` で `npm test`（上記2つを自動起動） |
+| API | `frontend/` をビルドし、`backend-workers/` でローカル D1 にマイグレーションを適用して `npx wrangler dev --local --port 8787` を実行 |
+| 画面 | `frontend/` で `VITE_API_PROXY_TARGET` を `http://localhost:8787` に設定して `npx vite --port 5181 --strictPort` を実行 |
+| E2E | `e2e/` で `npm test`（専用のローカル D1 を使用し、Workers と Vite を自動起動） |
+
+Bash・Windows PowerShell のコマンドは [README のローカル起動手順](../../README.md#ローカルで動かす)、E2E の準備は [e2e/README.md](../../e2e/README.md#実行) を参照。
 
 ## 3. 運用フェーズによる構成の違い
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | プロジェクト名 | シェファミ |
 | 作成日 | 2026-07-04 |
-| 版 | 2.4 |
+| 版 | 2.5 |
 | 作成者 | — |
 
 ---
@@ -33,7 +33,7 @@
 
 ### 1.2 対象範囲
 
-家計簿・在庫管理・献立表の3つの大きな機能領域を持つ。3機能のうち、在庫管理と買い物リストのみ密連携し、その他の機能間は独立して動作する（[common-notes.md](details/common-notes.md) 6章参照）。
+家計簿・在庫管理・献立表の3つの機能領域を持つ。在庫管理は買い物リストと連携する。在庫品目は任意で献立の料理に割り当てられ、食事の記録で関連する在庫を減らせる。家計簿は独立して動作する（[common-notes.md](details/common-notes.md) 6章参照）。
 
 ---
 
@@ -93,21 +93,21 @@
 | F-04 | 割り勘・精算管理 | 世帯内外の割り勘・精算（請求/受領/保留） | [F04_kakeibo_warikan.md](details/features/F04_kakeibo_warikan.md) |
 | F-05 | 固定費管理 | 家賃・水道代等の固定費を毎月自動計上 | [F05_kakeibo_fixedcost.md](details/features/F05_kakeibo_fixedcost.md) |
 | F-06 | イベント管理 | イベントに支出を紐付けて集計 | [F06_kakeibo_event.md](details/features/F06_kakeibo_event.md) |
-| F-07 | 在庫管理 | 食材等の在庫と日次自動消費（任意）を管理し、カテゴリー・店舗マスタを持つ | [F07_zaiko_inventory.md](details/features/F07_zaiko_inventory.md) |
+| F-07 | 在庫管理 | 食材等の在庫・日次自動消費・献立への任意の割り当てを管理し、カテゴリー・店舗マスタを持つ | [F07_zaiko_inventory.md](details/features/F07_zaiko_inventory.md) |
 | F-08 | 買い物リスト | 在庫と密連携した買い物リスト | [F08_zaiko_shoppinglist.md](details/features/F08_zaiko_shoppinglist.md) |
 | F-09 | レシピ登録・管理 | 手動/手書き画像解析/WEB引用（PCのブックマーク・iPhoneのショートカット・Androidの共有から登録可）によるレシピ登録 | [F09_kondate_recipe.md](details/features/F09_kondate_recipe.md) |
-| F-10 | 献立表 | 週単位の「作りたい料理リスト」にレシピまたは自由メモを追加 | [F10_kondate_menu.md](details/features/F10_kondate_menu.md) |
+| F-10 | 献立表 | 週単位の「作りたい料理リスト」にレシピまたは自由メモを追加。在庫連携した料理の食事を記録・取消でき、設定に応じて残りの予定を翌週へ持ち越す | [F10_kondate_menu.md](details/features/F10_kondate_menu.md) |
 | F-11 | 口座・カード管理 | 口座・カード（口座の子）の手動登録、支出との紐付け | [F11_kakeibo_account.md](details/features/F11_kakeibo_account.md) |
-| F-12 | 世帯支出サマリー | 世帯合計対象フラグがtrueの支出・固定費のみを合計し、トップ画面のダッシュボードに表示 | [F12_kakeibo_household_summary.md](details/features/F12_kakeibo_household_summary.md) |
+| F-12 | 世帯支出サマリー | 世帯合計対象の支出・固定費を集計し、ダッシュボードの「今月のお金」と家計簿一覧に表示。ダッシュボードは表示設定に従う | [F12_kakeibo_household_summary.md](details/features/F12_kakeibo_household_summary.md) |
 | F-13 | 個人収入管理 | 日時・金額・内容・カテゴリー等を登録し、カテゴリー別検索ができる。収支（収入－支出）算出の元データとなる | [F13_kakeibo_income.md](details/features/F13_kakeibo_income.md) |
 
 ### 5.1.1 デモ環境（#529）
 
 README から登録なしで試せるデモ環境を、本番とは別の Worker・D1（`homelog-demo`・`homelog-demo-db`）で公開する。来た人ごとに専用の世帯「デモ家」と2人の利用者（デモ太郎・デモ花子）・架空の見本データを作り、2人を切り替えて「本人だけのデータ」と「世帯で共有するデータ」の違いを体験できる。
 
-- データは作成から24時間で自動削除する（毎時の Cron）。同じ接続元から1時間に5回、同時に300世帯まで。
+- 利用期限は作成から24時間。期限切れのデータは毎時の Cron で自動削除する。同じ接続元から1時間に5回まで開始でき、有効期限内のデモは300世帯まで。
 - 新規登録・パスワード／メールの変更・退会・パスワード再設定・世帯の作成／参加／脱退／招待コードの再発行・手書きメモの画像読み取りは止める（`DEMO_DISABLED`）。R2・Workers AI・Google Vision・メールにはつながない。
-- 本番では `DEMO_MODE` を設定せず、デモ用の動作は働かない。構成と更新は [deployment.md](deployment.md#デモ環境)、API は [api-design.md](details/api-design.md)、設計は [2026-11-14-demo-environment-design.md](superpowers/specs/2026-11-14-demo-environment-design.md) を参照。
+- 本番では `DEMO_MODE` を設定せず、デモ用の動作は働かない。構成と更新は [deployment.md](deployment.md#デモ環境529)、API は [api-design.md](details/api-design.md)、設計は [2026-11-14-demo-environment-design.md](superpowers/specs/2026-11-14-demo-environment-design.md) を参照。
 
 ### 5.2 スコープ外
 
@@ -117,7 +117,7 @@ README から登録なしで試せるデモ環境を、本番とは別の Worker
 
 F-01〜F-13 はすべて実装済みで、本番（Cloudflare Workers）で稼働している（2026-10 時点）。当初は Phase 1（認証・世帯・在庫・買い物リスト・簡易ダッシュボード）と Phase 2 以降に分けて計画した。API仕様は[api-design.md](details/api-design.md)を参照。
 
-在庫一覧は品目行を押して数量の操作欄を開き、「詳細を編集」から「在庫の詳細編集」を開く。イベント一覧は登録者が編集・支出集計・削除確認を1つのモーダルで行い、他の登録者の共有イベントは閲覧専用とする（#332・#333、PR #334）。数量の即時反映とその他の保存確定、操作権限の詳細はF-07・F-06とワイヤーフレームを参照。
+在庫一覧は品目行を押して数量の操作欄を開く。＋／－はその場で反映し、手入力の増減量は「数量を適用」で確定する。「詳細を編集」では在庫個数を含む品目情報と献立との連携設定を「保存」でまとめて確定する。イベント一覧は登録者が編集・支出集計・削除確認を1つのモーダルで行い、他の登録者の共有イベントは閲覧専用とする。詳細はF-07・F-06とワイヤーフレームを参照。
 
 次の要件は未実装である。
 
@@ -248,3 +248,4 @@ F-01〜F-13 はすべて実装済みで、本番（Cloudflare Workers）で稼�
 | 2026-09-27 | 2.0 | Issue #169。S-04をユーザー編集可能なカードグリッドへ改訂。カレンダーの収入・支出別表示、イベント詳細モーダル（S-24）、買い物／在庫の実リスト、今週の献立、独立イベント別支出カード（今日・今月・今年、既定は今年）、表示設定とカード順の保存、S-21保存後のS-04遷移を正式化。「年間投資」は投資専用集計ではなく暦年のイベント別支出を指す |
 | 2026-10-21 | 2.3 | Issue #335。#332・#333（PR #334）の在庫詳細編集・イベント編集/集計/削除確認の統合を、画面遷移図・ワイヤーフレーム・機能仕様へ同期。登録者と閲覧専用の導線、在庫個数の最終配置と保存後の挙動を明記 |
 | 2026-11-14 | 2.4 | Issue #529。デモ環境（2アカウント切り替え、`demo_households`、`/api/demo/*`、デモで止める機能、24時間での自動削除）を追加。F-01・F-02・API設計・データモデル・配信手順・READMEを同期 |
+| 2026-11-18 | 2.5 | Issue #579。在庫と献立の連携・保存時点、画面遷移、レシピの画像・元ページ、PWA更新、デモ期限の記載を現行実装に同期 |

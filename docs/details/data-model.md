@@ -717,7 +717,7 @@ Workersの#253では `debtor_user_id` をnullableにし、`debtor_external_id` �
 Workers/D1の物理列はnullable INTEGER `price`。既存行はマイグレーション0014でNULLとなる。
 買い物リストには値段列を追加せず、在庫へJOINして現在値を参照する。履歴・比較・更新日時は追加しない。
 
-マイグレーション0020でnullable TEXT `normalized_name`を追加する（#318）。POST・PATCH時に品名をNFKC正規化 → 小文字化 → 前後空白除去 → カタカナをひらがなに変換（#325）して保存し、同一世帯内の書き込み時の重複ガードに使う。
+マイグレーション0020でnullable TEXT `normalized_name`を追加する（#318）。POST・PUT・PATCH時に品名をNFKC正規化 → 小文字化 → 前後空白除去 → カタカナをひらがなに変換（#325）して保存し、同一世帯内の書き込み時の重複ガードに使う。
 既存行はbackfillせずNULLのまま残し、JSの事前チェックで品名を正規化して比較する。既存重複を許容するためUNIQUE制約は付けず、`(household_id, normalized_name)`の通常インデックスを設ける。
 
 | カラム名 | 型 | 必須 | 備考 |
@@ -793,8 +793,8 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 | ingredients | TEXT | — | 材料（手動・画像解析登録の場合） |
 | steps | TEXT | — | 手順（手動・画像解析登録の場合） |
 | source_type | VARCHAR(20) | ○ | `manual`/`ocr`/`web` |
-| url | VARCHAR(512) | — | WEBレシピのURL |
-| thumbnail_url | VARCHAR(512) | — | WEBレシピのサムネイル |
+| url | TEXT（D1） | — | WEBレシピの元URL。APIの入力上限は2048文字で、正規化して保存 |
+| thumbnail_url | TEXT（D1） | — | WEBレシピのHTTPSサムネイル。元URLの2048文字制限は適用しない。採用条件は[F-09](features/F09_kondate_recipe.md)参照 |
 | memo | VARCHAR(255) | — | WEBレシピへの独自メモ |
 | is_favorite | BOOLEAN | ○ | お気に入り |
 
@@ -810,7 +810,7 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 
 ※ `recipe_id` と `free_text_memo` はどちらか一方のみ設定する（確定登録/ラフ登録の排他）。
 
-保存期間（#362）：今週（月曜0時開始、JST）と未来の行を保持する。毎日JST 0時と1時の定期処理で、実行時点の今週の月曜日より `week_start_date` が前の行を全世帯について物理削除する。初回は既存の過去週も対象。元の `recipes` は保持する。実行遅延・失敗時は次回に回収し、復元・アーカイブは提供しない。詳細は [F10](features/F10_kondate_menu.md) の「保存期間・自動削除」を参照。
+保存期間（#362）：今週（月曜0時開始、JST）と未来の行を保持する。毎日JST 0時と1時の定期処理で、まず実行時点のJSTの週へ持ち越しを補完する。持ち越しに成功した回に限り、その週の月曜日より `week_start_date` が前の行を全世帯について物理削除する。失敗時は次回に再試行する。初回は既存の過去週も対象。元の `recipes` は保持し、復元・アーカイブは提供しない。詳細は [F10](features/F10_kondate_menu.md) の「保存期間・自動削除」を参照。
 
 ## 在庫別メニュー・実食・継続の物理モデル（#547）
 
@@ -823,11 +823,11 @@ D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_men
 | `menu_consumption_events` | UUID、世帯、週行/在庫（削除時SET NULL）、消費量10倍整数、取消日時、作成日時。週削除後もイベントを保持する |
 | `menu_operation_requests` | 世帯/actor/requestIdの複合主キー、正規化request JSON、成功HTTP status/JSON、`guard=1`の名前付きCHECK、作成日時。成功再送を再現し、期限自動削除しない |
 
-新表は世帯削除CASCADE、要求台帳のactorはusers参照CASCADE。退会の墓標化方針は維持し、期限切れデモの物理削除では既存世帯/利用者削除のCASCADEで新表も消える。週行削除だけで持ち越し設定・要求台帳・イベントを削除しない。
+新表は世帯削除CASCADE、要求台帳のactorはusers参照CASCADE。退会の墓標化方針は維持し、期限切れデモの物理削除では既存世帯/利用者削除のCASCADEで新表も消える。週行を定期削除しても持ち越し設定・要求台帳・イベントは保持する。利用者が連携週行を個別に削除すると、その関連の持ち越しがオフになる。
 
 0029は既存連携週行だけを移行時の現原本名で補完し、原本削除済みなら関連の`recipe_title_snapshot`を使う。過去の改名履歴は保存されていないため、移行前の生成時名は復元できない。通常行の名前列はNULLのまま、保存済み操作要求の成功JSONも変更しない。
 
-在庫数量のUPDATEで0に到達するとDB triggerで該当関連のcarryをOFFにしrevisionを増やす。補充・取消で自動再ONしない。在庫/原本削除は関連を無効化して参照NULLを残す。日次自動消費ONと有効関連は相互にDB triggerで拒否する。
+旧関連（`remaining_count IS NULL`）では、在庫数量のUPDATEで0に達すると、DBトリガーが持ち越しをオフにして関連のrevisionを進める。補充や取消で自動再開しない。旧関連と日次自動消費の排他は旧関連の `enabled` で判定する。在庫・原本削除時は関連を無効化し、削除した側の参照がNULLになる。
 
 ### 予定回数・品目単位計画の追加（#554、画面#555実装済み）
 
@@ -841,4 +841,4 @@ D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_men
 
 menu_entriesはcountを持たず、consumed_event_idをtop、meal_revisionをCASとして使う。unlinkしてlinkIDがNULLでもevent参照の週行と週名snapshotを保持する。undoの在庫正本はevent.inventory_item_id、元planned link生存時だけcountを戻し、解除/再追加の新IDへ履歴を付け替えない。
 
-0031は全stock writerでSUM(planned remaining)*10≦stockを保証（品目OFFも同じ）。残予定>0とdailyONは排他、legacyは旧enabled条件を維持する。在庫の観測列更新と関連INSERT/UPDATE/DELETEで品目集約revisionを進める。count/stock/event/台帳結果は同batch、既存menu_operation_requestsへ集約version2を追加し旧操作・旧成功JSONを保持する。
+0031は全stock writerでSUM(planned remaining)*10≦stockを保証（品目OFFも同じ）。`remaining_count` が設定された現行の関連では、残数0や品目OFFでもレシピ別の持ち越し設定を保持し、週行の生成を停止する。日次自動消費をONにできるのは予定合計が0で、有効な旧関連もない場合。予定合計が正なら品目OFF中もONにできない。在庫の観測列更新と関連INSERT/UPDATE/DELETEで品目集約revisionを進める。count/stock/event/台帳結果は同batch、既存menu_operation_requestsへ集約version2を追加し旧操作・旧成功JSONを保持する。

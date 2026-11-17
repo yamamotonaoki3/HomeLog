@@ -33,17 +33,16 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 | `DELETE /api/accounts/:id` | 固定費参照または残高0でない子カードがあれば400。過去の支出/収入（通常/精算）/チャージ/割り勘支払元の参照があれば`deleted_at`へUTC日時を設定し履歴と口座名を保持（子カード経由も対象）、参照なしなら物理削除。成功204。削除済み/他人は404（#368） |
 | `GET /api/accounts` | 削除済み口座とその子カードを除外。口座選択肢・残高合計はこの結果を利用 |
 
-削除済み口座は口座編集・再削除・履歴取得で404、新規の収入/支出/カード登録/チャージ元/固定費/精算先で指定不可。全APIは認証必須（未認証401）。過去のNULL口座行・精算収入・残高は遡及更新しない。精算で自動生成される収入の口座は従来どおり任意。口座必須入力と削除済み口座名の表示UIは[F13](features/F13_kakeibo_income.md) 8-3章を参照。
+削除済み口座は口座編集・再削除・履歴取得で404、新規の収入/支出/カード登録/チャージ元/固定費/精算先で指定不可。この節の口座・取引APIは認証必須（未認証401）。過去のNULL口座行・精算収入・残高は遡及更新しない。精算で自動生成される収入の口座は従来どおり任意。口座必須入力と削除済み口座名の表示UIは[F13](features/F13_kakeibo_income.md) 8-3章を参照。
 
 事前照合後に口座が論理削除された場合も、書き込み時のDBガードで400 `VALIDATION_ERROR`として拒否する。同一D1 batch内の支出/収入/チャージ履歴・残高・精算状態をまとめてロールバックする。削除側もbatch内で固定費・子カード残高の禁止条件と履歴参照の有無を再確認する。削除より先に確定した取引は保持して論理削除する（#368）。
 
 ### 1-1. 認証
 
-- 以下のエンドポイントは`Authorization`ヘッダー不要（アクセストークンを前提としない）：`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/password-reset/*`, `/api/auth/account/deletion/cancel`, `GET /api/demo`, `POST /api/demo/start`, `/health`
-- 認証が必要なAPIでは、退会の申し込み中・退会済みのアカウントを有効なアクセストークンでも401にする（#297）
-  - `/api/auth/logout`はリクエストボディのリフレッシュトークンのみで失効処理を行う。アクセストークンが期限切れでもログアウトできる必要があるため（[F01_auth](features/F01_auth.md)参照）。
+- `Authorization`ヘッダーを必要としない経路は、`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/refresh`、`POST /api/auth/logout`、[パスワード再設定の3経路](#2-認証f-01)、`POST /api/auth/account/deletion/cancel`、`GET /api/demo`、`POST /api/demo/start`、`GET /health`。
+- `/api/auth/refresh` はリフレッシュトークンを検証する。`/api/auth/logout` は本文のリフレッシュトークンで失効処理を行うため、アクセストークンが期限切れでもログアウトできる（[F01_auth](features/F01_auth.md)参照）。
 - 上記以外は`Authorization: Bearer <アクセストークン>`ヘッダーが必須。
-- トークンが無い・無効・期限切れの場合は **401 Unauthorized** を返す。
+- 認証が必要なAPIでアクセストークンが無い・無効・期限切れの場合は、401 `UNAUTHORIZED` を返す。
 - ログイン・保護対象API・トークン更新ではアカウント状態をサーバー側で確認する。削除申請中アカウントへの新規ログインを拒否し、未失効のアクセストークンが残っていても通常APIとトークン更新を拒否する。許可するのは削除申請取消の専用経路のみ。
 - 削除申請取消は通常ログインに依存しない専用APIで、メールアドレスとパスワードによる本人確認を行う。取消成功時に新しいトークンを発行する（[F01_auth.md](features/F01_auth.md) 8-2章）。
 
@@ -79,7 +78,7 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 
 ### 1-5. 入力の大きさの上限と、応答の安全用ヘッダー（#512）
 
-- **リクエスト本文の上限**：`/api/*` は 100KB まで。超えると 413 と共通形式のエラー（`code: "VALIDATION_ERROR"`、「送信された内容が大きすぎます」）を返す。画像のアップロード（`POST /api/recipes/ocr/upload`）だけは対象外で、専用の上限（画像 5MB）を使う。
+- **リクエスト本文の上限**：`/api/*` は 100KB まで。超えると 413 と共通形式のエラー（`code: "VALIDATION_ERROR"`、「送信された内容が大きすぎます」）を返す。画像のアップロード（`POST /api/recipes/ocr/upload`）だけは対象外で、専用の上限（画像5MB、multipartのヘッダー等を含む本文は5MB＋64KB）を使う。
 - **レシピの材料・手順**：それぞれ 10,000 文字まで（`POST /api/recipes`・`PATCH /api/recipes/:id`）。超えると 400。既存の行は変更しない（次に編集するときから適用される）。
 - **応答ヘッダー**：`/api/*` と `/health` の応答（成功・エラーとも）に次を付ける。
 
@@ -135,7 +134,7 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 
 `Authorization: Bearer <アクセストークン>` 必須。JWTで認証した本人のIDで `users` を検索し、現在の `{ "id": 1, "displayName": "testuser_太郎", "demo": null }` を200で返す。`id` は数値、`displayName` は登録済みの表示名（1〜50文字）。デモ利用者の `demo` は有効期限と切替先の表示名を含む（「デモ環境」参照）。メールアドレス・パスワードハッシュ等は返さない。リクエストのID指定は本人の識別に使わず、世帯所属も不要。
 
-トークンなし・不正・期限切れ、および認証したIDのユーザーがDBに存在しない場合は、いずれも401と `{ "code": "UNAUTHORIZED", "message": "認証が必要です" }` を返す。ヘッダーへの本人名表示は[共通事項](common-notes.md)の「共通ヘッダーの本人名」を参照。
+トークンなし・不正・期限切れ、および認証したIDのユーザーがDBに存在しない場合は、いずれも401と `{ "code": "UNAUTHORIZED", "message": "認証が必要です", "details": [] }` を返す。ヘッダーへの本人名表示は[共通事項](common-notes.md)の「共通ヘッダーの本人名」を参照。
 
 ### POST /api/auth/register
 
@@ -171,7 +170,7 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 ```json
 { "accessToken": "xxx.yyy.zzz", "expiresIn": 900 }
 ```
-主なエラー：401（リフレッシュトークンが無効・期限切れ・失効済み）
+リフレッシュトークンが無効・期限切れ・失効済み、所有者が存在しない・退会申請中・退会済み、またはデモの利用期限切れの場合は401 `INVALID_TOKEN`（「リフレッシュトークンが無効です」、`details: []`）。
 
 ### POST /api/auth/logout
 
@@ -199,7 +198,7 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 - メールアドレスの登録有無によって、応答と数え方は変わらない。
 - 接続元を取得できない場合とループバックの場合（ローカル開発・テスト）は、接続元単位の制限を行わない。本番では Cloudflare が必ず実際の接続元を設定する。
 - 固定窓のため、窓の境目では瞬間的に上限の最大2倍まで通りうる。
-- 画像解析の上限時のメッセージは「画像解析の利用回数が1日の上限に達しました。時間をおいて再度お試しください」。解析が上限のときは一時保存した画像を消さない（24時間後の清掃で消える）。
+- 画像解析の上限時のメッセージは「画像解析の利用回数が1日の上限に達しました。時間をおいて再度お試しください」。解析が上限のときは一時保存した画像を消さない。解析を開始した画像は成功・失敗を問わず処理後に削除する。未解析の画像はアップロードから24時間を超えると日次清掃の対象になる。詳細は[F-09の画像解析](features/F09_kondate_recipe.md#手書きレシピの画像解析実装済み)を参照。
 - パスワード再設定の申請は、別の回数制限（`PASSWORD_RESET_RATE_LIMITED`、#401）を使う。
 
 ### GET /api/auth/password-reset/availability
@@ -243,12 +242,12 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 | メソッド | パス | 認証 | 説明 |
 | --- | --- | --- | --- |
 | GET | `/api/demo` | 不要 | `{ "enabled": boolean }`。デモ環境なら `true`。本番でも 200 で `false` を返す（画面が「デモを試す」の出し分けに使う） |
-| POST | `/api/demo/start` | 不要 | 専用の世帯「デモ家」・デモ太郎・デモ花子・見本データを作り、デモ太郎のトークンをログインと同じ形で返す（201）。同じ接続元から1時間に5回まで（超えたら 429 `TOO_MANY_REQUESTS`）。同時に存在するデモ世帯が300件に達していれば 503 `DEMO_CAPACITY_REACHED`（「混み合っています。時間をおいて試してください」） |
+| POST | `/api/demo/start` | 不要 | 専用の世帯「デモ家」・デモ太郎・デモ花子・見本データを作り、デモ太郎のトークンをログインと同じ形で返す（201）。同じ接続元から1時間に5回まで（超えたら 429 `TOO_MANY_REQUESTS`）。有効期限内のデモ世帯が300件に達していれば 503 `DEMO_CAPACITY_REACHED`（「混み合っています。時間をおいて試してください」） |
 | POST | `/api/demo/switch` | 必要 | リクエスト `{ "refreshToken": "..." }`。今の利用者がデモ利用者で、同じデモ世帯のもう1人へ切り替える。今のリフレッシュトークンを失効させ、相手のトークンをログインと同じ形で返す（200）。デモ利用者でない場合・トークンが本人の有効なものでない場合は 404 |
 | GET | `/api/auth/me`（既存への追加） | 必要 | デモ利用者なら `demo: { "expiresAt": "<ISO 8601>", "partnerName": "デモ花子" }`、それ以外（本番を含む）は `demo: null` を返す |
 
 - `DEMO_MODE` が無いとき、`/api/demo/start` と `/api/demo/switch` は存在しないパスと同じ 404（`RESOURCE_NOT_FOUND`）を返す。
-- デモ世帯は作成から24時間で期限切れ。期限後はデモ利用者の認証が 401 になり、毎時の Cron で関連する全データが削除される。
+- デモ世帯は作成から24時間で期限切れ。期限後の認証必須APIは401 `UNAUTHORIZED`、トークン再発行は401 `INVALID_TOKEN` を返す。期限切れのデータは毎時の定期処理で削除される。
 - デモで止める API は、処理の前に 403 `DEMO_DISABLED`（「デモでは使えません」）を返す。対象：`POST /api/auth/register`、`PUT /api/auth/password`、`PUT /api/auth/email`、`POST /api/auth/account/deletion`、`POST /api/auth/account/deletion/cancel`、`POST /api/auth/password-reset/request`、`POST /api/auth/password-reset/confirm`、`POST /api/households`、`POST /api/households/join`、`POST /api/households/leave`、`POST /api/households/invite-code/regenerate`、`POST /api/recipes/ocr/upload`、`POST /api/recipes/ocr/analyze`。表示名の変更・レシピの URL 登録などは使える。
 
 | コード | ステータス | 意味 |
@@ -334,7 +333,8 @@ Cloudflare Workers 版（`backend-workers/src/routes/`）の API。全エンド�
 | --- | --- | --- |
 | GET | `/api/inventory-items` | 在庫一覧取得 |
 | POST | `/api/inventory-items` | 在庫アイテム登録 |
-| PATCH | `/api/inventory-items/{id}` | 在庫アイテム編集（品名・カテゴリー・店舗・閾値・任意の値段） |
+| PUT | `/api/inventory-items/{id}` | 在庫情報・数量・予定回数の[一括保存](#在庫の予定回数一括保存apiバックエンド-554--画面-555) |
+| PATCH | `/api/inventory-items/{id}` | 従来の在庫情報の個別更新（品名・カテゴリー・店舗・閾値・任意の値段・日次自動消費設定） |
 | PATCH | `/api/inventory-items/{id}/quantity` | 在庫個数の増減（＋/－ボタン用） |
 | DELETE | `/api/inventory-items/{id}` | 在庫アイテム削除 |
 | GET/POST/PATCH/DELETE | `/api/zaiko-categories` | カテゴリーマスタ管理 |
@@ -359,15 +359,15 @@ POST /api/zaiko-categories と PATCH /api/zaiko-categories/:id のnameは前後�
 ```
 主なエラー：400（quantity/thresholdが負数等）／409（品名重複、#318）
 
-POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名をNFKC正規化・小文字化・前後空白除去・カタカナのひらがな化（#325）をして同一世帯内で比較する。
+POST `/api/inventory-items` と PUT/PATCH `/api/inventory-items/{id}` は、品名をNFKC正規化・小文字化・前後空白除去・カタカナのひらがな化（#325）をして同一世帯内で比較する。
 編集対象自身を除いて一致すれば409、共通形式 `{ code: "DUPLICATE_INVENTORY_ITEM_NAME", message: "同じ品名の在庫が既に登録されています", details: [] }` を返す。
 別世帯は対象外。失敗時は在庫・買い物リストを変更しない。既存重複データは維持し、UNIQUE制約は追加しない。
 
 ### 値段の共通契約（#235）
 
-- 在庫GET（配列の各行）/POST/PATCHは常に `price: number | null` を返す。
+- 在庫GET（配列の各行）/POST/PUT/PATCHは常に `price: number | null` を返す。
 - `price` は日本円の整数0〜9,999,999,999、null許容。文字列・負数・小数・上限超過は400で保存値を変更しない。
-- 在庫POSTの省略はNULL。PATCHの省略は維持、明示nullはクリア、数値は上書き。
+- 在庫POSTの省略はNULL。PUT/PATCHの省略は維持、明示nullはクリア、数値は上書き。
 - PATCHの必須入力は従来どおりname/categoryId/storeId/threshold。quantityは数量増減APIで操作する。
 - 値段は在庫ID単位で世帯共有し、同名の別IDは独立。世帯メンバーは閲覧・編集可。未認証401、他世帯PATCHは404。
 - 数量増減・購入更新はpriceを変更・乗算しない。同時更新は最後に成功した書き込みを保持する。履歴・比較・ダッシュボードへの追加は行わない。
@@ -375,7 +375,7 @@ POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名�
 
 ### 日次自動消費の共通契約（#329）
 
-在庫GETの各行・POST・PATCHレスポンスは常に `dailyConsumption: number | null` と `autoConsumptionEnabled: boolean` を含む。基準日・revisionは内部状態であり入出力に公開しない。トグル専用APIは追加しない。
+在庫GETの各行・POST・PUT・PATCHレスポンスは常に `dailyConsumption: number | null` と `autoConsumptionEnabled: boolean` を含む。基準日・revisionは内部状態であり入出力に公開しない。トグル専用APIは追加しない。
 
 | POST入力 | 結果 |
 | --- | --- |
@@ -384,11 +384,11 @@ POST `/api/inventory-items` と PATCH `/api/inventory-items/{id}` は、品名�
 | 正の消費量＋enabled=false | 消費量を保存しオフ |
 | 消費量NULL／未設定＋enabled=true | 400 |
 
-PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィールド省略は現在値維持。消費量NULLはクリアしてオフ、正の消費量だけの指定では現在の有効状態を維持する。enabled=trueは更新後の消費量が設定済みの場合だけ許可する。NULLとtrueの同時指定は400。同値保存は基準日を変えない。
+PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィールド省略は現在値維持。消費量NULLはクリアしてオフ、正の消費量だけの指定では現在の有効状態を維持する。enabled=trueは更新後の消費量が設定済みの場合だけ許可する。NULLとtrueの同時指定は400。従来の個別PATCHで設定が同値なら基準日を変えない。
 
 消費量は有限の数値0.1〜99999.9、小数第一位まで、またはNULL。0・負数・小数第二位・上限超過・文字列を拒否し、enabledはbooleanのみとする。未認証401、他世帯404、品名重複409を維持する。競合が連続して保存できない場合は409で再保存を案内する。
 
-登録・再開は操作日のJST日付を基準に翌日1:00から開始。停止・クリア・オン中の消費量変更は直近到来済みの1:00まで旧設定で精算する（JST 0:00〜0:59では前日）。新消費量は翌日から適用し、オフ期間は消費しない。手動数量変更・購入は消費設定・基準日を維持する。日次処理・競合時の詳細は[F07](features/F07_zaiko_inventory.md)を参照。
+登録・再開は操作日のJST日付を基準に翌日1:00から開始。停止・クリア・オン中の消費量変更は直近到来済みの1:00まで旧設定で精算する（JST 0:00〜0:59では前日）。新消費量は翌日から適用し、オフ期間は消費しない。一覧からの数量PATCH・購入は消費設定・基準日を維持する。詳細画面の[一括保存PUT](#在庫の予定回数一括保存apiバックエンド-554--画面-555)では、旧設定がオンなら設定が同値でも到来済みの未処理分を精算する。日次処理・競合時の詳細は[F07](features/F07_zaiko_inventory.md)を参照。
 
 ### PATCH /api/inventory-items/{id}/quantity
 
@@ -400,7 +400,7 @@ PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィ
 ```json
 { "id": 100, "quantity": 0.9 }
 ```
-主なエラー：400（更新後の値が0未満になる場合。[F07_zaiko_inventory](features/F07_zaiko_inventory.md)参照）／404（他世帯のアイテムを指定）
+更新後の数量が0〜99999.9の範囲外、または予定回数の合計未満になる場合は400 `VALIDATION_ERROR`。対象の在庫が存在しないか他世帯の場合は404。[F-07](features/F07_zaiko_inventory.md)参照。
 
 ---
 
@@ -413,7 +413,7 @@ PATCHの必須項目name/categoryId/storeId/thresholdは維持する。新フィ
 | PATCH | `/api/shopping-list-items/{id}` | 予定数をrevision条件付きで保存 |
 | DELETE | `/api/shopping-list-items/{id}` | 品目の手動削除 |
 | POST | `/api/shopping-list-items/purchases` | 要求ID付き購入・予定残数保持 |
-| POST | `/api/shopping-list-items/update` | 購入済みチェック分を一括更新し在庫へ反映 |
+| POST | `/api/shopping-list-items/update` | 旧API。未保護の買い物行の購入を一括で在庫へ反映 |
 
 ### GET /api/shopping-list-items?sort=name|category|store
 
@@ -434,6 +434,8 @@ price省略は保存値維持、nullはクリア、数値は在庫の値段を�
 自動追加は値段をコピーせず、GETが在庫の現在priceを参照する。リスト削除・購入・再追加後も在庫の値段を保持する。
 
 ### POST /api/shopping-list-items/update
+
+旧APIは未保護行の従来の入力・応答・数量0の処理を維持する。予定編集または部分購入で保護された行を1件でも含む場合、事前検証とbatch内条件の双方で全体を409 `RESOURCE_CONFLICT` とし、在庫を加算しない。旧APIでは同じ要求の再送を識別しない。現行画面は[要求ID付きの購入API](#post-apishopping-list-itemspurchases455)を利用する。
 
 リクエスト:
 ```json
@@ -466,7 +468,8 @@ price省略は保存値維持、nullはクリア、数値は在庫の値段を�
   "todayBalance": -500,
   "weeklyMenuEntries": [
     { "recipeId": 1, "recipeTitle": "カレー", "freeTextMemo": null },
-    { "recipeId": null, "recipeTitle": null, "freeTextMemo": "外食" }
+    { "recipeId": null, "recipeTitle": null, "freeTextMemo": "外食" },
+    { "recipeId": null, "recipeTitle": "親子丼", "freeTextMemo": null }
   ],
   "todayEvents": [
     { "name": "学習", "recurrenceType": "daily" }
@@ -480,7 +483,8 @@ price省略は保存値維持、nullはクリア、数値は在庫の値段を�
 }
 ```
 
-- `weeklyMenuEntries` はJST基準の今週（月曜始まり）の同一世帯の献立を登録順に返す。`recipeId` はレシピID（number）で、自由メモはnull。同名レシピもIDで区別できる。レシピ削除後は献立行を残し、`recipeId`・`recipeTitle` はnullになる。献立がなければ空配列を返す。
+- `weeklyMenuEntries` はJST基準の今週（月曜始まり）の同一世帯の献立をID昇順で返す。献立がなければ空配列を返す。
+- 通常のレシピ行の `recipeTitle` は現在の原本名で、原本削除後も献立行は残り、`recipeId` と `recipeTitle` はnullになる。在庫連携行の `recipeTitle` は週行を生成した時点の名前。関連解除や原本の改名・削除後も、残った週行はこの名前を保持する。原本削除後の在庫連携行は `recipeId: null` のため原本を開けない。自由メモ行の `recipeId` と `recipeTitle` はnullで、`freeTextMemo` に本文を返す。
 - `eventPeriod=today|month|year` でイベント別支出の集計期間（JSTの当日・当月・暦年）を指定する。未指定時は `year`、不正値は400。
 - `monthlyPersonalExpense` はJST当月の本人支出、未精算サマリーは精算済みを除いた本人の受取予定／支払予定。イベント別支出は表示対象かつ閲覧可能なイベントを0円を含めて返す。
 
@@ -530,7 +534,7 @@ interface DashboardDayDetail {
 }
 ```
 
-- `weekStartDate` は選択日を含む月曜開始週。献立は同世帯の当該週、id昇順。レシピ結合も同世帯に限定し、削除済みレシピのnullを保つ。
+- `weekStartDate` は選択日を含む月曜開始週。献立は同世帯の当該週、id昇順。レシピ結合も同世帯に限定する。通常のレシピ行の `recipeTitle` は現在の原本名で、原本削除後は `recipeId` と `recipeTitle` がnullになる。在庫連携行は関連解除や原本の改名・削除後も週行生成時の `recipeTitle` を返す。原本削除後の `recipeId` はnull。自由メモ行は両フィールドがnullで、`freeTextMemo` に本文を返す。画面での表示は[F-10](features/F10_kondate_menu.md)を参照。
 - イベントは同世帯の共有または本人所有で、既存の繰り返し規則により選択日に発生するものだけ、id昇順。`eventDate` は原本日付で、発生日はトップの `date`。
 - 収入・支出は同世帯かつ本人（earner/payer）の選択日実績だけ、各id降順。合計はこの配列のみから算出し、固定費予定額を加算しない。`balance=income-expense`。件数は配列lengthから求め、差額0円と0件を区別する。
 - 本人支出の関連固定費が同世帯かつ共有/本人所有として可視でない場合、補助フィールド `fixedCostId` と `fixedCostYearMonth` は両方null。支出本体は本人の実績として返す。
@@ -561,7 +565,7 @@ interface DashboardDayDetail {
 
 ## 8. エンドポイント一覧（Workers 版）
 
-すべて `/api` 配下。`/health` だけは認証不要のヘルスチェック。詳細は各機能の要件定義書を参照。
+表のパスは `/api` 配下。ヘルスチェックはこの配下から独立した `GET /health`。アクセストークンを必要としない経路は[1-1. 認証](#1-1-認証)を参照。
 
 | 機能 | エンドポイント | 詳細 |
 | --- | --- | --- |
@@ -574,9 +578,10 @@ interface DashboardDayDetail {
 | 固定費 | `GET/POST fixed-costs` `PATCH/DELETE fixed-costs/:id` | [F05](features/F05_kakeibo_fixedcost.md) |
 | イベント | `GET/POST events` `PATCH/DELETE events/:id` `PATCH events/:id/show-on-dashboard` `GET events/:id/summary` | [F06](features/F06_kakeibo_event.md) |
 | 在庫 | `GET/POST inventory-items` `PUT/PATCH/DELETE inventory-items/:id` `PATCH inventory-items/:id/quantity` `GET/POST zaiko-categories` `PATCH/DELETE zaiko-categories/:id` `GET/POST stores` `PATCH/DELETE stores/:id` | [F07](features/F07_zaiko_inventory.md) |
+| 在庫と献立の旧連携 | `PATCH inventory-menu-links/:id` | [旧関連向けの個別設定](#legacy互換547--旧画面-548) |
 | 買い物リスト | `GET/POST shopping-list-items` `DELETE shopping-list-items/:id` `PATCH shopping-list-items/:id` `POST shopping-list-items/purchases` `POST shopping-list-items/update` | [F08](features/F08_zaiko_shoppinglist.md) |
 | レシピ | `GET/POST recipes` `POST recipes/from-url` `PATCH/DELETE recipes/:id` `PATCH recipes/:id/favorite` `POST recipes/ocr/upload` `POST recipes/ocr/analyze` | [F09](features/F09_kondate_recipe.md) |
-| 献立表 | `GET/POST menu-entries` `DELETE menu-entries/:id` | [F10](features/F10_kondate_menu.md) |
+| 献立表 | `GET/POST menu-entries` `DELETE menu-entries/:id` `POST menu-entries/:id/consume` `POST menu-entries/:id/undo-consumption` | [F10](features/F10_kondate_menu.md)・[食事と取消のAPI](#在庫の予定回数一括保存apiバックエンド-554--画面-555) |
 | 口座・カード | `GET/POST accounts` `PATCH/DELETE accounts/:id` `GET accounts/:id/transactions` `POST cards` `PATCH/DELETE cards/:id` `POST cards/:id/charges` | [F11](features/F11_kakeibo_account.md) |
 | 収入 | `GET/POST incomes` `PUT/DELETE incomes/:id` `GET/POST income-categories` `PATCH/DELETE income-categories/:id` | [F13](features/F13_kakeibo_income.md) |
 | ダッシュボード | `GET dashboard/summary` `GET dashboard/calendar` `GET dashboard/day-detail` `GET dashboard/notifications/today` | 6章・[F12](features/F12_kakeibo_household_summary.md) |
@@ -587,9 +592,8 @@ interface DashboardDayDetail {
 
 `POST /api/recipes/from-url` は、入力URLを `new URL()` で解析し、正規化した文字列（`parsedUrl.toString()`）と同一世帯の保存済みURLとの一致で比較する。
 一致すれば外部取得・保存を行わず409、共通形式 `{ code: "DUPLICATE_RECIPE_URL", message: "このURLのレシピは既に登録されています", details: [] }` を返す。
-保存も従来どおり `parsedUrl.toString()` の形式とする。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
+入力の元URLは2048文字まで。保存には `parsedUrl.toString()` を使う。画像URLの条件は[F-09](features/F09_kondate_recipe.md)を参照。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
 別世帯は対象外。URLなし（null・空文字）のレシピは複数可。既存重複データは維持し、UNIQUE制約は追加しない。
-旧/updateは未保護行の従来の入力・応答・数量0処理を維持する。予定編集または部分購入で保護された行を1件でも含む場合、事前検証とbatch内条件の双方で全体409 RESOURCE_CONFLICTとし、在庫を加算しない。旧APIには要求IDによる逐次再送保証がない。
 
 ### PATCH /api/shopping-list-items/{id}（#455）
 
@@ -633,13 +637,15 @@ interface DashboardDayDetail {
 | `POST /api/menu-entries/:id/consume` | `{requestId,expectedRevision}`。plannedは固定1回でcountとstockを1減らし、残0まで反復可。legacyは旧週行使用数/未食制約。stock・買物・event・週行top/revision・結果台帳を同batchで確定 |
 | `POST /api/menu-entries/:id/undo-consumption` | 同入力。current topだけを一度取消すLIFO。実event量をstockへ返し、元planned link生存時だけcountを戻す。解除済み/legacy eventはstockだけ。前topが残ればmealState=eatenのまま |
 
-linksは0〜20行、各行は`{linkId}`/`{recipeId}`/`{newRecipeTitle}`のいずれか一つ＋required`{remainingCount,memo,carryEnabled}`。count整数0〜99999、memo null/255文字以内。新規タイトル1〜100文字。既存原本を複製せず、入力順を保持する。stockは既存0.1単位、常時合計予定≦stock（品目OFFも同じ）。超過/不正400、他世帯/不存在404、CAS/書込競合409で全未反映。
+linksは0〜20行、各行は`{linkId}`/`{recipeId}`/`{newRecipeTitle}`のいずれか一つ＋required`{remainingCount,memo,carryEnabled}`。count整数0〜99999、memo null/255文字以内。新規タイトル1〜100文字。既存原本は複製しない。POST/PUT成功時のスナップショットに含まれる `menuLinks` は入力順、後続のGETでは関連ID昇順。stockは既存0.1単位、常時合計予定≦stock（品目OFFも同じ）。合計超過、不正入力、存在しない・他世帯のカテゴリー／店舗は400。対象在庫、指定した既存関連またはレシピが存在しない・対象世帯や品目に属さない場合は404。CAS／書込競合は409。失敗時は変更を反映しない。
 
-品目OFFは計画を保持し新consume/carryだけ停止、undoは可能。残予定>0ならdailyON不可。旧dailyONからの割当には明示autoConsumptionEnabled:falseが必要で、設定量を勝手に消さない。dailyConsumption未指定は既存値を保持し、明示nullと明示auto OFFでは意図的なクリアを反映する。未精算分を旧設定で精算し、CAS元quantityに対する入力差分を適用した実効stockで検証する。応答quantityは実効値、menuPlanRevisionは複数trigger後の実値。予定0後dailyONで、undoが元planned countを復元する場合は409（自動OFFしない）。
+品目OFFは予定回数・メモ・レシピ別の持ち越し設定を保持し、新規の食事記録と持ち越しを停止する。ほかの取消条件を満たせば取消は可能。残予定の合計が正なら日次自動消費をONにできない。既に日次自動消費がONの品目へ正の予定を割り当てるには、`autoConsumptionEnabled: false` の明示が必要。`dailyConsumption` を省略すると既存量を保持するため、オフだけを指定しても量は残る。`dailyConsumption: null` を指定すると量をクリアしてオフにする。
 
-新consume/undo成功は旧fields＋remainingCount（legacy/解除済みnull）/menuPlanEnabled/menuPlanRevision。undoQuantityはGET専用で、取消可能な当週top event実量/10、上限・失効・daily排他等で不可ならnull。unlinkではイベントのない週行を同batchで削除し、イベント参照行は取消のため保持する。保持した週名snapshotはunlink後も献立/dashboard/日詳細で維持する。inventory側関連名は現在名/削除時fallback。通常献立はlive名/削除後nullを維持する。
+一括保存PUTでは、旧日次設定がONなら同値保存でも到来済みの未処理日を旧設定で精算する。精算後の在庫数に、CASで照合した元の在庫数と入力値との差分を適用する。その実効在庫数の範囲と予定合計を検証し、`quantity` は実効値、`menuPlanRevision` はトリガー更新後の実値を返す。予定が0になって日次をONにした後、取消が元関連の予定を復元する場合は409を返し、日次設定は保持する。
 
-認証・現在所属確認後、同UUID/body保存成功を存在/週/CAS検査より先に再現する。集約はversion2、旧consume/undoのversion1/成功JSONは不変。異body同UUIDは409 RESOURCE_CONFLICT＋details requestId/PAYLOAD_MISMATCHで結果不明。未知結果は旧body/IDを保ち、成功後GET失敗でmutationを再送しない。
+新consume/undo成功は旧fields＋remainingCount（legacy/解除済みnull）/menuPlanEnabled/menuPlanRevision。undoQuantityはGET専用で、取消可能な当週top event実量/10、上限・失効・daily排他等で不可ならnull。unlinkではイベントのない週行を同batchで削除し、イベント参照行は取消のため保持する。保持した週名snapshotは、関連解除後も献立一覧・ダッシュボード集計・日付詳細の各APIで返す。inventory側関連名は現在名/削除時fallback。通常献立はlive名/削除後nullを維持する。
+
+認証・現在所属確認後、同UUID/body保存成功を存在/週/CAS検査より先に再現する。集約の要求はversion2、食事／取消の要求はversion1。保存済みの成功JSONは変更しない。異body同UUIDは409 RESOURCE_CONFLICT＋details requestId/PAYLOAD_MISMATCHで結果不明。未知結果は旧body/IDを保ち、成功後GET失敗でmutationを再送しない。
 
 ### legacy互換（#547 / 旧画面 #548）
 
@@ -657,7 +663,7 @@ linksは0〜20行、各行は`{linkId}`/`{recipeId}`/`{newRecipeTitle}`のいず
 | `POST /api/menu-entries/:id/consume` | `{requestId,expectedRevision}`。量は週行設定値。未食→食済、在庫相対減算と買い物同期・イベント・台帳を一つのbatchで確定 |
 | `POST /api/menu-entries/:id/undo-consumption` | `{requestId,expectedRevision}`。食済→未食、イベント量の相対返却。連携OFF/原本削除後も在庫ありなら可能。在庫削除済み409、行削除済み404 |
 
-消費/取消200は`{menuEntryId,mealState,mealRevision,inventoryItemId,quantity,carryEnabled}`。確定時snapshotであり最新一覧ではない。在庫不足・取消時上限超過は全未反映。通常レシピ・自由メモの既存操作は維持する。
+旧形式の保存済み成功応答は `{menuEntryId,mealState,mealRevision,inventoryItemId,quantity,carryEnabled}`。現行実装での新規成功応答には旧関連でも `remainingCount: null`、`menuPlanEnabled`、`menuPlanRevision` を追加する。同じ要求を再送すると、保存済みのJSONが元の形式のまま返る。いずれも操作確定時のスナップショット。在庫不足・取消時の数量上限超過は全未反映。
 
 連携行の`GET /api/menu-entries.recipeTitle`と登録応答`linkedMenuEntries[].recipeTitle`は週行生成時の原本名snapshot。登録・明示再ON・持ち越しの新行生成で取得し、既存行の設定編集・食事状態更新・原本改名/削除では変更しない。通常手動行は現在のJOIN名、削除後nullを維持する。在庫一覧の`menuLinks[].recipeTitle`は現在名/削除時の関連snapshotで別契約。保存済み操作要求の成功JSONは書き換えない。
 
