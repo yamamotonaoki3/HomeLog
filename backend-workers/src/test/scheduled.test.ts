@@ -1,4 +1,4 @@
-﻿import { env } from 'cloudflare:test'
+import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import app from '../index'
 import * as accountDeletion from '../lib/account-deletion'
@@ -7,10 +7,12 @@ import { createDemoHousehold } from '../lib/demo-seed'
 import * as fixedCostPosting from '../lib/fixed-cost-posting'
 import * as consumption from '../lib/inventory-consumption'
 import * as menuCleanup from '../lib/menu-entry-cleanup'
+import * as menuCarryover from '../lib/menu-carryover'
 import * as passwordResetMail from '../lib/password-reset-mail'
 import * as rateLimit from '../lib/rate-limit'
 
 beforeEach(() => {
+  vi.spyOn(menuCarryover, 'carryMenuEntries').mockResolvedValue(0)
   vi.spyOn(menuCleanup, 'purgePastMenuEntries').mockResolvedValue(0)
 })
 
@@ -57,7 +59,7 @@ it('遅延実行も予定時刻のJST日付を渡し、消費の失敗から他�
   expect(menuCleanup.purgePastMenuEntries).toHaveBeenCalledTimes(1)
 })
 
-it('JST 0時のCronは献立削除だけを実時刻で呼び出す', async () => {
+it('JST 0時のCronは持越し後に献立削除だけを実時刻で呼び出す', async () => {
   vi.useFakeTimers()
   try {
     const now = new Date('2026-10-25T15:10:00Z')
@@ -67,7 +69,9 @@ it('JST 0時のCronは献立削除だけを実時刻で呼び出す', async () =
     const consume = vi.spyOn(consumption, 'consumeInventoryForDate')
     // 予定時刻が先週でも、実際に動いた今週が削除基準となる。
     await app.scheduled({ cron: '0 15 * * *', scheduledTime: Date.parse('2026-10-18T15:00:00Z') } as ScheduledController, bindings)
+    expect(menuCarryover.carryMenuEntries).toHaveBeenCalledExactlyOnceWith(bindings.DB, now)
     expect(menuCleanup.purgePastMenuEntries).toHaveBeenCalledExactlyOnceWith(bindings.DB, now)
+    expect(vi.mocked(menuCarryover.carryMenuEntries).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(menuCleanup.purgePastMenuEntries).mock.invocationCallOrder[0])
     expect(consume).not.toHaveBeenCalled()
     expect(prepare).not.toHaveBeenCalled()
   } finally {
@@ -139,6 +143,7 @@ it('毎時のCron(0 * * * *)は期限切れのデモの削除だけを行い、�
   expect(purge.mock.calls[0][0]).toBe(bindings.DB)
   for (const other of [consume, posting, accounts, resetAttempts, limits]) expect(other).not.toHaveBeenCalled()
   expect(menuCleanup.purgePastMenuEntries).not.toHaveBeenCalled()
+  expect(menuCarryover.carryMenuEntries).not.toHaveBeenCalled()
   expect(list).not.toHaveBeenCalled()
   expect(prepare).not.toHaveBeenCalled()
 })
@@ -172,4 +177,23 @@ it('R2(RECIPE_IMAGES)が無いデモ環境で毎日の処理(0 16)を実行し�
   await app.scheduled({ cron: '0 16 * * *', scheduledTime: Date.parse('2026-11-14T16:00:00Z') } as ScheduledController, bindings as unknown as typeof env)
   expect(log).not.toHaveBeenCalled()
   expect(all).toHaveBeenCalledTimes(2)
+})
+
+it.each(['0 15 * * *', '0 16 * * *'])('持越し失敗時は旧週削除を飛ばし、次回Cronで再試行する（%s）', async cron => {
+  const failure = new Error('[E2E_TEST] carry failure')
+  vi.mocked(menuCarryover.carryMenuEntries).mockRejectedValueOnce(failure).mockResolvedValue(1)
+  const consume = vi.spyOn(consumption, 'consumeInventoryForDate').mockResolvedValue(undefined)
+  vi.spyOn(fixedCostPosting, 'postDueFixedCosts').mockResolvedValue(undefined)
+  vi.spyOn(accountDeletion, 'purgeExpiredAccounts').mockResolvedValue({ purged: [], skipped: [] })
+  vi.spyOn(passwordResetMail, 'purgePasswordResetAttempts').mockResolvedValue(0)
+  vi.spyOn(rateLimit, 'purgeRateLimits').mockResolvedValue(0)
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const bindings = { ...env, RECIPE_IMAGES: undefined }
+  await app.scheduled({ cron, scheduledTime: Date.now() } as ScheduledController, bindings)
+  expect(menuCleanup.purgePastMenuEntries).not.toHaveBeenCalled()
+  expect(log).toHaveBeenCalledWith('日次処理に失敗しました', failure)
+  expect(consume).toHaveBeenCalledTimes(cron === '0 16 * * *' ? 1 : 0)
+  await app.scheduled({ cron: '0 16 * * *', scheduledTime: Date.now() } as ScheduledController, bindings)
+  expect(menuCarryover.carryMenuEntries).toHaveBeenCalledTimes(2)
+  expect(menuCleanup.purgePastMenuEntries).toHaveBeenCalledTimes(1)
 })

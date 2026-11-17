@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
+import { getPwaUpdateSafety } from '../../lib/pwaUpdateSafety'
 import { useShoppingPurchases } from '../../hooks/useShoppingPurchases'
 import { setTokens, setAccessToken, clearTokens, getAccessToken } from '../../api/tokenStorage'
 import { pendingKey, readPending, savePending } from '../../lib/shoppingPending'
@@ -339,7 +340,9 @@ it('WebLock待機中にtoken組が変わると保存とPOSTを開始しない',a
  server.use(http.post('/api/shopping-list-items/purchases',()=>{posts++;return HttpResponse.json({})}))
  const {result}=renderHook(()=>useShoppingPurchases(callbacks()));await waitFor(()=>expect(result.current.status).toBe('ready'))
  let sending!:Promise<void>;act(()=>{sending=result.current.confirm(lines)});await act(async()=>{await queued})
+ expect(getPwaUpdateSafety().busy).toBe(true)
  await act(async()=>{setTokens('testuser_a_new_access','testuser_a_new_refresh');release();await sending})
+ expect(getPwaUpdateSafety().busy).toBe(false)
  expect(posts).toBe(0);expect(readPending(scope).kind).toBe('empty');expect(result.current.status).toBe('detached')
 })
 

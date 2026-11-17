@@ -1,3 +1,7 @@
+import { makeInventoryPlanResult } from '../mocks/inventoryPlan'
+import type { InventoryPlanCreateBody } from '../../api/zaikoTypes'
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { act, render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -26,13 +30,13 @@ function setup(edit = false) {
     http.post('/api/inventory-items', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>
       saved.push(body)
-      return HttpResponse.json({ id: 22, ...body }, { status: 201 })
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody, {id:22}), { status: 201 })
     }),
-    http.patch('/api/inventory-items/1', async ({ request }) => {
+    http.put('/api/inventory-items/1', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>
       saved.push(body)
       Object.assign(inventory[0], body)
-      return HttpResponse.json(inventory[0])
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody, {id:1}))
     }),
   )
   render(<MemoryRouter><ZaikoPage /></MemoryRouter>)

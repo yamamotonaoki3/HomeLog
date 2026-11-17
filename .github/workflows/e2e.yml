@@ -59,6 +59,10 @@ jobs:
         working-directory: e2e
         run: npm test -- --config playwright.static-assets.config.ts
 
+      - name: Run PWA manual update E2E test
+        working-directory: e2e
+        run: npm test -- --config playwright.pwa.config.ts
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,3 +1,4 @@
+import { usePwaUpdateGuard } from '../../hooks/usePwaUpdateGuard'
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { filterByKeyword } from '../../lib/keyword'
 import { apiClient } from '../../api/client'
@@ -26,6 +27,7 @@ export function ShoppingListPanel({ shopping, inventory, categories, stores, sor
   const [overrides, setOverrides] = useState<Record<number, { plannedQuantity: number; purchaseRevision: number }>>({})
   const [selectedId, setSelectedId] = useState<number>(), [confirmLines, setConfirmLines] = useState<ConfirmLine[] | null>(null)
   const [savingId, setSavingId] = useState<number>(), [mutation, setMutation] = useState(false), [refreshing, setRefreshing] = useState(false)
+  usePwaUpdateGuard({ editing: !!addItemId || !!addPrice || Object.values(drafts).some(draft => draft.checked || !!draft.actualText || !!draft.plannedDirty), busy: mutation || refreshing || savingId !== undefined })
   const mutationPending = useRef(false), origin = useRef<HTMLButtonElement | null>(null), addButton = useRef<HTMLButtonElement>(null), reflectButton = useRef<HTMLButtonElement>(null)
   const bar = useRef<HTMLDivElement>(null), [position, setPosition] = useState({ bottom: 0, height: 80 })
   const deletionFocus = useRef(false)

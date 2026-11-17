@@ -97,6 +97,13 @@ test.describe('デモでは止める機能 (#534)', () => {
     await passwordArea.getByLabel('新しいパスワード（確認）').fill('NewPass456')
     await passwordArea.getByRole('button', { name: 'パスワードを変更' }).click()
     await expect(passwordArea.getByRole('alert')).toHaveText('デモでは使えません')
+
+    // iPhoneショートカット・Androidの共有はデモでは使えないため、案内カードに注記を出す(#541)。
+    await page.goto('/recipes')
+    const note = 'デモでは使えません（本番のシェファミで使えます）'
+    await expect(page.getByRole('region', { name: 'iPhoneからレシピを登録' })).toContainText(note)
+    await expect(page.getByRole('region', { name: 'Androidからレシピを登録' })).toContainText(note)
+    await expect(page.getByRole('region', { name: 'PCからレシピを登録' })).not.toContainText(note)
   })
 })
 

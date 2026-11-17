@@ -277,7 +277,8 @@ shoppingListItemsRoute.post('/update', async (c) => {
         (is_manual = 1 OR EXISTS (SELECT 1 FROM inventory_items WHERE id = shopping_list_items.inventory_item_id AND quantity_tenths > threshold_tenths))
       RETURNING id`).bind(householdId, payload, count),
   ])
-  if (results[0].meta.changes !== count) {
+  // D1 meta.changes includes aggregate revision trigger writes; RETURNING counts only target items.
+  if (results[0].results.length !== count) {
     return c.json(errorResponse('RESOURCE_CONFLICT', '買い物リストまたは在庫が変更されました。再取得してください'), 409)
   }
 

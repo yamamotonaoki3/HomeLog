@@ -283,10 +283,12 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
             <>
               {isOcrTab && (
                 <>
+                  <p id="recipe-photo-limit" className="hint">画像解析は1人につき1日20回までです。</p>
                   <label htmlFor="recipe-photo">レシピの写真</label>
                   {/* accept="image/*"で、スマホではカメラ撮影か写真アプリからの選択を選べる。 */}
                   <input
                     id="recipe-photo"
+                    aria-describedby="recipe-photo-limit"
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoChange}

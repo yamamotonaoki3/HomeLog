@@ -1,3 +1,5 @@
+import { menuPlanSchema, saveInventoryMenuPlan } from '../lib/inventory-menu-plan'
+import { createLinkedInventory, inventoryMenuLinksByInventory, menuLinkageSchema } from '../lib/inventory-menu-links'
 import { and, eq } from 'drizzle-orm'
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1'
 import { Hono, type Context } from 'hono'
@@ -24,7 +26,13 @@ const quantityValueSchema = z
   .max(MAX_VALUE)
   .refine(isOneDecimalPlace, { message: '数量は小数点第一位までで入力してください' })
 
+// New aggregate requests reject near-decimal inputs rather than rounding them.
+const planQuantitySchema = quantityValueSchema.refine(value => value === Number(value.toFixed(1)))
+
 const createItemSchema = z.object({
+  menuLinkage: menuLinkageSchema.optional(),
+  menuPlan: menuPlanSchema.optional(),
+  expectedMenuPlanRevision: z.never().optional(),
   name: z.string().max(50).refine((value) => value.trim().length > 0, { message: '品名を入力してください' }),
   categoryId: z.number().int(),
   storeId: z.number().int().nullable(),
@@ -33,7 +41,7 @@ const createItemSchema = z.object({
   threshold: quantityValueSchema,
   dailyConsumption: quantityValueSchema.refine((value) => value > 0).nullable().optional(),
   autoConsumptionEnabled: z.boolean().optional(),
-})
+}).refine(value => !(value.menuLinkage && value.menuPlan)).refine(value => !value.menuPlan || [value.quantity, value.threshold, value.dailyConsumption].every(number => number == null || planQuantitySchema.safeParse(number).success))
 
 const updateItemSchema = z.object({
   price: priceSchema,
@@ -123,7 +131,8 @@ inventoryItemsRoute.get('/', async (c) => {
   }
 
   const rows = await db.select().from(inventoryItems).where(eq(inventoryItems.householdId, householdId)).all()
-  return c.json(rows.map(toResponse))
+  const links=await inventoryMenuLinksByInventory(c.env.DB,householdId)
+  return c.json(rows.map(item => ({ ...toResponse(item), menuPlanEnabled:item.menuPlanEnabled,menuPlanRevision:item.menuPlanRevision,menuLinks: links.get(item.id)??[] })))
 })
 
 inventoryItemsRoute.post('/', async (c) => {
@@ -138,6 +147,14 @@ inventoryItemsRoute.post('/', async (c) => {
   const householdId = await resolveHouseholdId(db, c.get('userId'))
   if (householdId === null) {
     return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  }
+  if (parsed.data.menuPlan) {
+    const result = await saveInventoryMenuPlan(c.env.DB, c.get('userId'), householdId, { ...parsed.data, menuPlan: parsed.data.menuPlan, normalizedName: normalizeName(name) })
+    return new Response(JSON.stringify(result.body), { status: result.status, headers: { 'Content-Type': 'application/json' } })
+  }
+  if (parsed.data.menuLinkage) {
+    const linked = await createLinkedInventory(c.env.DB, c.get('userId'), householdId, { ...parsed.data, menuLinkage: parsed.data.menuLinkage, normalizedName: normalizeName(name) })
+    return new Response(JSON.stringify(linked.body), { status: linked.status, headers: { 'Content-Type': 'application/json' } })
   }
   if (!(await validateCategory(db, householdId, categoryId))) {
     return c.json(errorResponse('VALIDATION_ERROR', CATEGORY_NOT_FOUND_MESSAGE), 400)
@@ -175,6 +192,29 @@ inventoryItemsRoute.post('/', async (c) => {
   if (!inserted) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
 
   return c.json(toResponse(inserted), 201)
+})
+
+const replaceItemSchema = z.object({
+  name: z.string().max(50).refine(value => value.trim().length > 0),
+  categoryId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  storeId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+  quantity: planQuantitySchema,
+  price: priceSchema,
+  threshold: planQuantitySchema,
+  dailyConsumption: planQuantitySchema.refine(value => value > 0).nullable().optional(),
+  autoConsumptionEnabled: z.boolean().optional(),
+  expectedMenuPlanRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  menuPlan: menuPlanSchema,
+  menuLinkage: z.never().optional(),
+})
+inventoryItemsRoute.put('/:id', async c => {
+  const parsed = replaceItemSchema.safeParse(await parseJsonBody(c))
+  const itemId = Number(c.req.param('id'))
+  if (!parsed.success || !Number.isSafeInteger(itemId) || itemId <= 0) return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
+  const householdId = await resolveHouseholdId(drizzle(c.env.DB), c.get('userId'))
+  if (householdId === null) return c.json(errorResponse('RESOURCE_NOT_FOUND', HOUSEHOLD_NOT_FOUND_MESSAGE), 404)
+  const result = await saveInventoryMenuPlan(c.env.DB, c.get('userId'), householdId, { ...parsed.data, normalizedName: normalizeName(parsed.data.name) }, itemId)
+  return new Response(JSON.stringify(result.body), { status: result.status, headers: { 'Content-Type': 'application/json' } })
 })
 
 inventoryItemsRoute.patch('/:id', async (c) => {
@@ -241,7 +281,11 @@ inventoryItemsRoute.patch('/:id', async (c) => {
           deduction, daily, enabled ? 1 : 0, baseline, current.consumptionRevision + (changed ? 1 : 0),
           itemId, householdId, current.consumptionRevision, current.lastConsumedOn, householdId, normalizedName, itemId),
       ...inventoryShoppingSync(c.env.DB, itemId, householdId),
-    ])
+    ]).catch(error => {
+      if (error instanceof Error && ['menu_link_daily_conflict', 'menu_plan_allocation'].some(code => error.message.includes(code))) return null
+      throw error
+    })
+    if (results === null) return c.json(errorResponse('VALIDATION_ERROR', '献立連携をOFFにしてから日次自動消費をONにしてください'), 400)
     if (results[0].meta.changes > 0) {
       const updated = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).get()
       if (!updated) return c.json(errorResponse('RESOURCE_NOT_FOUND', NOT_FOUND_MESSAGE), 404)
@@ -285,9 +329,10 @@ inventoryItemsRoute.patch('/:id/quantity', async (c) => {
   const [updateResult] = await c.env.DB.batch([c.env.DB.prepare(
     `UPDATE inventory_items
      SET quantity_tenths = quantity_tenths + ?
-     WHERE id = ? AND household_id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?`,
+     WHERE id = ? AND household_id = ? AND quantity_tenths + ? >= 0 AND quantity_tenths + ? <= ?
+       AND quantity_tenths + ? >= (SELECT COALESCE(SUM(remaining_count),0)*10 FROM inventory_menu_links WHERE inventory_item_id=inventory_items.id)`,
   )
-    .bind(deltaTenths, itemId, householdId, deltaTenths, deltaTenths, maxTenths),
+    .bind(deltaTenths, itemId, householdId, deltaTenths, deltaTenths, maxTenths, deltaTenths),
     ...inventoryShoppingSync(c.env.DB, itemId, householdId),
   ])
   if (updateResult.meta.changes === 0) {

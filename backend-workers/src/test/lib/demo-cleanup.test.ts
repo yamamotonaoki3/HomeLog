@@ -23,7 +23,7 @@ async function tableCounts(): Promise<Record<string, number>> {
 async function clearAll() {
   const tables = [
     'expense_split_comments', 'expense_splits', 'expenses', 'incomes', 'fixed_cost_splits', 'fixed_cost_posting_suppressions', 'fixed_costs',
-    'events', 'card_charges', 'cards', 'accounts', 'menu_entries', 'recipes', 'shopping_purchase_requests', 'shopping_list_items', 'inventory_items',
+    'events', 'card_charges', 'cards', 'accounts', 'menu_operation_requests', 'menu_consumption_events', 'menu_entries', 'inventory_menu_links', 'recipes', 'shopping_purchase_requests', 'shopping_list_items', 'inventory_items',
     'stores', 'zaiko_categories', 'kakeibo_categories', 'income_categories', 'external_persons', 'user_settings', 'refresh_tokens',
     'password_reset_tokens', 'household_members', 'households', 'users', 'demo_households',
   ]
@@ -56,6 +56,7 @@ async function createNormalWorld(label: string) {
     env.DB.prepare('INSERT INTO expense_split_comments (expense_split_id, author_user_id, body) VALUES ((SELECT s.id FROM expense_splits s JOIN expenses e ON e.id = s.expense_id WHERE e.household_id = ?), ?, ?)').bind(household, a, 'テストコメント'),
     env.DB.prepare('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').bind(a, `testhash_${label}`, '2099-01-01T00:00:00.000Z'),
   ])
+  await seedMenuLinkage(household, a)
   return { a, b, household }
 }
 
@@ -75,6 +76,7 @@ async function createDemoWithUserData(now: Date) {
   })
   expect(expense.status).toBe(201)
   await issueTokens(demoEnv, demo.partnerUserId)
+  await seedMenuLinkage(demo.householdId, demo.primaryUserId)
   return demo
 }
 
@@ -103,7 +105,7 @@ describe('purgeExpiredDemos', () => {
     await expire(expired.householdId)
     // 削除の対象に、デモ中に足した行が含まれていることを確かめてから消す。
     const during = await tableCounts()
-    for (const table of ['expense_split_comments', 'stores', 'external_persons', 'refresh_tokens']) {
+    for (const table of ['expense_split_comments', 'stores', 'external_persons', 'refresh_tokens', 'inventory_menu_links', 'menu_consumption_events', 'menu_operation_requests']) {
       expect(during[table], table).toBeGreaterThan(before[table])
     }
 
@@ -159,3 +161,23 @@ describe('purgeExpiredDemos', () => {
     expect(await tableCounts()).toEqual(before)
   })
 })
+
+async function seedMenuLinkage(household: number, user: number, planned=false) {
+  const category = (await env.DB.prepare('INSERT INTO zaiko_categories(household_id,name) VALUES (?,?) RETURNING id').bind(household, '[E2E_TEST] link category').first<{ id: number }>())!.id
+  const stock = (await env.DB.prepare('INSERT INTO inventory_items(household_id,name,category_id,quantity_tenths,threshold_tenths,menu_plan_enabled) VALUES (?,?,?,20,0,?) RETURNING id').bind(household, '[E2E_TEST] linked stock', category,Number(planned)).first<{ id: number }>())!.id
+  const recipe = (await env.DB.prepare('INSERT INTO recipes(household_id,created_by_user_id,title) VALUES (?,?,?) RETURNING id').bind(household, user, '[E2E_TEST] linked recipe').first<{ id: number }>())!.id
+  const link = (await env.DB.prepare("INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,carry_enabled,remaining_count,memo) VALUES (?,?,?,?,'2026-11-09',1,?,?) RETURNING id").bind(household, stock, recipe, '[E2E_TEST] linked recipe',planned?1:null,planned?'[E2E_TEST] planned demo':null).first<{ id: number }>())!.id
+  const event = crypto.randomUUID()
+  const entry = (await env.DB.prepare("INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,meal_state,consumed_event_id) VALUES (?,?,'2026-11-09',?,10,'eaten',?) RETURNING id").bind(household, recipe, link, event).first<{ id: number }>())!.id
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id) VALUES (?,?,?,?,10,?,?)').bind(event, household, entry, stock,planned?1:null,planned?link:null),
+    env.DB.prepare("INSERT INTO menu_operation_requests(household_id,actor_user_id,request_id,request_json,response_status,response_json) VALUES (?,?,?,'{}',200,'{}')").bind(household, user, crypto.randomUUID()),
+  ])
+  if(planned){
+    const top=crypto.randomUUID()
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id,previous_event_id) VALUES (?,?,?,?,10,1,?,?)').bind(top,household,entry,stock,link,event),
+      env.DB.prepare('UPDATE menu_entries SET consumed_event_id=? WHERE id=?').bind(top,entry),
+    ])
+  }else await seedMenuLinkage(household,user,true)
+}

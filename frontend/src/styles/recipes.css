@@ -380,7 +380,7 @@
   flex-direction: column;
   min-width: 0;
 }
-.menu-add-sheet .menu-recipe-picker input[type="search"],
+.menu-recipe-picker input[type="search"],
 .menu-add-sheet .menu-memo-label input {
   width: 100%;
   min-width: 0;
@@ -442,7 +442,7 @@
   flex-shrink: 0;
   color: #b7791f;
 }
-.menu-add-sheet .menu-candidate-check {
+.menu-recipe-picker .menu-candidate-check {
   display: flex;
   flex: 0 0 44px;
   align-items: center;
@@ -452,7 +452,8 @@
   margin: 0;
   cursor: pointer;
 }
-.menu-add-sheet .menu-candidate-check input {
+.menu-recipe-picker .menu-candidate-check input {
+  min-height: 24px;
   width: 24px;
   height: 24px;
   margin: 0;
@@ -534,3 +535,15 @@
 .recipes-page .recipe-filter-empty { margin-top: 12px; }
 .recipes-page .recipe-filter-empty p { margin: 0; }
 .recipes-page .recipe-filter-empty p + p { margin-top: 4px; font-size: 13px; }
+
+/* #548: 週行の表示名の下に在庫連携操作を置く。狭い画面でも折り返す。 */
+.menu-inventory-controls { display: grid; min-width: 0; gap: 8px; padding: 8px 0; overflow-wrap: anywhere; }
+.menu-inventory-controls p { margin: 0; }
+.menu-inventory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
+.menu-inventory-actions .btn { min-height: 44px; }
+.menu-inventory-actions label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; margin: 0; cursor: pointer; }
+.menu-inventory-actions input[type="checkbox"] { flex: 0 0 24px; width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; accent-color: var(--ui-primary); }
+.menu-inventory-actions label:has(input:disabled) { cursor: not-allowed; }
+
+/* #555: 連携献立は料理名・残回数・メモを一行にまとめる。全文は展開時に表示する。 */
+.menu-list-row-planned .menu-title-clamped { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; }

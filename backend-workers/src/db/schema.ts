@@ -122,6 +122,8 @@ export const inventoryItems = sqliteTable('inventory_items', {
   autoConsumptionEnabled: integer('auto_consumption_enabled', { mode: 'boolean' }).notNull().default(false),
   lastConsumedOn: text('last_consumed_on'),
   consumptionRevision: integer('consumption_revision').notNull().default(0),
+  menuPlanEnabled: integer('menu_plan_enabled', { mode: 'boolean' }).notNull().default(false),
+  menuPlanRevision: integer('menu_plan_revision').notNull().default(0),
 }, (table) => [index('inventory_items_household_normalized_name_idx').on(table.householdId, table.normalizedName)])
 
 export const shoppingListItems = sqliteTable('shopping_list_items', {
@@ -320,6 +322,13 @@ export const recipes = sqliteTable('recipes', {
 })
 
 export const menuEntries = sqliteTable('menu_entries', {
+  recipeTitleSnapshot: text('recipe_title_snapshot'),
+  inventoryMenuLinkId: integer('inventory_menu_link_id').references((): AnySQLiteColumn => inventoryMenuLinks.id, { onDelete: 'set null' }),
+  usageTenths: integer('usage_tenths'),
+  mealState: text('meal_state').notNull().default('uneaten'),
+  mealRevision: integer('meal_revision').notNull().default(0),
+  consumedEventId: text('consumed_event_id'),
+
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdId: integer('household_id')
     .notNull()
@@ -474,3 +483,44 @@ export const demoHouseholds = sqliteTable(
   },
   (table) => [index('demo_households_expires_at_idx').on(table.expiresAt)],
 )
+
+
+export const inventoryMenuLinks = sqliteTable('inventory_menu_links', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id, { onDelete: 'set null' }),
+  recipeId: integer('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  recipeTitleSnapshot: text('recipe_title_snapshot').notNull(),
+  usageTenths: integer('usage_tenths').notNull().default(10),
+  // NULL preserves legacy usage semantics until an explicit plan save.
+  remainingCount: integer('remaining_count'),
+  memo: text('memo'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  carryEnabled: integer('carry_enabled', { mode: 'boolean' }).notNull().default(false),
+  startsOn: text('starts_on').notNull(),
+  revision: integer('revision').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+})
+export const menuConsumptionEvents = sqliteTable('menu_consumption_events', {
+  id: text('id').primaryKey(),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  menuEntryId: integer('menu_entry_id').references(() => menuEntries.id, { onDelete: 'set null' }),
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id, { onDelete: 'set null' }),
+  quantityTenths: integer('quantity_tenths').notNull(),
+  // NULL events restore stock only; new count events also restore the surviving original link.
+  planCountDelta: integer('plan_count_delta'),
+  inventoryMenuLinkId: integer('inventory_menu_link_id').references(() => inventoryMenuLinks.id, { onDelete: 'set null' }),
+  previousEventId: text('previous_event_id'),
+  undoneAt: text('undone_at'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+})
+export const menuOperationRequests = sqliteTable('menu_operation_requests', {
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  actorUserId: integer('actor_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requestId: text('request_id').notNull(),
+  requestJson: text('request_json').notNull(),
+  responseStatus: integer('response_status').notNull(),
+  responseJson: text('response_json').notNull(),
+  guard: integer('guard').notNull().default(1),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, table => [primaryKey({ columns: [table.householdId, table.actorUserId, table.requestId] })])

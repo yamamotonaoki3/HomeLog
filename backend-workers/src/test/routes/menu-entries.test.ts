@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+﻿import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { signAccessToken } from '../../lib/jwt'
 import app from '../../index'
@@ -103,7 +103,7 @@ describe('GET /api/menu-entries', () => {
     expect(res.status).toBe(200)
     const body = await res.json<{ recipeId: number | null; freeTextMemo: string | null }[]>()
     expect(body).toEqual([
-      { id: expect.any(Number), recipeId: recipe.id, recipeTitle: '肉じゃが', freeTextMemo: null, weekStartDate: MONDAY },
+      { id: expect.any(Number), recipeId: recipe.id, recipeTitle: '肉じゃが', freeTextMemo: null, weekStartDate: MONDAY, inventoryLinkage: null },
     ])
   })
 

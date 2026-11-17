@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { usePwaUpdateGuard } from '../hooks/usePwaUpdateGuard'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { getApiErrorMessage } from '../api/getApiErrorMessage'
@@ -124,10 +125,12 @@ export function DisplaySettingsPage() {
     </div>
   )
 
+  const dirty = settings !== null && JSON.stringify(settings) !== loadedSnapshot
+  usePwaUpdateGuard({ editing: dirty, busy: saving })
+
   if (loadError) return frame(<p role="alert" className="error">{loadError}</p>)
   if (!settings) return frame(<p role="status">読み込み中...</p>)
 
-  const dirty = JSON.stringify(settings) !== loadedSnapshot
 
   const visibleOrder = settings.cardOrder.filter((card) => settings.cards[card])
 
