@@ -1,3 +1,4 @@
+import { RecipeThumbnail } from '../components/kondate/RecipeThumbnail'
 // `useCallback`/`useEffect`もReactの機能。
 // - useCallback: 関数を「作り直さない」ようにするための仕組み(パフォーマンス最適化・無限ループ防止用)。
 // - useEffect: 「画面が表示された後に1回だけ行いたい処理(APIからのデータ取得など)」を書く場所。
@@ -180,7 +181,7 @@ export function RecipesPage() {
             {visibleRecipes.map((recipe) => (
               <li key={recipe.id} className="ui-card recipe-list-item">
                 <button type="button" className="recipe-title-button" onClick={() => setDetailTarget(recipe)}>
-                  {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" className="recipe-list-thumbnail" />}
+                  <RecipeThumbnail thumbnailUrl={recipe.thumbnailUrl} recipeUrl={recipe.url} alt="" className="recipe-list-thumbnail" />
                   <span>{recipe.title}</span>
                 </button>
                 <button

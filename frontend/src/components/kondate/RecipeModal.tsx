@@ -1,3 +1,5 @@
+import { recipeHref } from '../../lib/recipeUrls'
+import { RecipeThumbnail } from './RecipeThumbnail'
 // `useState`はReactの機能で、「画面の状態(値)を持ち、値が変わったら自動的に再描画する」ための仕組み。
 // `type FormEvent`のように`type`を付けてimportすると、値ではなく「型情報だけ」を取り込む
 // (実行時のコードには影響しない、TypeScript独自の書き方)。
@@ -38,6 +40,7 @@ type OcrStatus = 'idle' | 'analyzing' | 'done'
 // (分割代入)。`props.recipe`と書く代わりに`recipe`とだけ書けるようになる。
 export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
   // recipeがnullでなければ「編集モード」、nullなら「新規登録モード」。
+  const href = recipeHref(recipe?.url)
   const isEdit = recipe !== null
   // WEBレシピ(sourceType='web')の編集は、タイトル等が読み取り専用・メモだけ編集可能な
   // 専用フォームになるため、通常の編集/新規登録と区別するフラグを別途持つ。
@@ -204,10 +207,10 @@ export function RecipeModal({ recipe, onClose, onSaved, initialUrl }: Props) {
             <p>
               <strong>{recipe.title}</strong>
             </p>
-            {recipe.thumbnailUrl && <img src={recipe.thumbnailUrl} alt="" style={{ maxWidth: '160px' }} />}
-            {recipe.url && (
+            <RecipeThumbnail thumbnailUrl={recipe.thumbnailUrl} recipeUrl={recipe.url} alt="" style={{ maxWidth: '160px' }} />
+            {href && (
               <p>
-                <a href={recipe.url} target="_blank" rel="noopener noreferrer">
+                <a href={href} target="_blank" rel="noopener noreferrer">
                   元ページを開く
                 </a>
               </p>

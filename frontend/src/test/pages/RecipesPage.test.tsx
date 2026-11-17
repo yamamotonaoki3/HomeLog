@@ -92,6 +92,27 @@ function renderRecipesPage(initialPath = '/recipes') {
 }
 
 describe('RecipesPage', () => {
+  it('#570 一覧・詳細・WEB編集で画像失敗を隠し、不正元URLでも本文とメモ編集を残す', async () => {
+    const recipe: Recipe = { id: 1, title: '[E2E_TEST] WEB料理', ingredients: null, steps: null, sourceType: 'web', url: 'data:text/plain,recipe', thumbnailUrl: 'https://cdn.example.com/broken.png', memo: '[E2E_TEST] 残すメモ', isFavorite: false }
+    setupApi({ recipes: [recipe] })
+    const user = userEvent.setup()
+    const view = renderRecipesPage()
+    await screen.findByRole('button', { name: recipe.title })
+    fireEvent.error(view.container.querySelector('.recipe-list-thumbnail')!)
+    expect(view.container.querySelector('.recipe-list-thumbnail')).toBeNull()
+    await user.click(screen.getByRole('button', { name: recipe.title }))
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '元ページを開く' })).not.toBeInTheDocument()
+    expect(screen.getByText(recipe.memo!)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    fireEvent.error(view.container.querySelector('form img')!)
+    expect(view.container.querySelector('form img')).toBeNull()
+    expect(screen.queryByRole('link', { name: '元ページを開く' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('メモ')).toHaveValue(recipe.memo)
+    expect(screen.getByRole('button', { name: '更新' })).toBeEnabled()
+  })
+
   it('URL登録で409ならモーダル内にサーバーのエラーを表示しURLとメモを保持する', async () => {
     setupApi()
     server.use(http.post('/api/recipes/from-url', () => HttpResponse.json({

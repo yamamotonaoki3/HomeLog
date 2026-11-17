@@ -1,3 +1,4 @@
+import { recipeHref } from '../lib/recipeUrls'
 import { useCallback, useContext, useEffect, useRef, useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
@@ -313,14 +314,15 @@ export function MenuPage() {
         <ul className="menu-list" aria-label="この週の献立">
           {entries.length === 0 ? <li className="ui-empty">この週の献立はまだありません</li> : entries.map(entry => {
             const recipe = recipes.find(item => item.id === entry.recipeId)
+            const href = recipeHref(recipe?.url)
             const available = recipe && entry.recipeTitle !== null
             const planned = entry.inventoryLinkage?.remainingCount != null
             const controlsInDetails = !!entry.inventoryLinkage && entry.inventoryLinkage.remainingCount !== undefined
             const controls = entry.inventoryLinkage && <LinkedMenuControls entry={entry} disabled={mealDisabled||mealTarget!==null||submitting} carryReady={inventories!==null} onMeal={(undo,button)=>{mealTrigger.current=button;setMealError('');setMealTarget({entry,undo})}} onCarry={enabled=>{void changeCarry(entry,enabled)}}/>
             return <li key={entry.id} className={planned ? 'ui-card menu-list-row menu-list-row-planned' : 'ui-card menu-list-row'}>
               <MenuTitle text={displayLabel(entry)} siteLabel={planned ? undefined : sourceLabel(entry, recipe)} chevron>
-                {available && (recipe.sourceType === 'web' && recipe.url
-                  ? <a className="menu-entry-link" href={recipe.url} target="_blank" rel="noopener noreferrer">レシピを見る</a>
+                {available && (recipe.sourceType === 'web' && href
+                  ? <a className="menu-entry-link" href={href} target="_blank" rel="noopener noreferrer">レシピを見る</a>
                   : <button type="button" className="menu-entry-link" onClick={event => { detailTrigger.current = event.currentTarget; setDetailRecipe(recipe) }}>レシピを見る</button>)}
                 <button type="button" className="menu-delete-trigger" disabled={!!entry.inventoryLinkage&&(mealDisabled||mealTarget!==null)} onClick={event => { deleteTrigger.current = event.currentTarget; setDeleteError(''); setDeleteTarget(entry) }}>削除</button>
                 {controlsInDetails && controls}
