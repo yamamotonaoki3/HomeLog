@@ -160,6 +160,27 @@ class MetaCollector {
   }
 }
 
+// 画像は既存CSPに合わせHTTPSのみ採用する。HTML画像だけはページURLを基準に相対解決する。
+function httpsThumbnailUrl(value: unknown, baseUrl?: string): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const url = new URL(value, baseUrl)
+    return url.protocol === 'https:' ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
+function htmlImageBaseUrl(responseUrl: string, originalUrl: string): string {
+  try {
+    const url = new URL(responseUrl)
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString()
+  } catch {
+    // mockなどで最終レスポンスURLが得られなければ登録URLを使う。
+  }
+  return originalUrl
+}
+
 // YouTubeはWorkersからHTMLを取得すると同意画面などが返り、og:titleが「YouTube」になってしまう。
 // そのため公式のoEmbed APIから動画タイトルとサムネイルを取得する(失敗時はnullでHTML解析に任せる)。
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'])
@@ -172,7 +193,7 @@ async function fetchYoutubeOembed(url: URL): Promise<{ title: string; thumbnailU
     if (!response.ok) return null
     const data = (await response.json()) as { title?: unknown; thumbnail_url?: unknown }
     if (typeof data.title !== 'string' || !data.title.trim()) return null
-    return { title: data.title.trim(), thumbnailUrl: typeof data.thumbnail_url === 'string' ? data.thumbnail_url : null }
+    return { title: data.title.trim(), thumbnailUrl: httpsThumbnailUrl(data.thumbnail_url) }
   } catch {
     return null
   }
@@ -350,7 +371,7 @@ recipesRoute.post('/from-url', async (c) => {
     }
 
     title = collector.ogTitle ?? (decodeHtmlEntities(collector.titleTagText).trim() || null) ?? parsedUrl.toString()
-    thumbnailUrl = collector.ogImage ?? null
+    thumbnailUrl = httpsThumbnailUrl(collector.ogImage, htmlImageBaseUrl(response.url, parsedUrl.toString()))
   }
 
   // 存在確認と挿入を1文で行い、fetch中に同じURLが登録された場合も重複を防ぐ。
