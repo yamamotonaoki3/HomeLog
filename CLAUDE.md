@@ -105,10 +105,10 @@
 | 対象 | コマンド |
 | --- | --- |
 | `backend-workers/` | `npm run lint` / `npm run typecheck` / `npm test` |
-| `frontend/` | `npm run lint` / `npx tsc -b` / `npx vitest run` / `npm run build` |
-| `e2e/` | `npm test -- tests/<spec>`（先に `frontend` をビルドする。8787 番ポートを空けておく） |
+| `frontend/` | `npm run lint` / `npm test` / `npm run build`（`tsc -b` を含む） |
+| `e2e/` | 通常E2Eは `npm test`。specを絞るときは `npm test -- tests/<spec>`。専用設定は [e2e/README.md](e2e/README.md#実行) を参照 |
 
-- `backend-workers/` のテストとローカル実行には `.dev.vars`（`.dev.vars.example` を参考に作成。値はコミットしない）が必要。
+- Workers の起動・テスト・E2E の前に `frontend/` で `npm run build` を実行する。`backend-workers/` には `.dev.vars.example` を参考に `.dev.vars` を用意し、ローカル用の `JWT_SECRET` を設定する。値はコミットしない。
 - E2E の画面側ポートは既定で 5173 番を使う。別の作業（他プロジェクトの開発サーバーなど）が使用中のときは、そのサーバーを止めず、`npm test` が自動で選ぶ空きポートで並行して実行する。API 側の 8787 番は固定なので空けておく。
 - テストや画面確認のために自分で起動したサーバーは、作業が終わったら停止し、使っていたポートが閉じたことを確認する。ユーザーの確認用に残す場合は、URL と残している旨を報告し、確認が済んだら停止する。自分が起動していないサーバーは止めない。
 - 画面の変更は E2E で 1280 / 390 / 320px の表示を確認し、必要に応じて画面写真でも確かめる。
@@ -224,13 +224,4 @@ backend-workers/
 
 ## アプリ起動手順
 
-```bash
-# 1. API（backend-workers/ で。http://localhost:8787）
-npx wrangler d1 migrations apply DB --local
-npx wrangler dev --local --port 8787
-
-# 2. 画面（frontend/ で。http://localhost:5181、スマホからは PC の IP アドレス:5181）
-VITE_API_PROXY_TARGET=http://localhost:8787 npx vite --port 5181 --strictPort --host 0.0.0.0
-```
-
-`.claude/skills/run-dev` スキルを使うと上記手順を自動実行できる。
+[README のローカル起動手順](README.md#ローカルで動かす) に従い、`frontend/` をビルドしてから、ローカル D1 のマイグレーションと Workers API（8787）の起動を行う。別のターミナルで、API のプロキシ先を指定して Vite（5181）を起動する。

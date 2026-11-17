@@ -199,7 +199,7 @@ flowchart TD
 | --- | --- | --- |
 | `GET /api/auth/account/deletion-check` | `{ canRequest, unsettledSplits, fixedCostsWithOthers }` を返す | 401 |
 | `POST /api/auth/account/deletion` | `currentPassword` で再認証して申し込み、`{ deletionScheduledAt }` を返す | 400（パスワード誤り）/ 401 / 409（未精算などが残る・並行してパスワードが変わった） |
-| `POST /api/auth/account/deletion/cancel` | 認証不要。`email`・`password` で本人確認して取り消し、ログインと同じトークンを返す | 400（申し込んでいない）/ 401（誤り・期限切れ） |
+| `POST /api/auth/account/deletion/cancel` | アクセストークン不要。`email`・`password` で本人確認して取り消し、ログインと同じトークンを返す | 400（申し込んでいない）/ 401（誤り・期限切れ） |
 | `POST /api/auth/login` | 取り消し期間中は 403 `ACCOUNT_DELETION_PENDING`（`details[].field = deletionScheduledAt`）を返す | — |
 
 - 取り消し期間中に他の人が本人を負担者にした割り勘などが増えた場合、日次処理は削除を保留し、解決するまで毎日再判定する。
@@ -223,4 +223,4 @@ flowchart TD
 - **止める操作**：次の API は処理の前に 403 `DEMO_DISABLED`（「デモでは使えません」）を返す。`POST /api/auth/register`、`PUT /api/auth/password`、`PUT /api/auth/email`、`POST /api/auth/account/deletion`、`POST /api/auth/account/deletion/cancel`、`POST /api/auth/password-reset/request`、`POST /api/auth/password-reset/confirm`。表示名の変更（`PATCH /api/auth/account`）は使える。アカウント設定画面には、デモ中だけ「デモでは表示名以外は変更できません」と注記する。
 - **デモ利用者の判定**：`GET /api/auth/me` は、デモ利用者なら `demo: { expiresAt, partnerName }`、それ以外は `demo: null` を返す。画面はこの値でデモ中の帯（相手への切り替え・見どころ・デモを終わる）を出す。
 - **切り替え**：`POST /api/demo/switch` で同じデモ世帯のもう1人のトークンを受け取る。切り替え前のリフレッシュトークンは失効する。同じブラウザのタブはログイン情報を共有するため、2人を並べて見るときは別のブラウザかシークレットウィンドウを使う。
-- **期限切れ**：デモの世帯は作成から24時間で期限切れになる。期限を過ぎてから毎時の Cron で削除されるまでの間も、デモ利用者の認証とトークン再発行は 401 `UNAUTHORIZED` になり、画面は既存の仕組みでログイン画面へ戻る。そこから新しいデモを始められる。
+- **期限切れ**：デモの世帯は作成から24時間で期限切れになる。期限切れ後は認証必須APIが401 `UNAUTHORIZED`、`POST /api/auth/refresh` が401 `INVALID_TOKEN` を返す。画面はログイン画面に戻り、そこから新しいデモを始められる。期限切れのデータは毎時の定期処理で削除される。
