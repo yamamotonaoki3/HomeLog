@@ -1,3 +1,5 @@
+import { recipeHref } from '../../lib/recipeUrls'
+import { RecipeThumbnail } from './RecipeThumbnail'
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useDialog } from '../../hooks/useDialog'
 import type { Recipe } from '../../api/kondateTypes'
@@ -54,6 +56,7 @@ export function RecipeDetailModal({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  const href = recipeHref(recipe.url)
   const isWeb = recipe.sourceType === 'web'
   const ingredients = toLines(recipe.ingredients)
   const steps = toLines(recipe.steps).map(stripStepNumber)
@@ -77,12 +80,10 @@ export function RecipeDetailModal({
 
         {isWeb ? (
           <>
-            {recipe.thumbnailUrl && (
-              <img className="recipe-detail-thumbnail" src={recipe.thumbnailUrl} alt={`${recipe.title}のサムネイル`} />
-            )}
-            {recipe.url && (
+            <RecipeThumbnail thumbnailUrl={recipe.thumbnailUrl} recipeUrl={recipe.url} className="recipe-detail-thumbnail" alt={`${recipe.title}のサムネイル`} />
+            {href && (
               <p>
-                <a href={recipe.url} target="_blank" rel="noopener noreferrer">
+                <a href={href} target="_blank" rel="noopener noreferrer">
                   元ページを開く
                 </a>
               </p>

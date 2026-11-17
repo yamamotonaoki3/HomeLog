@@ -137,6 +137,40 @@ describe('RecipeDetailModal', () => {
     expect(screen.queryByRole('heading', { name: '材料' })).not.toBeInTheDocument()
   })
 
+  it.each(['javascript:0', 'data:text/html,test', '/relative', 'invalid', null])('#570 不正・欠落元URLはリンクにせず本文と操作を残す: %s', (url) => {
+    const title = '[E2E_TEST] <em>タイトル</em>'
+    const memo = '[E2E_TEST] <img src=x>メモ'
+    const view = render(<RecipeDetailModal recipe={{ ...webRecipe, title, memo, url, thumbnailUrl: 'http://cdn.example.com/a.png' }} onClose={vi.fn()} onEdit={vi.fn()} />)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: title })).toBeVisible()
+    expect(screen.getByText(memo)).toBeVisible()
+    expect(view.container.querySelector('em')).toBeNull()
+    expect(screen.getByRole('button', { name: '編集' })).toBeVisible()
+  })
+
+  it('#570 画像失敗後も本文と元リンクを保ち、解決後src変更で再表示する', () => {
+    const recipe = { ...webRecipe, url: 'http://RECIPE.example.com/a?q=%25&v=1#steps', thumbnailUrl: '//cdn.example.com/thumb.png?signature=a%2Fb&x=1', memo: '[E2E_TEST] メモ' }
+    const view = render(<RecipeDetailModal recipe={recipe} onClose={vi.fn()} />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: '元ページを開く' })
+    expect(link).toHaveAttribute('href', 'http://recipe.example.com/a?q=%25&v=1#steps')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://recipe.example.com/a/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    const image = screen.getByRole('img')
+    expect(image).toHaveAttribute('src', 'https://recipe.example.com/thumb.png?signature=a%2Fb&x=1')
+    fireEvent.error(image)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('[E2E_TEST] メモ')).toBeVisible()
+    expect(screen.getByRole('heading', { name: recipe.title })).toBeVisible()
+    expect(screen.getByRole('link')).toBeVisible()
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://recipe.example.com/b/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    view.rerender(<RecipeDetailModal recipe={{ ...recipe, url: 'https://other.example.com/b/recipe', thumbnailUrl: '../thumb.png?signature=a%2Fb&x=1' }} onClose={vi.fn()} />)
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://other.example.com/thumb.png?signature=a%2Fb&x=1')
+  })
+
   it('編集・削除ボタンでそれぞれのハンドラーを呼ぶ', async () => {
     const user = userEvent.setup()
     const { onEdit, onDelete } = renderModal(manualRecipe)
