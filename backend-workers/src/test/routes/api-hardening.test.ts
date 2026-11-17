@@ -103,6 +103,33 @@ describe('リクエスト本文の大きさの上限', () => {
     expect(response.status).toBe(413)
   })
 
+  it.each([
+    [512, 401],
+    [MAX_JSON_BODY_BYTES + 1, 413],
+  ])('Content-Lengthなしの分割ストリーム本文(%i bytes)でも上限と通常処理を維持する', async (size, status) => {
+    const bytes = new TextEncoder().encode(loginBody(size))
+    let offset = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= bytes.byteLength) {
+          controller.close()
+          return
+        }
+        const end = Math.min(offset + 4096, bytes.byteLength)
+        controller.enqueue(bytes.slice(offset, end))
+        offset = end
+      },
+    })
+    const request = new Request('http://localhost/api/auth/login', { method: 'POST', headers: json, body: stream })
+    expect(request.headers.has('Content-Length')).toBe(false)
+    const response = await app.request(request, undefined, env)
+    expect(response.status).toBe(status)
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    if (status === 413) {
+      expect(await response.json()).toEqual({ code: 'VALIDATION_ERROR', message: '送信された内容が大きすぎます', details: [] })
+    }
+  })
   it('画像のアップロードは、この上限の対象外(既存の5MBの上限のまま)', async () => {
     const headers = await memberHeaders()
     const bytes = new Uint8Array(MAX_JSON_BODY_BYTES * 3)
