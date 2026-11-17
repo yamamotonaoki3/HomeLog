@@ -143,6 +143,7 @@ export function LoginPage() {
               デモを試す（登録不要）
             </button>
             <p className="auth-demo-note">架空の2人の世帯で、24時間お試しできます</p>
+            <p className="auth-demo-note">デモには個人情報や実際のデータを入力しないでください。</p>
           </div>
         )}
         <p className="error">{error}</p>
