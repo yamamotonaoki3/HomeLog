@@ -24,7 +24,7 @@ for (const width of [1280, 390, 320]) {
     await toggle.click()
     await expect(consumption).toBeVisible()
     let writes = 0
-    page.on('request', request => { if (['POST', 'PATCH'].includes(request.method()) && /\/api\/inventory-items(?:\/\d+)?$/.test(new URL(request.url()).pathname)) writes++ })
+    page.on('request', request => { if (['POST', 'PUT', 'PATCH'].includes(request.method()) && /\/api\/inventory-items(?:\/\d+)?$/.test(new URL(request.url()).pathname)) writes++ })
     await form.getByRole('button', { name: '保存', exact: true }).click()
     await expect(form.getByRole('alert')).toContainText('消費量')
     expect(writes).toBe(0)
@@ -49,7 +49,7 @@ for (const width of [1280, 390, 320]) {
     const initialBody = { dailyConsumption: 0.2, autoConsumptionEnabled: true, name, categoryId, storeId: null, threshold: 0.5, price: null, quantity: 1 }
     const post = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/inventory-items')
     await form.getByRole('button', { name: '保存', exact: true }).click()
-    expect((await post).postDataJSON()).toEqual(initialBody)
+    expect((await post).postDataJSON()).toEqual({ ...initialBody, menuPlan: { requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i), enabled: false, links: [] } })
     await expect(form).toBeHidden()
     const row = page.getByRole('button', { name: name + 'の詳細', exact: true })
     await expect(row.locator('.inventory-list-quantity')).toHaveText('1.0')
@@ -71,9 +71,12 @@ for (const width of [1280, 390, 320]) {
     await expect(editToggle).toHaveAttribute('aria-checked', 'true')
     await expect(editConsumption).toHaveValue('0.2')
     const saveSettings = async (dailyConsumption: number | null, autoConsumptionEnabled: boolean) => {
-      const patch = page.waitForRequest(request => request.method() === 'PATCH' && /\/api\/inventory-items\/\d+$/.test(new URL(request.url()).pathname))
+      const put = page.waitForResponse(response => response.request().method() === 'PUT' && /\/api\/inventory-items\/\d+$/.test(new URL(response.url()).pathname))
       await edit.getByRole('button', { name: '保存', exact: true }).click()
-      expect((await patch).postDataJSON()).toEqual({ dailyConsumption, autoConsumptionEnabled, name, categoryId, storeId: null, threshold: 0.5, price: null })
+      const saved = await put
+      expect(saved.status()).toBe(200)
+      expect(saved.request().postDataJSON()).toEqual({ dailyConsumption, autoConsumptionEnabled, name, categoryId, storeId: null, quantity: 1, threshold: 0.5, price: null, expectedMenuPlanRevision: expect.any(Number), menuPlan: { requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i), enabled: false, links: [] } })
+      expect(await saved.json()).toMatchObject({ dailyConsumption, autoConsumptionEnabled, quantity: 1 })
       await expect(edit).toBeHidden()
     }
     await editToggle.click()
@@ -82,13 +85,13 @@ for (const width of [1280, 390, 320]) {
     await openInventoryDetails(page, row)
     await expect(editToggle).toHaveAttribute('aria-checked', 'false')
     await expect(editConsumption).toBeHidden()
-    await expect(edit.locator('.qty-value')).toHaveText('1.0')
+    await expect(edit.getByLabel('在庫個数', { exact: true })).toHaveValue('1')
     await editToggle.click()
     await expect(editConsumption).toHaveValue('0.2')
     await saveSettings(0.2, true)
     await openInventoryDetails(page, row)
     await expect(editToggle).toHaveAttribute('aria-checked', 'true')
-    await expect(edit.locator('.qty-value')).toHaveText('1.0')
+    await expect(edit.getByLabel('在庫個数', { exact: true })).toHaveValue('1')
     await editConsumption.fill('')
     const beforeInvalid = writes
     await edit.getByRole('button', { name: '保存', exact: true }).click()

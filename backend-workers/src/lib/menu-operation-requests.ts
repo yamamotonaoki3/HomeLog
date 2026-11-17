@@ -1,4 +1,4 @@
-﻿import { errorResponse } from './errors'
+import { errorResponse } from './errors'
 
 export type MenuScope = { householdId: number; actorUserId: number }
 export type MenuResult = { status: number; body: unknown }
@@ -47,6 +47,9 @@ export function menuGuard(db:D1Database,scope:MenuScope,id:string,condition:stri
 export function finalizeMenuOperation(db:D1Database,scope:MenuScope,id:string,status:200|201,responseSql:string,bindings:(string|number|null)[]):D1PreparedStatement {
   return db.prepare('UPDATE menu_operation_requests SET response_status=?,response_json=('+responseSql+') WHERE '+menuRequestKey).bind(status,...bindings,...menuRequestBindings(scope,id))
 }
+export function isMenuPlanWriteConflict(error:unknown):boolean {
+  return error instanceof Error && /\b(menu_plan_allocation|menu_plan_revision_exhausted)\b/.test(error.message)
+}
 export function isMenuConflict(error:unknown):boolean {
-  return error instanceof Error && ['menu_link_revision','menu_operation_guard','menu_link_daily_conflict','menu_link_zero_carry','menu_link_invalid_reference','inventory_menu_active_recipe_unique','UNIQUE constraint failed: inventory_menu_links.','UNIQUE constraint failed: menu_entries.inventory_menu_link_id'].some(name=>error.message.includes(name))
+  return isMenuPlanWriteConflict(error) || error instanceof Error && ['menu_link_revision','menu_operation_guard','menu_link_daily_conflict','menu_link_zero_carry','menu_link_invalid_reference','inventory_menu_active_recipe_unique','UNIQUE constraint failed: inventory_menu_links.','UNIQUE constraint failed: menu_entries.inventory_menu_link_id'].some(name=>error.message.includes(name))
 }

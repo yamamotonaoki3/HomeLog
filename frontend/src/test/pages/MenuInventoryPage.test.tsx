@@ -5,7 +5,7 @@ import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { MenuPage } from '../../pages/MenuPage'
-import { setTokens } from '../../api/tokenStorage'
+import { setTokens, setAccessToken } from '../../api/tokenStorage'
 import { getAccessToken } from '../../api/tokenStorage'
 import { apiClient } from '../../api/client'
 import { getMondayOf } from '../../lib/week'
@@ -56,6 +56,172 @@ function setupOrdinaryMenu(){
  server.use(http.get('/api/menu-entries',()=>HttpResponse.json([{id:11,recipeId:10,recipeTitle:state.accountB?'[E2E_TEST] Bの献立':'[E2E_TEST] Aの献立',freeTextMemo:null,weekStartDate:getMondayOf(new Date())}])),http.get('/api/recipes',()=>HttpResponse.json(state.accountB?[]:[privateRecipe])),http.post('/api/menu-entries',async({request})=>{posts.push(await request.json());return HttpResponse.json({id:12},{status:201})}),http.delete('/api/menu-entries/11',({request})=>{deletes.push(request.url);return new HttpResponse(null,{status:204})}))
  return {state,posts,deletes}
 }
+it('初回本人確認中の通常メモは下書きを保持し確認完了後の明示送信だけで追加する',async()=>{
+ const {posts}=setupOrdinaryMenu();let release!:()=>void,arrived!:()=>void,authChecks=0
+ const gate=new Promise<void>(r=>{release=r}),entered=new Promise<void>(r=>{arrived=r})
+ server.use(http.get('/api/auth/me',async()=>{authChecks++;arrived();await gate;return HttpResponse.json({id:1})}))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await entered
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ const memo='[E2E_TEST] 初回確認を待つメモ'
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toBeEnabled()
+ expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeDisabled()
+ expect(authChecks).toBe(1)
+ await act(async()=>{release()})
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(authChecks).toBe(1)
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}])
+})
+it('初回本人確認失敗でも通常メモを保持し再確認後の明示送信だけで追加する',async()=>{
+ const {posts}=setupOrdinaryMenu();let unavailable=true
+ server.use(http.get('/api/auth/me',()=>unavailable?new HttpResponse(null,{status:503}):HttpResponse.json({id:1})))
+ const user=userEvent.setup();render(<MenuPage/>);
+ expect(await screen.findByRole('status')).toBeVisible()
+ await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('本人と世帯を確認できません'))
+ expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeEnabled()
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ const memo='[E2E_TEST] 再確認後に送るメモ'
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toBeEnabled()
+ await user.click(screen.getByRole('button',{name:'閉じる'}))
+ unavailable=false
+ await user.click(screen.getByRole('button',{name:'本人と世帯を再確認'}))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}])
+})
+it.each(['add','delete'] as const)('確認済みの通常%sは期限切れ401で下書きを保持し明示再確認と再送だけで確定する',async(mode)=>{
+ const {posts,deletes}=setupOrdinaryMenu();let expired=false,refreshes=0,authChecks=0
+ const households:(string|null)[]=[]
+ server.use(http.get('/api/auth/me',({request})=>{
+  authChecks++
+  return expired&&request.headers.get('Authorization')==='Bearer testuser_access'
+   ? HttpResponse.json({code:'UNAUTHORIZED'},{status:401}):HttpResponse.json({id:1})
+ }),http.get('/api/households/me',({request})=>{households.push(request.headers.get('Authorization'));return HttpResponse.json({id:10})}),
+ http.post('/api/auth/refresh',()=>{refreshes++;return HttpResponse.json({accessToken:'testuser_refreshed_access',expiresIn:3600})}))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await waitFor(()=>expect(households).toEqual(['Bearer testuser_access']))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ const memo='[E2E_TEST] 期限切れ後も保持するメモ'
+ const open=async()=>{
+  if(mode==='add')await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+  else {const row=screen.getByRole('button',{name:'[E2E_TEST] Aの献立'});if(row.getAttribute('aria-expanded')!=='true')await user.click(row);await user.click(screen.getByRole('button',{name:'削除'}))}
+ }
+ const submit=()=>user.click(screen.getByRole('button',{name:mode==='add'?'追加':'献立から削除'}))
+ const close=()=>user.click(screen.getByRole('button',{name:mode==='add'?'閉じる':'キャンセル'}))
+ const expectDraft=()=>{
+  if(mode==='add')expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+  else expect(screen.getByRole('dialog',{name:'献立を削除'})).toHaveTextContent('[E2E_TEST] Aの献立')
+ }
+ await open()
+ if(mode==='add'){
+  await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+  await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ }
+ expired=true
+ await submit()
+ await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('本人と世帯を再確認してください'))
+ expectDraft()
+ expect(posts).toHaveLength(0);expect(deletes).toHaveLength(0);expect(refreshes).toBe(0)
+ expect(authChecks).toBe(2)
+ // 古いverifiedScopeが残っていても再送で確認や更新を始めない。
+ await submit()
+ expectDraft();expect(authChecks).toBe(2)
+ expect(posts).toHaveLength(0);expect(deletes).toHaveLength(0);expect(refreshes).toBe(0)
+ await close()
+ expect(screen.getByRole('status')).toHaveTextContent('下書きは保持されます')
+ await user.click(screen.getByRole('button',{name:'本人と世帯を再確認'}))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(refreshes).toBe(1)
+ expect(households).toEqual(['Bearer testuser_access','Bearer testuser_refreshed_access'])
+ expect(posts).toHaveLength(0);expect(deletes).toHaveLength(0)
+ await open();expectDraft()
+ expect(posts).toHaveLength(0);expect(deletes).toHaveLength(0)
+ await submit()
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(refreshes).toBe(1)
+ expect(households).toEqual(['Bearer testuser_access','Bearer testuser_refreshed_access','Bearer testuser_refreshed_access'])
+ if(mode==='add'){
+  expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}]);expect(deletes).toHaveLength(0)
+ }else {expect(deletes).toHaveLength(1);expect(posts).toHaveLength(0)}
+})
+it('確認済み通常メモの503と明示再確認失敗は下書きを保持し新しい確認成功まで再送を止める',async()=>{
+ const {posts,deletes}=setupOrdinaryMenu();let unavailable=false,authChecks=0,refreshes=0,householdChecks=0
+ server.use(http.get('/api/auth/me',()=>{authChecks++;return unavailable?new HttpResponse(null,{status:503}):HttpResponse.json({id:1})}),
+ http.get('/api/households/me',()=>{householdChecks++;return HttpResponse.json({id:10})}),
+ http.post('/api/auth/refresh',()=>{refreshes++;return HttpResponse.json({accessToken:'testuser_refreshed_access',expiresIn:3600})}))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await waitFor(()=>expect(householdChecks).toBe(1))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ const memo='[E2E_TEST] 確認サーバー復旧を待つメモ'
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),memo.replace('[','[['))
+ unavailable=true
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('本人と世帯を再確認してください'))
+ expect(authChecks).toBe(2)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(authChecks).toBe(2);expect(posts).toHaveLength(0)
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ await user.click(screen.getByRole('button',{name:'閉じる'}))
+ await user.click(screen.getByRole('button',{name:'本人と世帯を再確認'}))
+ await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('本人と世帯を確認できません'))
+ await waitFor(()=>expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeEnabled())
+ expect(authChecks).toBe(3);expect(refreshes).toBe(0)
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ expect(authChecks).toBe(3);expect(posts).toHaveLength(0);expect(deletes).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'閉じる'}))
+ unavailable=false
+ await user.click(screen.getByRole('button',{name:'本人と世帯を再確認'}))
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'本人と世帯を再確認'})).not.toBeInTheDocument())
+ expect(authChecks).toBe(4);expect(householdChecks).toBe(2)
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'レシピを追加'}))
+ expect(screen.getByRole('textbox',{name:'自由メモの内容'})).toHaveValue(memo)
+ expect(posts).toHaveLength(0)
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toEqual([{weekStartDate:getMondayOf(new Date()),freeTextMemo:memo}])
+ expect(deletes).toHaveLength(0);expect(refreshes).toBe(0)
+})
+it('通常メモ保存の直前に同tokenの世帯変更を検出し旧draftを送信しない',async()=>{
+ const {posts}=setupOrdinaryMenu();let household=10
+ server.use(http.get('/api/households/me',()=>HttpResponse.json({id:household})))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await user.click(await screen.findByRole('button',{name:'レシピを追加'}))
+ await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] 旧世帯だけのメモ'.replace('[','[['))
+ household=20
+ await user.click(screen.getByRole('button',{name:'追加'}))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ expect(posts).toHaveLength(0)
+ expect(screen.getByRole('button',{name:'レシピを追加'})).toBeDisabled()
+})
 it('同tokenの世帯変更をcarryのscope検証で初検出したら旧一覧と下書きを隔離し明示確認で復帰する',async()=>{
  const {state,patches}=setup()
  let householdId=10
@@ -80,7 +246,7 @@ it('同tokenの世帯変更をcarryのscope検証で初検出したら旧一覧�
  await waitFor(()=>expect(screen.getByRole('checkbox',{name:'来週へ持ち越す'})).toBeEnabled())
  await user.click(screen.getByRole('button',{name:'レシピを追加'}))
  await user.click(screen.getByRole('radio',{name:'自由メモ'}))
- await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] 世帯10の未公開メモ')
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] 世帯10の未公開メモ'.replace('[','[['))
  expect(checkedHouseholds).toEqual([10])
  // focus/storage/recheckを挟まず、carry専用の固定scope検証に初検出させる。
  armed=true
@@ -113,13 +279,34 @@ async function detachPage(){
  act(()=>{setTokens('testuser_b_access','testuser_b_refresh');window.dispatchEvent(new Event('storage'))})
  await waitFor(()=>expect(screen.getByRole('button',{name:'本人と世帯を再確認'})).toBeEnabled())
 }
+it.each(['add','delete'] as const)('通常%s送信中の同session access更新でもbusyを残さず再確認できる',async(mode)=>{
+ setupOrdinaryMenu();let release!:()=>void,arrived!:()=>void
+ const gate=new Promise<void>(r=>{release=r}),entered=new Promise<void>(r=>{arrived=r})
+ const late=async()=>{arrived();await gate;return mode==='add'?HttpResponse.json({id:12},{status:201}):new HttpResponse(null,{status:204})}
+ server.use(mode==='add'?http.post('/api/menu-entries',late):http.delete('/api/menu-entries/11',late))
+ const user=userEvent.setup();render(<MenuPage/>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+ if(mode==='add'){
+  await user.click(screen.getByRole('button',{name:'レシピを追加'}));await user.click(screen.getByRole('radio',{name:'自由メモ'}))
+  await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] refresh中のメモ'.replace('[','[['));await user.click(screen.getByRole('button',{name:'追加'}))
+ }else{
+  await user.click(screen.getByRole('button',{name:'[E2E_TEST] Aの献立'}));await user.click(screen.getByRole('button',{name:'削除'}));await user.click(screen.getByRole('button',{name:'献立から削除'}))
+ }
+ await entered
+ act(()=>{setAccessToken('testuser_refreshed_access');release()})
+ const recheck=await screen.findByRole('button',{name:'本人と世帯を再確認'})
+ await waitFor(()=>expect(recheck).toBeEnabled())
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+ await user.click(recheck)
+ await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
+})
 it('Aの未保存メモと選択をtoken切替で破棄し旧sheetから追加させない',async()=>{
  const {state,posts}=setupOrdinaryMenu();const user=userEvent.setup();render(<MenuPage/>);
  await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
  await user.click(screen.getByRole('button',{name:'レシピを追加'}))
  await user.click(screen.getByRole('checkbox',{name:privateRecipe.title}))
  await user.click(screen.getByRole('radio',{name:'自由メモ'}))
- await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] Aの未公開メモ')
+ await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] Aの未公開メモ'.replace('[','[['))
  await detachPage()
  const staleSheet=screen.queryByRole('dialog',{name:'献立に追加する'})
  if(staleSheet)await user.click(within(staleSheet).getByRole('button',{name:'追加'}))
@@ -158,7 +345,7 @@ it.each(['add','delete'] as const)('通常%sの後着失敗は切替後のmodal�
  const user=userEvent.setup();render(<MenuPage/>);
  await waitFor(()=>expect(screen.getByRole('button',{name:'レシピを追加'})).toBeEnabled())
  if(mode==='add'){
-  await user.click(screen.getByRole('button',{name:'レシピを追加'}));await user.click(screen.getByRole('radio',{name:'自由メモ'}));await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] Aの送信メモ');await user.click(screen.getByRole('button',{name:'追加'}))
+  await user.click(screen.getByRole('button',{name:'レシピを追加'}));await user.click(screen.getByRole('radio',{name:'自由メモ'}));await user.type(screen.getByRole('textbox',{name:'自由メモの内容'}),'[E2E_TEST] Aの送信メモ'.replace('[','[['));await user.click(screen.getByRole('button',{name:'追加'}))
  }else{
   await user.click(screen.getByRole('button',{name:'[E2E_TEST] Aの献立'}));await user.click(screen.getByRole('button',{name:'削除'}));await user.click(screen.getByRole('button',{name:'献立から削除'}))
  }
@@ -183,6 +370,16 @@ function setup(){
  server.use(http.get('/api/menu-entries',()=>HttpResponse.json([{id:11,recipeId:state.recipeId,recipeTitle:state.name,freeTextMemo:null,weekStartDate:getMondayOf(new Date()),inventoryLinkage:state.link}])),http.get('/api/recipes',()=>HttpResponse.json([])),http.get('/api/inventory-items',()=>state.inventoryFail?new HttpResponse(null,{status:503}):HttpResponse.json([{id:21,name:'[E2E_TEST] 鶏肉',quantity:state.link.quantity,menuLinks:[{id:5,recipeId:10,recipeTitle:'新しい名前',usageQuantity:2,enabled:true,carryEnabled:false,revision:4}]}])),http.post('/api/menu-entries/11/consume',async({request})=>{posts.push(await request.json());state.link={...state.link,mealState:'eaten',mealRevision:1,quantity:2,canConsume:false,canUndo:true};return HttpResponse.json({menuEntryId:11,mealState:'eaten',mealRevision:1,inventoryItemId:21,quantity:2,carryEnabled:false})}),http.post('/api/menu-entries/11/undo-consumption',async({request})=>{posts.push(await request.json());state.link={...state.link,mealState:'uneaten',mealRevision:2,quantity:3,canConsume:true,canUndo:false};return HttpResponse.json({menuEntryId:11,mealState:'uneaten',mealRevision:2,inventoryItemId:21,quantity:3,carryEnabled:false})}),http.patch('/api/inventory-menu-links/5',async({request})=>{const body=await request.json() as {usageQuantity:number;expectedRevision:number;carryEnabled:boolean};patches.push(body);return HttpResponse.json({id:5,recipeId:10,recipeTitle:'新しい名前',usageQuantity:body.usageQuantity,enabled:true,carryEnabled:body.carryEnabled,revision:body.expectedRevision+1})}))
  return {state,posts,patches}
 }
+it('回数がnullの連携行は詳細を開いて操作し、0回を表示しない',async()=>{
+ setup()
+ server.use(http.get('/api/menu-entries',()=>HttpResponse.json([{id:11,recipeId:10,recipeTitle:'[E2E_TEST] 過去の献立',freeTextMemo:null,weekStartDate:getMondayOf(new Date()),inventoryLinkage:{...linked,remainingCount:null}}])))
+ const user=userEvent.setup();render(<MenuPage/>)
+ const title=await screen.findByRole('button',{name:'[E2E_TEST] 過去の献立'})
+ expect(title).not.toHaveTextContent('×0')
+ expect(screen.queryByRole('button',{name:'食べた'})).not.toBeInTheDocument()
+ await user.click(title)
+ expect(screen.getByRole('button',{name:'食べた'})).toBeVisible()
+})
 it('食事確認後だけ1個減算し取消で返し、週名を保つ',async()=>{
  const {posts}=setup();const user=userEvent.setup();render(<MenuPage/>);
  await user.click(await screen.findByRole('button',{name:'食べた'}));expect(posts).toHaveLength(0)

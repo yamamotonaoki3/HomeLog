@@ -1,3 +1,5 @@
+import { makeInventoryPlanResult } from '../mocks/inventoryPlan'
+import type { InventoryPlanCreateBody } from '../../api/zaikoTypes'
 import { shoppingEnvironment } from '../shoppingEnvironment'
 shoppingEnvironment()
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
@@ -16,12 +18,12 @@ function setup(path = '/zaiko') {
     http.get('/api/stores', () => HttpResponse.json([])),
     http.get('/api/inventory-items', () => HttpResponse.json(inventory)),
     http.get('/api/shopping-list-items', () => HttpResponse.json([{ id: 10, inventoryItemId: 1, name: inventory[0].name, price: inventory[0].price, isManual: false, purchased: false, purchasedQuantity: 0, plannedQuantity: 1, purchaseRevision: 0 }])),
-    http.patch('/api/inventory-items/:id', async ({ request }) => {
+    http.put('/api/inventory-items/:id', async ({ request }) => {
       const body = await request.json() as Record<string, unknown>; bodies.push(body)
       inventory[0].price = body.price as number | null
-      return HttpResponse.json(inventory[0])
+      return HttpResponse.json(makeInventoryPlanResult(body as unknown as InventoryPlanCreateBody,{id:1}))
     }),
-    http.post('/api/inventory-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json(inventory[0], { status: 201 }) }),
+    http.post('/api/inventory-items', async ({ request }) => { const body=await request.json() as InventoryPlanCreateBody; bodies.push(body as unknown as Record<string, unknown>); return HttpResponse.json(makeInventoryPlanResult(body), { status: 201 }) }),
     http.post('/api/shopping-list-items', async ({ request }) => { bodies.push(await request.json() as Record<string, unknown>); return HttpResponse.json({}, { status: 201 }) }),
   )
   render(<MemoryRouter initialEntries={[path]}><Link to="/zaiko/shopping">買い物リストへ</Link><ZaikoPage /></MemoryRouter>)
@@ -35,7 +37,7 @@ async function openInventoryDetails(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('値段入力', () => {
-  it('編集初期値を表示しPATCHで0と空欄nullを保存、数量を送らない', async () => {
+  it('編集初期値を表示しPUTで0と空欄nullと数量を一括保存', async () => {
     const { bodies } = setup(); const user = userEvent.setup()
     await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
@@ -43,7 +45,7 @@ describe('値段入力', () => {
     await user.type(screen.getByLabelText('値段（円・任意）'), '0')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(bodies[0]).toMatchObject({ price: 0 }))
-    expect(bodies[0]).not.toHaveProperty('quantity')
+    expect(bodies[0]).toHaveProperty('quantity', 0)
     await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('0')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
@@ -88,11 +90,13 @@ describe('値段入力', () => {
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))
     await user.type(screen.getByLabelText('値段（円・任意）'), '980')
-    server.use(http.patch('/api/inventory-items/:id', () => HttpResponse.json({ message: '保存失敗' }, { status: 500 }), { once: true }))
+    server.use(http.put('/api/inventory-items/:id', () => HttpResponse.json({ code: 'VALIDATION_ERROR', message: '保存失敗' }, { status: 400 }), { once: true }))
     await user.click(screen.getByRole('button', { name: '保存' }))
     await screen.findByText('保存失敗')
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('980')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+    await user.click(screen.getByRole('button', { name: '一覧を再取得' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '一覧を再取得' })).not.toBeInTheDocument())
     await openInventoryDetails(user)
     expect(screen.getByLabelText('値段（円・任意）')).toHaveValue('1280')
     await user.clear(screen.getByLabelText('値段（円・任意）'))

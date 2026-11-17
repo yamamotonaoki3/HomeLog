@@ -3,6 +3,8 @@ import { useId, useRef, useState } from 'react'
 import { useAuth } from '../context/useAuth'
 import { NotificationAlarm } from './NotificationAlarm'
 import { useDialog } from '../hooks/useDialog'
+import { usePwaUpdate } from '../hooks/usePwaUpdate'
+import { applyPwaUpdate } from '../lib/pwaUpdate'
 import { DemoBanner } from './DemoBanner'
 
 const kakeiboPaths = ['/kakeibo', '/warikan', '/accounts', '/events', '/fixed-costs', '/categories']
@@ -54,6 +56,7 @@ function AccountMenu({ id, onClose, onNavigate, onLogout }: { id: string; onClos
 }
 
 export function AppLayout() {
+  const update = usePwaUpdate()
   const { logout, user, userStatus } = useAuth()
   const accountName = user?.displayName ?? (userStatus === 'error' ? 'アカウント名を取得できません' : '読み込み中…')
   const navigate = useNavigate()
@@ -89,9 +92,14 @@ export function AppLayout() {
       <div className="app-top-navigation">
         <header className="global-nav">
           <div className="nav-inner">
+            <div className="nav-brand">
             <NavLink to="/" className="nav-logo">
               <NavigationIcon kind="home" /><span>シェファミ</span><small>HomeLog</small>
             </NavLink>
+            {update.ready && <button type="button" className="pwa-update-button" aria-label="アプリを更新" title="アプリを更新" disabled={update.busy || !update.online || update.applying} onClick={() => { void applyPwaUpdate() }}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" /></svg>
+            </button>}
+            </div>
             <nav aria-label="設定" className="account-nav">
               <NotificationAlarm />
               <NavLink to="/settings" className="settings-icon-link" aria-label="設定を開く" title="設定">
@@ -151,11 +159,11 @@ export function AppLayout() {
 
       <DemoBanner />
 
-      <main className="app-content">
+      <main className="app-content" inert={update.applying || undefined}>
         <Outlet />
       </main>
 
-      <nav aria-label="主要機能" className="primary-nav">
+      <nav aria-label="主要機能" className="primary-nav" inert={update.applying || undefined}>
         <NavLink to="/" end className={primaryNavClass('/')}>
           <NavigationIcon kind="home" /><span>ホーム</span>
         </NavLink>

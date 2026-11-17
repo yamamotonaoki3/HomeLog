@@ -41,6 +41,37 @@ it('通常自由メモ60件も対象週の関連を一括取得して4query以�
  expect(queries).toBeLessThanOrEqual(4)
 })
 
+it('60 inventories and mixed planned/detached menus expose current fields and event undo within the same four-query budget',async()=>{
+ const user=(await env.DB.prepare('SELECT user_id FROM household_members WHERE household_id=?').bind(householdId).first<{user_id:number}>())!
+ const week=currentWeekStart(getJstToday())
+ for(let index=0;index<60;index++){
+  const item=(await env.DB.prepare('INSERT INTO inventory_items(household_id,name,category_id,quantity_tenths,threshold_tenths,menu_plan_enabled) VALUES(?,?,?,30,0,1) RETURNING id').bind(householdId,'[E2E_TEST] budget plan '+index,categoryId).first<{id:number}>())!.id
+  const recipe=(await env.DB.prepare('INSERT INTO recipes(household_id,created_by_user_id,title) VALUES(?,?,?) RETURNING id').bind(householdId,user.user_id,'[E2E_TEST] live '+index).first<{id:number}>())!.id
+  const link=(await env.DB.prepare('INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,remaining_count,memo) VALUES(?,?,?,?,?,1,?) RETURNING id').bind(householdId,item,recipe,'[E2E_TEST] original',week,'[E2E_TEST] memo').first<{id:number}>())!.id
+  const entry=(await env.DB.prepare("INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,recipe_title_snapshot,meal_state) VALUES(?,?,?,?,10,'[E2E_TEST] weekly','eaten') RETURNING id").bind(householdId,recipe,week,link).first<{id:number}>())!.id
+  const event=crypto.randomUUID()
+  await env.DB.prepare('INSERT INTO menu_consumption_events(id,household_id,menu_entry_id,inventory_item_id,quantity_tenths,plan_count_delta,inventory_menu_link_id) VALUES(?,?,?,?,10,1,?)').bind(event,householdId,entry,item,link).run()
+  await env.DB.prepare('UPDATE menu_entries SET consumed_event_id=? WHERE id=?').bind(event,entry).run()
+  if(index%2)await env.DB.prepare('DELETE FROM inventory_menu_links WHERE id=?').bind(link).run()
+ }
+ const inventory=await measuredGet('inventory-items')
+ expect(inventory.response.status).toBe(200)
+ const inventories=await inventory.response.json<{menuPlanEnabled:boolean;menuLinks:{remainingCount:number;memo:string}[]}[]>()
+ expect(inventories).toHaveLength(60)
+ expect(inventories.every(row=>row.menuPlanEnabled)).toBe(true)
+ expect(inventories.flatMap(row=>row.menuLinks)).toHaveLength(30)
+ expect(inventories.flatMap(row=>row.menuLinks).every(link=>link.remainingCount===1&&link.memo==='[E2E_TEST] memo')).toBe(true)
+ expect(inventory.queries).toBeLessThanOrEqual(4)
+ const menu=await measuredGet('menu-entries?weekStartDate='+week)
+ expect(menu.response.status).toBe(200)
+ const entries=await menu.response.json<{recipeTitle:string;inventoryLinkage:{linkId:number|null;remainingCount:number|null;canConsume:boolean;canUndo:boolean;undoQuantity:number}}[]>()
+ expect(entries).toHaveLength(60)
+ expect(entries.every(row=>row.recipeTitle==='[E2E_TEST] weekly'&&row.inventoryLinkage.canUndo&&row.inventoryLinkage.undoQuantity===1)).toBe(true)
+ expect(entries.filter(row=>row.inventoryLinkage.linkId===null)).toHaveLength(30)
+ expect(entries.filter(row=>row.inventoryLinkage.canConsume&&row.inventoryLinkage.remainingCount===1)).toHaveLength(30)
+ expect(menu.queries).toBeLessThanOrEqual(4)
+})
+
 
 it('一括取得は関連順・削除原本snapshot・無関連・世帯と週の分離を保持する',async()=>{
  const user=(await env.DB.prepare('SELECT user_id FROM household_members WHERE household_id=?').bind(householdId).first<{user_id:number}>())!

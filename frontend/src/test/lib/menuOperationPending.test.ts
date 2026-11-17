@@ -23,7 +23,7 @@ it('破損・storage不可・排他不可では上書きせず送信可能にし
 })
 it('一致した保存だけを削除し無効scopeでは残す', async () => {
  const saved = await saveMenuPending(scope, () => request, () => true)
- if(saved.kind !== 'saved' || saved.pending.kind === 'register') throw new Error('not saved')
+ if(saved.kind !== 'saved' || saved.pending.kind !== 'consume') throw new Error('not saved')
  expect(await removeMenuPending({...saved.pending,entryId:99}, () => true)).toBe(false)
  expect(await removeMenuPending(saved.pending, () => false)).toBe(false)
  expect(await removeMenuPending(saved.pending, () => true)).toBe(true)

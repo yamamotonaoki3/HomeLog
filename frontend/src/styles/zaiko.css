@@ -802,3 +802,10 @@
 .inventory-menu-draft input[type="number"] { min-width: 0; min-height: 44px; font-size: 16px; }
 .inventory-form-modal .inventory-menu-drafts .ui-segmented label { margin: 0; }
 .inventory-menu-drafts .menu-recipe-picker { gap: 4px; }
+
+/* #555: 在庫と予定の割当を一括編集する。 */
+.inventory-menu-plan-summary { margin: 0; padding: 12px; border-radius: 10px; background: var(--ui-primary-soft, #edf2ff); color: var(--ui-primary-strong); font-weight: 700; overflow-wrap: anywhere; }
+.inventory-menu-draft textarea { width: 100%; min-width: 0; min-height: 80px; font-size: 16px; resize: vertical; }
+
+/* #555: 10桁の価格もモバイルの入力欄内に表示する。 */
+@media (max-width: 480px) { .inventory-form-modal .inventory-form-pair { grid-template-columns: minmax(0, 1fr); } }

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { server } from '../mocks/server'
+import { getPwaUpdateSafety } from '../../lib/pwaUpdateSafety'
 import { apiClient } from '../../api/client'
 import { DisplaySettingsPage, SettingsPage } from '../../pages/SettingsPage'
 import type { DisplaySettings } from '../../api/userSettingsTypes'
@@ -255,6 +256,7 @@ describe('DisplaySettingsPage の構成と未保存の表示 (#503)', () => {
     const parent = await screen.findByRole('checkbox', { name: 'イベント別支出' })
     const note = '未保存の変更があります。「保存」を押すとダッシュボードに反映されます。'
     expect(screen.queryByText(note)).not.toBeInTheDocument()
+    expect(getPwaUpdateSafety().editing).toBe(false)
     await user.click(parent)
     expect(screen.getByText(note)).toBeInTheDocument()
     expect(saved).toHaveLength(0)
@@ -263,6 +265,7 @@ describe('DisplaySettingsPage の構成と未保存の表示 (#503)', () => {
     // 並べ替えも未保存の変更として扱う。
     await user.click(screen.getByRole('button', { name: '「今日の状況」を下へ移動' }))
     expect(screen.getByText(note)).toBeInTheDocument()
+    expect(getPwaUpdateSafety().editing).toBe(true)
     expect(saved).toHaveLength(0)
   })
 

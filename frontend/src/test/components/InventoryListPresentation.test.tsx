@@ -1,5 +1,5 @@
-import { apiClient } from '../../api/client'
-import { AxiosError } from 'axios'
+import { shoppingEnvironment } from '../shoppingEnvironment'
+shoppingEnvironment()
 import { StrictMode } from 'react'
 import { render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -7,6 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { InventoryPanel } from '../../components/zaiko/InventoryPanel'
+import { getAccessToken, setAccessToken } from '../../api/tokenStorage'
 
 const item = { id: 1, name: '[E2E_TEST] testuser_milk', categoryId: 1, storeId: null, quantity: 2, threshold: 1, dailyConsumption: null, autoConsumptionEnabled: false }
 const props = { inventory: [item], categories: [{ id: 1, name: '食品', isDefault: true }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onRefresh: vi.fn().mockResolvedValue(undefined), onNotify: vi.fn() }
@@ -14,6 +15,20 @@ async function expand(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: item.name + 'の詳細' }))
   return screen.getByRole('region', { name: item.name + 'の数量変更' })
 }
+it('数量応答前の同session access更新は旧操作を隔離してbusyを解除する',async()=>{
+ let release!:()=>void,arrived!:()=>void
+ const gate=new Promise<void>(r=>{release=r}),entered=new Promise<void>(r=>{arrived=r})
+ server.use(http.patch('/api/inventory-items/1/quantity',async()=>{arrived();await gate;return HttpResponse.json({quantity:3})}))
+ const detached=vi.fn(),refresh=vi.fn(),user=userEvent.setup()
+ render(<InventoryPanel {...props} onRefresh={refresh} onScopeDetached={detached} />)
+ await expand(user)
+ await user.click(screen.getByRole('button',{name:item.name+'を増やす'}))
+ await entered
+ setAccessToken('testuser_refreshed_access');release()
+ await waitFor(()=>expect(detached).toHaveBeenCalledTimes(1))
+ expect(screen.getByRole('button',{name:item.name+'の詳細'})).toBeEnabled()
+ expect(refresh).not.toHaveBeenCalled()
+})
 
 it.each([[0, 0, true], [1, 1, true], [0.5, 1, true], [1.1, 1, false]] as const)('在庫%s/閾値%sの警告と数量を行から読み上げる', (quantity, threshold, low) => {
   render(<InventoryPanel {...props} inventory={[{ ...item, quantity, threshold }]} />)
@@ -86,27 +101,140 @@ it('pending中の適用/Enter/±競合を一要求に制限する', async () => 
   await waitFor(() => expect(within(region).getByLabelText('増減量')).toHaveValue(''))
 })
 
-it.each([400, 401])('確実拒否%sではdraftを保持し明示再試行できる', async status => {
-  let count = 0
-  server.use(http.patch('/api/inventory-items/1/quantity', () => { count++; return count === 1 && status !== 401 ? HttpResponse.json({ message: '[E2E_TEST] rejected' }, { status }) : HttpResponse.json({ quantity: 3 }) }))
-  const originalPatch = apiClient.patch.bind(apiClient)
-  const intercepted = status === 401 ? vi.spyOn(apiClient, 'patch').mockRejectedValueOnce(new AxiosError('rejected', undefined, undefined, undefined, { status: 401, data: { message: '[E2E_TEST] rejected' } } as never)).mockImplementation(originalPatch) : undefined
+it.each([400, 401, 409])('確実拒否%sではdraftを保持し明示再試行できる', async status => {
+  let count = 0, refreshes = 0, expired = false
+  server.use(
+    http.get('/api/auth/me', ({ request }) => expired && request.headers.get('Authorization') === 'Bearer testuser_access'
+      ? new HttpResponse(null, { status: 401 }) : HttpResponse.json({ id: 1 })),
+    http.post('/api/auth/refresh', () => { refreshes++; return HttpResponse.json({ accessToken: 'testuser_refreshed_access', expiresIn: 3600 }) }),
+    http.patch('/api/inventory-items/1/quantity', () => {
+      count++
+      if (count === 1) { expired = status === 401; return HttpResponse.json({ message: '[E2E_TEST] rejected' }, { status }) }
+      return HttpResponse.json({ quantity: 3 })
+    }),
+  )
   const user = userEvent.setup()
   render(<InventoryPanel {...props} />)
   const region = await expand(user)
   await user.type(within(region).getByLabelText('増減量'), '1')
   await user.click(within(region).getByRole('button', { name: '数量を適用' }))
-  await waitFor(() => expect(within(region).getByRole('button', { name: '数量を適用' })).toBeEnabled())
+  await waitFor(() => expect(within(region).getByRole('alert')).toHaveTextContent('[E2E_TEST] rejected'))
   expect(within(region).getByLabelText('増減量')).toHaveValue('1')
+  expect(count).toBe(1)
+  expect(refreshes).toBe(0)
+  if (status === 401) {
+    fireEvent.submit(within(region).getByRole('button', { name: '数量を適用' }).closest('form')!)
+    expect(count).toBe(1)
+    await user.click(screen.getByRole('button', { name: '献立連携の本人と世帯を再確認' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '献立連携の本人と世帯を再確認' })).not.toBeInTheDocument())
+    expect(refreshes).toBe(1)
+    expect(count).toBe(1)
+    expect(within(region).getByLabelText('増減量')).toHaveValue('1')
+  }
   await user.click(within(region).getByRole('button', { name: '数量を適用' }))
-  await waitFor(() => expect(count).toBe(status === 401 ? 1 : 2))
-  intercepted?.mockRestore()
+  await waitFor(() => expect(count).toBe(2))
 })
 
-it.each([404, 403, 408, 500, 'network', 'auth-refresh'] as const)('未保証%sは結果不明を保持し再開/GET後も±と同draftを再送しない', async status => {
+it.each([false, true])('初回本人確認の未完了/失敗（%s）は下書きを保持し確認処理を無効化しない', async failInitially => {
+  let release!: () => void, arrived!: () => void, checks = 0
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const entered = new Promise<void>(resolve => { arrived = resolve })
+  const bodies: unknown[] = []
+  server.use(
+    http.get('/api/auth/me', async () => {
+      checks++
+      if (checks === 1) { arrived(); await gate; if (failInitially) return new HttpResponse(null, { status: 503 }) }
+      return HttpResponse.json({ id: 1 })
+    }),
+    http.patch('/api/inventory-items/1/quantity', async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({ quantity: 2.5 }) }),
+  )
+  const user = userEvent.setup()
+  render(<InventoryPanel {...props} />)
+  await entered
+  const region = await expand(user)
+  await user.type(within(region).getByLabelText('増減量'), '0.5')
+  await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+  expect(bodies).toHaveLength(0)
+  release()
+  if (failInitially) {
+    await waitFor(() => expect(screen.getByRole('button', { name: '献立連携の本人と世帯を再確認' })).toBeInTheDocument())
+    await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+    expect(checks).toBe(1)
+    await user.click(screen.getByRole('button', { name: '献立連携の本人と世帯を再確認' }))
+  }
+  await waitFor(() => expect(screen.queryByRole('button', { name: '献立連携の本人と世帯を再確認' })).not.toBeInTheDocument())
+  expect(checks).toBe(failInitially ? 2 : 1)
+  expect(bodies).toHaveLength(0)
+  expect(within(region).getByLabelText('増減量')).toHaveValue('0.5')
+  await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+  await waitFor(() => expect(within(region).getByLabelText('増減量')).toHaveValue(''))
+  expect(bodies).toEqual([{ delta: 0.5 }])
+})
+
+it.each([401, 503])('確認済み数量操作のGET%sは下書きと幅を保持し明示再確認後の明示適用だけを送る', async status => {
+  let unavailable = false, authChecks = 0, refreshes = 0
+  const bodies: unknown[] = [], patchAuth: (string | null)[] = []
+  const refresh = vi.fn().mockResolvedValue(undefined)
+  server.use(
+    http.get('/api/auth/me', ({ request }) => {
+      authChecks++
+      return unavailable && (status === 503 || request.headers.get('Authorization') === 'Bearer testuser_access')
+        ? new HttpResponse(null, { status }) : HttpResponse.json({ id: 1 })
+    }),
+    http.post('/api/auth/refresh', () => { refreshes++; return HttpResponse.json({ accessToken: 'testuser_refreshed_access', expiresIn: 3600 }) }),
+    http.patch('/api/inventory-items/1/quantity', async ({ request }) => {
+      bodies.push(await request.json()); patchAuth.push(request.headers.get('Authorization'))
+      return HttpResponse.json({ quantity: 2.5 })
+    }),
+  )
+  const user = userEvent.setup()
+  render(<InventoryPanel {...props} onRefresh={refresh} />)
+  await waitFor(() => expect(screen.queryByRole('button', { name: '献立連携の本人と世帯を再確認' })).not.toBeInTheDocument())
+  const region = await expand(user)
+  await user.click(within(region).getByRole('button', { name: '0.1' }))
+  await user.type(within(region).getByLabelText('増減量'), '0.5')
+  unavailable = true
+  await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+  await waitFor(() => expect(within(region).getByRole('alert')).toHaveTextContent('本人と世帯を再確認してください'))
+  expect(authChecks).toBe(2)
+  expect(bodies).toHaveLength(0)
+  expect(refresh).not.toHaveBeenCalled()
+  expect(refreshes).toBe(0)
+  expect(within(region).queryByText(/結果を確認できません/)).not.toBeInTheDocument()
+  expect(within(region).getByLabelText('増減量')).toHaveValue('0.5')
+  expect(within(region).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.submit(within(region).getByRole('button', { name: '数量を適用' }).closest('form')!)
+  await user.click(within(region).getByRole('button', { name: item.name + 'を増やす' }))
+  expect(authChecks).toBe(2)
+  if (status === 503) {
+    await user.click(screen.getByRole('button', { name: '献立連携の本人と世帯を再確認' }))
+    await waitFor(() => expect(screen.getByText('本人と世帯を確認できません。再確認してください')).toBeInTheDocument())
+    fireEvent.submit(within(region).getByRole('button', { name: '数量を適用' }).closest('form')!)
+    expect(authChecks).toBe(3)
+    expect(bodies).toHaveLength(0)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(within(region).getByLabelText('増減量')).toHaveValue('0.5')
+    unavailable = false
+  }
+  await user.click(screen.getByRole('button', { name: '献立連携の本人と世帯を再確認' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: '献立連携の本人と世帯を再確認' })).not.toBeInTheDocument())
+  expect(refreshes).toBe(status === 401 ? 1 : 0)
+  if (status === 401) expect(getAccessToken()).toBe('testuser_refreshed_access')
+  expect(bodies).toHaveLength(0)
+  expect(refresh).not.toHaveBeenCalled()
+  expect(within(region).getByLabelText('増減量')).toHaveValue('0.5')
+  expect(within(region).getByRole('button', { name: '0.1' })).toHaveAttribute('aria-pressed', 'true')
+  await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+  await waitFor(() => expect(within(region).getByLabelText('増減量')).toHaveValue(''))
+  expect(bodies).toEqual([{ delta: 0.5 }])
+  expect(patchAuth).toEqual([status === 401 ? 'Bearer testuser_refreshed_access' : 'Bearer testuser_access'])
+  expect(refresh).toHaveBeenCalledTimes(1)
+})
+
+it.each([404, 403, 408, 500, 503, 'network', 'invalid'] as const)('未保証%sは結果不明を保持し再開/GET後も±と同draftを再送しない', async status => {
   let count = 0
   const refresh = status === 500 ? vi.fn().mockRejectedValue(new Error('[E2E_TEST] GET failed')) : vi.fn().mockResolvedValue(undefined)
-  server.use(http.patch('/api/inventory-items/1/quantity', () => { count++; return status === 'network' ? HttpResponse.error() : HttpResponse.json({ message: '[E2E_TEST] uncertain' }, { status: status === 'auth-refresh' ? 401 : status }) }))
+  server.use(http.patch('/api/inventory-items/1/quantity', () => { count++; return status === 'invalid' ? HttpResponse.json({ quantity: 'invalid' }) : status === 'network' ? HttpResponse.error() : HttpResponse.json({ message: '[E2E_TEST] uncertain' }, { status }) }))
   const user = userEvent.setup()
   const view = render(<InventoryPanel {...props} onRefresh={refresh} />)
   let region = await expand(user)
@@ -128,18 +256,54 @@ it.each([404, 403, 408, 500, 'network', 'auth-refresh'] as const)('未保証%s�
   expect(count).toBe(1)
 })
 
+it('数量PATCH成功後の親GET中に同session accessが変わりGETが失敗したら旧操作を隔離する', async () => {
+  let count = 0
+  const detached = vi.fn(), notify = vi.fn()
+  const refresh = vi.fn(async () => {
+    setAccessToken('testuser_refreshed_access')
+    throw new Error('[E2E_TEST] GET failed after access update')
+  })
+  server.use(http.patch('/api/inventory-items/1/quantity', () => { count++; return HttpResponse.json({ quantity: 3 }) }))
+  const user = userEvent.setup()
+  render(<InventoryPanel {...props} onRefresh={refresh} onScopeDetached={detached} onNotify={notify} />)
+  await waitFor(() => expect(screen.queryByRole('button', { name: '献立連携の本人と世帯を再確認' })).not.toBeInTheDocument())
+  const region = await expand(user)
+  await user.type(within(region).getByLabelText('増減量'), '1')
+  await user.click(within(region).getByRole('button', { name: '数量を適用' }))
+  await waitFor(() => expect(detached).toHaveBeenCalledTimes(1))
+  expect(refresh).toHaveBeenCalledTimes(1)
+  expect(count).toBe(1)
+  expect(screen.queryByText(/数量変更の結果を確認できません/)).not.toBeInTheDocument()
+  expect(notify).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: item.name + 'の詳細' })).toBeEnabled()
+  const reopened = await expand(user)
+  expect(within(reopened).getByLabelText('増減量')).toHaveValue('')
+  fireEvent.submit(within(reopened).getByRole('button', { name: '数量を適用' }).closest('form')!)
+  expect(count).toBe(1)
+  expect(refresh).toHaveBeenCalledTimes(1)
+})
+
 it('既知成功のGET失敗は適用済みとしてdraftを消費し結果不明にしない', async () => {
   let count = 0
   const notify = vi.fn()
   server.use(http.patch('/api/inventory-items/1/quantity', () => { count++; return HttpResponse.json({ quantity: 3 }) }))
   const user = userEvent.setup()
-  render(<InventoryPanel {...props} onRefresh={vi.fn().mockRejectedValue(new Error('GET failed'))} onNotify={notify} />)
+  const refresh = vi.fn().mockRejectedValueOnce(new Error('[E2E_TEST] GET failed')).mockResolvedValue(undefined)
+  render(<InventoryPanel {...props} onRefresh={refresh} onNotify={notify} />)
   const region = await expand(user)
   await user.type(within(region).getByLabelText('増減量'), '1')
   await user.click(within(region).getByRole('button', { name: '数量を適用' }))
   await waitFor(() => expect(notify).toHaveBeenCalledWith('在庫個数を更新しました。一覧の再取得に失敗しました'))
   expect(within(region).getByLabelText('増減量')).toHaveValue('')
   expect(within(region).queryByText(/結果を確認できません/)).not.toBeInTheDocument()
+  expect(within(region).getByRole('button', { name: item.name + 'を増やす' })).toBeDisabled()
+  fireEvent.submit(within(region).getByRole('button', { name: '数量を適用' }).closest('form')!)
+  expect(count).toBe(1)
+  await user.click(screen.getByRole('button', { name: '一覧を再取得' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: '一覧を再取得' })).not.toBeInTheDocument())
+  expect(refresh).toHaveBeenCalledTimes(2)
+  expect(within(region).getByLabelText('増減量')).toHaveValue('')
+  expect(within(region).getByRole('button', { name: item.name + 'を増やす' })).toBeEnabled()
   expect(count).toBe(1)
 })
 

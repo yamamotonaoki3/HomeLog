@@ -1,3 +1,4 @@
+import { beginPwaBusy } from '../lib/pwaUpdateSafety'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { apiClient } from '../api/client'
@@ -62,6 +63,7 @@ export function useShoppingPurchases(options: Options) {
       if (previousRequirement && !retry) { failed(); return }
       const current = generation.current.value
       running.current = true
+      const releasePwaBusy = beginPwaBusy()
       setStatus('listRefreshing')
       setMessage(outcome === 'external' ? '別の画面で前回の購入確認が終了しました。一覧を再取得しています…' : outcome === 'success' ? '購入は反映済みです。一覧を再取得しています…' : '購入は反映されていません。一覧を再取得しています…')
       try {
@@ -74,7 +76,7 @@ export function useShoppingPurchases(options: Options) {
         observedPending.current = null; listSyncRequired.current = null
         synchronized = outcome
       } catch { if (validScope()) failed(); else invalidated(); return }
-      finally { if (current === generation.current.value) running.current = false }
+      finally { releasePwaBusy(); if (current === generation.current.value) running.current = false }
     }
     if (stored.kind === 'pending') { observedPending.current = stored.pending; listSyncRequired.current = null; setPending(stored.pending); setStatus('unknown'); setMessage('前回の購入結果が未確認です。元の内容で確認してください') }
     else if (stored.kind === 'empty') { observedPending.current = null; setPending(null); setStatus(pendingAvailable() ? synchronized === 'notApplied' ? 'notApplied' : 'ready' : 'blocked'); setMessage(pendingAvailable() ? synchronized === 'notApplied' ? '購入は反映されていません。一覧を確認し、購入内容を再確認してください' : '' : '購入の安全な保存を利用できません。このブラウザでは購入を送信できません') }
@@ -88,8 +90,9 @@ export function useShoppingPurchases(options: Options) {
     const valid = () => alive.current && current === generation.current.value && !abort.signal.aborted && credentialsMatch(snapshot)
     const invalidated = () => { if (current === generation.current.value && alive.current) invalidate(snapshot) }
     running.current = true
+    const releasePwaBusy = beginPwaBusy()
     try { await inspect(expected, valid, invalidated, retry) }
-    finally { if (current === generation.current.value) running.current = false }
+    finally { releasePwaBusy(); if (current === generation.current.value) running.current = false }
   }, [inspect, invalidate])
   const recheck = useCallback(async () => {
     if (running.current) return
@@ -200,6 +203,7 @@ export function useShoppingPurchases(options: Options) {
     const snapshot = captureCredentials()
     if (!snapshot || snapshot.refreshToken !== credentials.current.refreshToken) { detach(); return }
     running.current = true
+    const releasePwaBusy = beginPwaBusy()
     const current = ++generation.current.value
     controller.current?.abort(); const abort = new AbortController(); controller.current = abort
     const valid = () => alive.current && current === generation.current.value && !abort.signal.aborted && credentialsMatch(snapshot) && scope.current?.actorUserId === expected.actorUserId && scope.current.householdId === expected.householdId
@@ -262,7 +266,7 @@ export function useShoppingPurchases(options: Options) {
       if (!valid()) { invalidated(); return }
       if (error instanceof PurchaseIdentityError) { detach(); return }
       setStatus(saved ? 'unknown' : 'blocked'); setMessage(saved ? '購入結果を確認できません。前回の購入結果を確認してください' : '本人と世帯を確認できません。再確認してから購入してください')
-    } finally { if (current === generation.current.value) running.current = false }
+    } finally { releasePwaBusy(); if (current === generation.current.value) running.current = false }
   }, [status, pending, detach, inspect, invalidate])
   const acknowledgeRefresh = () => {
     if (!pending && (status === 'refreshFailed' || status === 'notAppliedRefreshFailed')) {

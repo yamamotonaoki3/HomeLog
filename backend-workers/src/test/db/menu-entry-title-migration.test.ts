@@ -25,6 +25,6 @@ it('0029は既存連携週行を現原本名・削除済み関連名で補完し
  await applyD1Migrations(db,migrations.filter(m=>m.name>=migration.name))
  const names=['[E2E_TEST] current title','[E2E_TEST] deleted link snapshot',null,null,null]
  expect((await db.prepare('SELECT * FROM menu_entries ORDER BY id').all()).results).toEqual(meals.map((row,index)=>({...row,recipe_title_snapshot:names[index]})))
- expect((await db.prepare('SELECT * FROM inventory_menu_links ORDER BY id').all()).results).toEqual(links)
- expect((await db.prepare('SELECT * FROM inventory_items').all()).results).toEqual(inventories)
+ expect((await db.prepare('SELECT * FROM inventory_menu_links ORDER BY id').all()).results).toEqual(links.map(row=>({...row,remaining_count:null,memo:null})))
+ expect((await db.prepare('SELECT * FROM inventory_items').all()).results).toEqual(inventories.map(row=>({...row,menu_plan_enabled:0,menu_plan_revision:0})))
 })
