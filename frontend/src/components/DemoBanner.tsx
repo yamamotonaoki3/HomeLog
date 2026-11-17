@@ -44,12 +44,14 @@ export function DemoBanner() {
           デモを終わる
         </button>
       </div>
+      <p className="demo-banner-note">デモには個人情報や実際のデータを入力しないでください。</p>
       {error && <p className="demo-banner-error">{error}</p>}
-      {open && (
+      {open && (<>
         <ul id={highlightsId} className="demo-banner-highlights">
           {DEMO_HIGHLIGHTS.map((line) => <li key={line}>{line}</li>)}
         </ul>
-      )}
+        <p className="demo-banner-note">外部サービスを利用する画像解析は、デモでは停止しています。手動・WEBからのレシピ登録は試せます。</p>
+      </>)}
     </section>
   )
 }
