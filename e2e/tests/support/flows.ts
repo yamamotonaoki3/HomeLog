@@ -34,7 +34,7 @@ export async function setupUserWithHousehold(page: Page, label: string): Promise
 
 export async function getInviteCode(page: Page): Promise<string> {
   await page.goto('/household/settings')
-  const code = (await page.locator('p', { hasText: '招待コード' }).locator('strong').textContent())?.trim()
+  const code = (await page.getByTestId('household-invite-code').textContent())?.trim()
   expect(code).toBeTruthy()
   return code!
 }
@@ -103,8 +103,8 @@ export async function openInventoryDetails(page: Page, row: Locator): Promise<Lo
   await expect(row).toHaveAttribute('aria-expanded', 'true')
   const operations = page.getByRole('region', { name: name + 'の数量変更', exact: true })
   await expect(operations).toBeVisible()
-  await operations.getByRole('button', { name: name + 'の詳細設定', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '在庫詳細・編集', exact: true })
+  await operations.getByRole('button', { name: name + 'の詳細を編集', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '在庫の詳細編集', exact: true })
   await expect(dialog).toBeVisible()
   return dialog
 }

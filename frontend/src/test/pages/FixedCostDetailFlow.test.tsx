@@ -81,7 +81,7 @@ describe('固定費詳細の操作', () => {
     await user.clear(screen.getByLabelText('金額'))
     await user.type(screen.getByLabelText('金額'), '85000')
     await user.click(screen.getByRole('button', { name: '更新' }))
-    await waitFor(() => expect(screen.getByRole('dialog', { name: '固定費詳細' })).toHaveTextContent('85000円'))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '固定費詳細' })).toHaveTextContent('85,000円'))
     expect(await screen.findByText('一覧更新失敗')).toBeInTheDocument()
     expect(patches).toBe(1)
   })

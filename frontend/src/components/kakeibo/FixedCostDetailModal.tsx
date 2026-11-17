@@ -25,7 +25,7 @@ export function FixedCostDetailModal({ fixedCost: cost, paymentSource, members, 
       </div>
       <dl>
         <dt>固定費名</dt><dd>{cost.name}</dd>
-        <dt>金額</dt><dd>{cost.amount}円</dd>
+        <dt>金額</dt><dd>{cost.amount.toLocaleString('ja-JP')}円</dd>
         <dt>支払日</dt><dd>{cost.paymentDay}日</dd>
         <dt>公開範囲</dt><dd>{cost.personal ? '個人' : '世帯共有'}</dd>
         <dt>世帯合計対象</dt><dd>{cost.includeInHouseholdTotal ? '含める' : '含めない'}</dd>

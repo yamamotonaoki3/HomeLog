@@ -14,59 +14,183 @@
   width: 55px;
   margin-left: 6px;
 }
-.inventory-list-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(4rem, auto) 1.25rem;
-  gap: 8px;
+/* 在庫一覧: 1品目1枚のカード。行(展開ボタン)と右端の削除(×)を並べ、押すとカードの中に数量操作を開く(#469) */
+.inventory-search-label,
+.modal .inventory-search-label {
+  margin-top: 0;
+}
+.inventory-category-filter {
+  margin: 12px 0;
+}
+.inventory-list-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 9px;
+}
+.inventory-list-head .ui-section-label {
+  margin: 0;
+}
+.inventory-low-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 9px 3px 4px;
+  border-radius: 999px;
+  background: #fff3e0;
+  color: #8a4300;
+  font-size: 12px;
+  font-weight: 700;
+}
+.inventory-low-legend .inventory-low-stock {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
 }
 .inventory-list {
+  display: grid;
+  gap: 10px;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-/* 一覧の行: 詳細を開くボタンと、右端の削除(×)ボタンを並べる(#380) */
+.inventory-card {
+  min-width: 0;
+  padding: 0;
+}
 .inventory-row {
   display: flex;
   align-items: stretch;
-}
-.inventory-row > .list-row-button {
-  flex: 1;
-  width: auto;
   min-width: 0;
+}
+.inventory-row-button {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 24px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 64px;
+  position: relative;
+  padding: 12px 6px 12px 14px;
+  border: 0;
+  /* 角を丸めると四隅が押せなくなるため、ボタン自体は四角のままにする。丸みはカードとフォーカス枠で付ける。 */
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.inventory-list-heading {
-  padding: 0;
+.inventory-card:has(.inventory-row-button:hover:not(:disabled)) {
+  border-color: #b7cbe4;
 }
-.inventory-list-heading > .inventory-list-grid {
-  flex: 1;
+.inventory-row-button:focus-visible {
+  outline: none;
+}
+.inventory-row-button:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 2px solid var(--ui-focus);
+  border-radius: 13px 0 0 13px;
+  pointer-events: none;
+}
+.inventory-card.is-open .inventory-row-button:focus-visible::after {
+  border-bottom-left-radius: 0;
+}
+.inventory-row-main {
+  display: grid;
+  gap: 2px;
   min-width: 0;
-  padding: 12px 8px;
 }
-.inventory-delete-button,
-.inventory-delete-spacer {
-  flex: 0 0 44px;
-  width: 44px;
+.inventory-row-name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.inventory-row-category {
+  color: var(--ui-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.inventory-list-quantity {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+/* 行頭の印。補充対象(在庫が閾値以下)だけ赤い「！」にし、それ以外は控えめな四角にする。 */
+.inventory-low-stock {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+.inventory-low-stock:not(.is-low)::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #9fb0c4;
+  border-radius: 3px;
+  background: linear-gradient(#9fb0c4, #9fb0c4) center / 5px 5px no-repeat;
+}
+.inventory-low-stock.is-low {
+  border-radius: 50%;
+  background: #d92d32;
+  color: #fff;
+}
+.inventory-chevron {
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-right: 2px solid #6c7c92;
+  border-bottom: 2px solid #6c7c92;
+  transform: rotate(45deg);
+}
+.inventory-card.is-open .inventory-chevron {
+  margin-top: 4px;
+  transform: rotate(-135deg);
 }
 .inventory-delete-button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
   border: 0;
-  border-bottom: 1px solid #ddd;
-  background: white;
-  color: #8695a9;
+  border-radius: 0 15px 15px 0;
+  background: none;
+  color: #c8343a;
   font: inherit;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 300;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.inventory-delete-button:hover {
+.inventory-card.is-open .inventory-delete-button {
+  border-bottom-right-radius: 0;
+}
+.inventory-delete-button:hover:not(:disabled) {
   background: #fef2f2;
-  color: #dc2626;
 }
 .inventory-delete-button:focus-visible {
   outline: 2px solid #dc2626;
   outline-offset: -2px;
   background: #fef2f2;
-  color: #dc2626;
+}
+.inventory-row-button:disabled,
+.inventory-delete-button:disabled {
+  cursor: not-allowed;
 }
 .inventory-delete-dialog {
   max-width: 420px;
@@ -120,71 +244,8 @@
   min-width: 0;
   max-width: 100%;
 }
-.shopping-add-form {
-  flex-wrap: wrap;
-}
-.shopping-add-form input,
-.shopping-add-form select {
-  min-width: 0;
-  max-width: 100%;
-}
-.price-cell {
-  white-space: nowrap;
-}
-.shopping-list-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(2.5rem, .8fr) minmax(2.5rem, 1fr);
-  gap: 0.5rem;
-}
-.zaiko-search {
-  width: 100%;
-  max-width: 360px;
-  margin: 8px 0 12px;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 16px;
-}
-.inventory-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 16px;
-  margin: 8px 0 12px;
-}
-.inventory-filters .zaiko-search {
-  flex: 1 1 220px;
-  min-width: 0;
-  margin: 0;
-}
-.inventory-category-filter {
-  display: flex;
-  flex: 0 1 220px;
-  min-width: 0;
-  max-width: 100%;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-}
-.inventory-category-filter select {
-  width: 100%;
-  min-height: 38px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 16px;
-}
 .inventory-modal .hint {
   overflow-wrap: anywhere;
-}
-.inventory-consumption-switch {
-  max-width: 100%;
-  white-space: normal;
-}
-.inventory-consumption-switch[aria-checked="true"] {
-  border-color: var(--primary, #2563eb);
 }
 .inventory-quantity-row {
   display: flex;
@@ -270,61 +331,481 @@
   gap: 8px;
 }
 
-/* #420: 在庫の行下操作と既存詳細フォームの操作領域 */
-.inventory-list-grid > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.inventory-list-quantity { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.inventory-low-stock { color: #b45309; font-weight: 700; text-align: center; }
-.inventory-expanded { padding: 12px; border-bottom: 1px solid #ddd; background: #f8fafc; min-width: 0; }
+/* #420・#469: 行を押して開く数量操作欄 */
+.inventory-expanded {
+  min-width: 0;
+  padding: 14px 15px 10px;
+  border-top: 1px solid var(--ui-border);
+}
 .inventory-expanded[hidden] { display: none; }
-.inventory-inline-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
-.inventory-delta-form { margin: 12px 0; }
-.inventory-delta-form label { display: block; margin-bottom: 4px; }
-.inventory-delta-form > div { display: flex; gap: 8px; }
-.inventory-delta-form button { flex-shrink: 0; white-space: nowrap; }
-.inventory-delta-form input { width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; padding: 8px; }
-.inventory-expanded .hint { overflow-wrap: anywhere; }
+.inventory-expanded-title {
+  margin: 0 0 8px;
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 800;
+}
+.inventory-expanded-caption {
+  margin: 0 0 6px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.inventory-stepper {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+}
+.inventory-stepper-button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-soft);
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.inventory-stepper-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.inventory-current-quantity {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.inventory-expanded .inventory-step-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.inventory-expanded .inventory-step-options > span {
+  margin-right: auto;
+  color: var(--ui-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+.inventory-expanded .inventory-step-options .btn {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-radius: 10px;
+  background: #eef3f8;
+  color: #4a5c74;
+  font-weight: 700;
+}
+.inventory-expanded .inventory-step-options .btn[aria-pressed="true"] {
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary-strong);
+  box-shadow: inset 0 0 0 1.5px var(--ui-primary);
+}
+.inventory-delta-form { margin: 12px 0 0; }
+.inventory-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inventory-delta-row .ui-tag {
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary-strong);
+}
+.inventory-delta-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+}
+.inventory-delta-form .hint {
+  margin: 6px 0 10px;
+  overflow-wrap: anywhere;
+}
+.inventory-expanded-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 8px;
+  margin-top: 6px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.inventory-details-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ui-primary-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.inventory-details-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.inventory-expanded :is(button, input):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* 主要操作は44px以上、入力は16px以上を保つ(#420) */
 .inventory-expanded .btn,
 .inventory-modal .btn,
-.inventory-delete-dialog .btn,
-[data-testid="inventory-panel"] > .toolbar .btn { min-width: 44px; min-height: 44px; }
-.inventory-expanded .inventory-step-options { grid-template-columns: repeat(2, 44px); }
+.inventory-delete-dialog .btn { min-width: 44px; min-height: 44px; }
 .inventory-modal .inventory-step-options { grid-template-columns: repeat(2, 44px); }
 .inventory-modal .inventory-quantity-inline { grid-template-columns: minmax(0, 1fr) 44px; }
 .inventory-modal .inventory-quantity-inline .btn { width: 44px; height: 44px; }
 .inventory-modal { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .inventory-modal input, .inventory-modal select { min-height: 44px; font-size: 16px; }
-.inventory-filters input, .inventory-filters select, .inventory-delete-button { min-height: 44px; }
 .inventory-row .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.inventory-details-button { max-width: 100%; white-space: normal; }
 
-/* #421: 店舗別の購入下書きとナビ上の反映操作 */
+/* #469: 在庫の登録／詳細編集フォーム(買い物の詳細は同じ .inventory-modal を使うため、専用のクラスで分ける) */
+.inventory-form-modal {
+  border-radius: 18px;
+  color: var(--ui-text);
+}
+.inventory-form-modal h2 {
+  margin-bottom: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.inventory-form-modal label {
+  margin-top: 14px;
+  color: #42536a;
+  font-weight: 700;
+}
+.inventory-form-modal input,
+.inventory-form-modal select {
+  min-height: 48px;
+  margin-top: 5px;
+  padding: 10px 12px;
+  border-color: var(--ui-control-border);
+  border-radius: 12px;
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+}
+.inventory-form-modal .inventory-category-heading {
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.inventory-form-modal .inventory-category-heading + select {
+  margin-top: 0;
+}
+.inventory-form-modal .btn-tiny {
+  padding: 0 4px;
+  background: none;
+  color: var(--ui-primary-strong);
+  font-weight: 700;
+}
+.inventory-form-modal .inventory-category-form {
+  border-color: var(--ui-border);
+  border-radius: 12px;
+}
+.inventory-form-modal .inventory-category-form label {
+  margin-top: 0;
+}
+/* 数量操作の見出し。入力欄のラベルと同じ見た目にそろえる。 */
+.inventory-quantity-caption {
+  margin: 14px 0 5px;
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.inventory-form-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+.inventory-form-pair > div { min-width: 0; }
+.inventory-form-modal .qty-value {
+  border-color: var(--ui-control-border);
+  border-radius: 12px;
+}
+.inventory-consumption-card {
+  margin-top: 16px;
+  padding: 12px 14px;
+  box-shadow: none;
+}
+.inventory-consumption-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inventory-consumption-head > div { min-width: 0; }
+.inventory-consumption-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+.inventory-consumption-card .hint {
+  margin: 2px 0 0;
+  color: var(--ui-muted);
+}
+.inventory-consumption-card > .hint { margin-top: 8px; }
+.inventory-form-modal :is(button, input, select):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* #421・#471: 店舗別の買い物リスト(1品目1カード)とナビ上の反映操作 */
 .shopping-panel { padding-bottom: calc(var(--shopping-bar-height, 80px) + 24px); }
-.shopping-store-group { margin: 16px 0; min-width: 0; }
-.shopping-store-group h3 { margin: 0; padding: 8px 0; font-size: 15px; overflow-wrap: anywhere; border-bottom: 1px solid #cbd5e1; }
-.shopping-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: stretch; border-bottom: 1px solid #e2e8f0; }
-.shopping-checkbox { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
-.shopping-checkbox input { width: 22px; height: 22px; margin: 0; accent-color: #2563eb; }
-.shopping-row .shopping-item-button { display: flex; flex-direction: column; align-items: stretch; gap: 6px; border: 0; min-width: 0; min-height: 56px; padding: 10px 8px; }
-.shopping-item-name { overflow-wrap: anywhere; }
-.shopping-item-quantities { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: #475569; font-variant-numeric: tabular-nums; }
-.shopping-panel .toolbar .btn, .shopping-panel .toolbar select, .shopping-panel .btn { min-width: 44px; min-height: 44px; }
+.shopping-search-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 14px;
+}
+.shopping-search-head .ui-field-label { margin: 0 0 7px; }
+.shopping-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.shopping-panel .shopping-sort select {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+.shopping-add-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.shopping-add-form label {
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.shopping-add-form input,
+.shopping-add-form select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+.shopping-store-group { min-width: 0; margin: 16px 0 0; }
+.shopping-store-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 9px;
+  color: var(--ui-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.shopping-store-head h3 {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.shopping-store-head span { flex-shrink: 0; }
+.shopping-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shopping-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+  padding: 0;
+}
+.shopping-checkbox { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding-left: 8px; cursor: pointer; }
+.shopping-checkbox input { width: 24px; height: 24px; margin: 0; accent-color: var(--ui-primary); }
+/* ボタン自体は四角のままにして四隅も押せるようにする(#469)。 */
+.shopping-row .shopping-item-button {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 12px 38px 12px 6px;
+  border: 0;
+  background: none;
+}
+/* 開く印。行ボタンの子は品名と数量の2つに保つため、擬似要素で描く。 */
+.shopping-row .shopping-item-button::before {
+  content: '›';
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  color: #6c7c92;
+  font-size: 18px;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+.shopping-row .shopping-item-button:hover { background: none; }
+.shopping-row:has(.shopping-item-button:hover) { border-color: #b7cbe4; }
+.shopping-row .shopping-item-button:focus-visible { outline: none; background: none; }
+.shopping-row .shopping-item-button:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 2px solid var(--ui-focus);
+  border-radius: 0 13px 0 0;
+  pointer-events: none;
+}
+/* 行の購入数(#485)。行ボタンの外に置き、品名の下の段に「購入数 － 数 ＋」を並べる。 */
+.shopping-row .shopping-checkbox { grid-row: 1 / span 2; }
+.shopping-count {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 10px 6px;
+}
+.shopping-count-label { margin-right: auto; color: var(--ui-muted); font-size: 13px; }
+.shopping-count-button {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-primary-strong);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.shopping-count-button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.shopping-count-button:hover:not(:disabled) { border-color: var(--ui-primary); }
+.shopping-count-button:active:not(:disabled) { background: #e3edfb; }
+.shopping-count-button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.shopping-count-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.shopping-count-value {
+  min-width: 52px;
+  color: var(--ui-text);
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.shopping-item-name { font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
+.shopping-item-quantities { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--ui-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.shopping-panel .btn { min-width: 44px; min-height: 44px; }
 .shopping-panel input:not([type=checkbox]), .shopping-panel select { font-size: 16px; min-height: 44px; }
-.shopping-purchase-bar { position: fixed; z-index: 45; bottom: var(--shopping-bar-bottom, 0px); left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; width: min(100%, 1100px); padding: 12px 20px; background: #fff; border-top: 1px solid #cbd5e1; box-shadow: 0 -2px 10px #0f172a18; }
+.shopping-purchase-bar {
+  position: fixed;
+  z-index: 45;
+  bottom: var(--shopping-bar-bottom, 0px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  width: min(100%, 1100px);
+  padding: 10px 20px 12px;
+  background: #fff;
+  border-top: 1px solid var(--ui-border);
+  box-shadow: 0 -2px 10px #0f172a14;
+}
+.shopping-purchase-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 13px;
+}
+.shopping-purchase-summary span:last-child { color: var(--ui-text); font-size: 15px; font-weight: 800; }
 .shopping-panel[hidden] .shopping-purchase-bar { display: none; }
 .shopping-recovery, .shopping-status { overflow-wrap: anywhere; }
-.shopping-recovery { padding: 12px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; }
-.shopping-detail-modal label { display: block; margin: 12px 0 6px; }
-.shopping-detail-modal input { width: 100%; min-width: 0; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.shopping-recovery { padding: 12px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 12px; }
+.shopping-detail-modal { border-radius: 18px; color: var(--ui-text); }
+.shopping-detail-modal label { display: block; margin: 14px 0 6px; color: #42536a; font-weight: 700; }
+.shopping-detail-modal input { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid var(--ui-control-border); border-radius: 12px; }
+.shopping-detail-modal dt { color: var(--ui-muted); font-size: 13px; }
 .shopping-planned-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .shopping-planned-controls input { flex: 1 1 120px; }
 .shopping-planned-controls button { flex: 0 0 auto; }
-.shopping-confirm-dialog ul { padding: 0; list-style: none; }
-.shopping-confirm-dialog li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+.shopping-confirm-dialog { border-radius: 18px; color: var(--ui-text); }
+.shopping-confirm-lead { margin: 0 0 12px; color: var(--ui-muted); font-size: 14px; }
+.shopping-confirm-card { padding: 12px 14px; box-shadow: none; }
+.shopping-confirm-title { margin: 0 0 4px; font-size: 15px; font-weight: 800; }
+.shopping-confirm-dialog ul { margin: 0; padding: 0; list-style: none; }
+.shopping-confirm-dialog li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; padding: 10px 0; border-top: 1px solid var(--ui-border); }
 .shopping-confirm-dialog li span { overflow-wrap: anywhere; }
+.shopping-confirm-dialog li strong { font-variant-numeric: tabular-nums; }
 .shopping-panel :is(button,input,select):focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
-@media (max-width: 480px) { .shopping-purchase-bar { padding: 12px; } .shopping-purchase-bar .btn { flex: 1 1 150px; } }
+@media (max-width: 480px) { .shopping-purchase-bar { padding: 10px 12px 12px; } }
 
 /* 長い品名でも冒頭に明示closeと初期focusを確保し、末尾closeは保持する。 */
 .shopping-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .shopping-detail-heading h2 { flex: 1; min-width: 0; margin: 0; }
 .shopping-detail-heading .shopping-detail-close { flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 24px; line-height: 1; }
+
+/* #548: 登録・編集フォーム内のレシピ連携。既存フォームと同じ操作領域を保つ。 */
+.inventory-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.inventory-menu-registration,
+.inventory-menu-drafts,
+.inventory-menu-draft { display: grid; min-width: 0; gap: 12px; }
+.inventory-menu-registration { margin-top: 16px; padding: 14px; box-shadow: none; }
+.inventory-menu-draft { padding: 12px; box-shadow: none; }
+.inventory-menu-draft-list { display: grid; min-width: 0; gap: 12px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.inventory-form-modal .inventory-menu-check { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; overflow-wrap: anywhere; }
+.inventory-form-modal .inventory-menu-check input { flex: 0 0 24px; width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; accent-color: var(--ui-primary); }
+.inventory-menu-draft input[type="number"] { min-width: 0; min-height: 44px; font-size: 16px; }
+.inventory-form-modal .inventory-menu-drafts .ui-segmented label { margin: 0; }
+.inventory-menu-drafts .menu-recipe-picker { gap: 4px; }
+
+/* #555: 在庫と予定の割当を一括編集する。 */
+.inventory-menu-plan-summary { margin: 0; padding: 12px; border-radius: 10px; background: var(--ui-primary-soft, #edf2ff); color: var(--ui-primary-strong); font-weight: 700; overflow-wrap: anywhere; }
+.inventory-menu-draft textarea { width: 100%; min-width: 0; min-height: 80px; font-size: 16px; resize: vertical; }
+
+/* #555: 10桁の価格もモバイルの入力欄内に表示する。 */
+@media (max-width: 480px) { .inventory-form-modal .inventory-form-pair { grid-template-columns: minmax(0, 1fr); } }

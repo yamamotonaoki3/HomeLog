@@ -20,6 +20,7 @@ export interface Recipe {
 
 // GET /api/menu-entries?weekStartDate=... から返ってくる献立リストの1件分の形。
 export interface MenuEntry {
+  inventoryLinkage?: MenuInventoryLinkage | null
   id: number
   // 確定登録(レシピ選択)の場合のみ設定される。ラフ登録の場合はnull。
   recipeId: number | null
@@ -30,3 +31,24 @@ export interface MenuEntry {
   freeTextMemo: string | null
   weekStartDate: string
 }
+export interface MenuInventoryLinkage {
+  linkId: number | null
+  inventoryItemId: number | null
+  inventoryName: string | null
+  quantity: number | null
+  usageQuantity: number
+  enabled: boolean
+  carryEnabled: boolean
+  linkRevision: number | null
+  remainingCount?: number | null
+  memo?: string | null
+  menuPlanEnabled?: boolean | null
+  menuPlanRevision?: number | null
+  undoQuantity?: number | null
+  mealState: 'uneaten' | 'eaten'
+  mealRevision: number
+  canConsume: boolean
+  canUndo: boolean
+  unavailableReason: 'inventory_deleted' | 'recipe_deleted' | 'link_disabled' | 'daily_consumption' | null
+}
+export interface MenuMealResult { menuEntryId: number; mealState: 'uneaten' | 'eaten'; mealRevision: number; inventoryItemId: number; quantity: number; carryEnabled: boolean; remainingCount?: number | null; menuPlanEnabled?: boolean; menuPlanRevision?: number }

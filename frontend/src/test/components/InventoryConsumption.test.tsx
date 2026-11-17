@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
-import { InventoryModal } from '../../components/zaiko/InventoryModal'
+import { InventoryModalHarness as InventoryModal } from '../helpers/InventoryModalHarness'
 
 const props = { categories: [{ id: 1, name: '[E2E_TEST] food', isDefault: false }], stores: [], onCategoriesChange: vi.fn(), onStoresChange: vi.fn(), onClose: vi.fn(), onSaved: vi.fn().mockResolvedValue(undefined) }
 it('初回入力・Space操作・オフの消費量を送信する', async () => {
@@ -17,7 +17,7 @@ it('初回入力・Space操作・オフの消費量を送信する', async () =>
   expect(input).toHaveAttribute('step', '0.1')
   expect(input).toHaveAttribute('min', '0.1')
   expect(input).toHaveAttribute('max', '99999.9')
-  const toggle = screen.getByRole('switch', { name: '自動消費' })
+  const toggle = screen.getByRole('switch', { name: '毎日の自動消費' })
   expect(toggle).toHaveAttribute('aria-checked', 'true')
   await user.type(input, '0.2')
   expect(toggle).toHaveAttribute('aria-checked', 'true')
@@ -36,7 +36,7 @@ it('初回入力・Space操作・オフの消費量を送信する', async () =>
   expect(bodies[0]).toMatchObject({ dailyConsumption: 0.3, autoConsumptionEnabled: false })
 })
 it('編集の初期値・空欄化・保存失敗時の入力保持', async () => {
-  server.use(http.patch('/api/inventory-items/1', () => HttpResponse.json({ message: '[E2E_TEST] failed' }, { status: 500 })))
+  server.use(http.put('/api/inventory-items/1', () => HttpResponse.json({ message: '[E2E_TEST] failed' }, { status: 500 })))
   const user = userEvent.setup()
   render(<InventoryModal {...props} item={{ id: 1, name: '[E2E_TEST] testuser_milk', categoryId: 1, storeId: null, quantity: 1, threshold: 0, dailyConsumption: 0.2, autoConsumptionEnabled: true }} />)
   const input = screen.getByLabelText('1日の消費量（任意）')

@@ -257,3 +257,56 @@
     background: #fff;
   }
 }
+
+/* 追加画像資料16〜18に合わせた一覧(1件1カード・公開範囲の印)とフォーム。先にある指定を上書きする。 */
+.events-page .event-register-button { min-height: 48px; }
+.events-page .event-list { display: grid; gap: 10px; }
+.events-page .event-card { min-width: 0; padding: 0; }
+/* 行は従来どおり hover とフォーカスで同じ地色・outline を使い、カードの丸みに沿わせる。 */
+.events-page .event-card .event-list-row { position: relative; align-items: center; min-height: 72px; padding: 12px 34px 12px 12px; border: 0; border-radius: 15px; }
+.events-page .event-card .event-list-row:not(:hover):not(:focus-visible) { background: none; }
+.events-page .event-card .event-list-row::after { content: '›'; position: absolute; top: 50%; right: 14px; color: #6c7c92; font-size: 18px; line-height: 1; transform: translateY(-50%); }
+.events-page .event-card .event-date-block { padding: 8px 4px; border-radius: 12px; background: #eaf2fd; color: var(--ui-primary-strong); text-align: center; }
+.events-page .event-card .event-row-title { font-size: 15px; font-weight: 800; }
+.events-page .event-card .event-row-meta { color: var(--ui-muted); font-size: 13px; }
+.events-page .event-row-scope { align-self: flex-start; justify-self: start; width: fit-content; margin-top: 2px; }
+.events-page .events-empty { padding: 16px; color: var(--ui-muted); }
+.events-page .events-empty p { margin: 0; }
+@media (max-width: 480px) { .events-page .ui-narrow { padding: 0; } }
+
+.modal.event-editor { border-radius: 18px; color: var(--ui-text); }
+.event-editor-header h2 { font-size: 22px; font-weight: 800; line-height: 1.35; }
+.event-editor .event-editor-trash { border-radius: 12px; }
+.event-editor-fields > label,
+.event-editor .event-time-inputs label,
+.event-editor .event-other-settings > label { margin-top: 14px; color: #42536a; font-weight: 700; }
+.event-editor input:not([type="checkbox"]):not([type="radio"]),
+.event-editor select { min-height: 48px; margin-top: 5px; padding: 10px 12px; border-color: var(--ui-control-border); border-radius: 12px; background-color: var(--ui-surface); color: var(--ui-text); }
+/* 終日・通知・サマリー表示は、チェックボックスのまま切り替えスイッチの見た目にする(役割と操作は変えない)。 */
+.event-editor label[for="event-all-day"],
+.event-editor label[for="event-notify"],
+.event-editor label[for="event-show-on-dashboard"] { flex-direction: row-reverse; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 8px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font-size: 15px; font-weight: 800; cursor: pointer; }
+.event-editor #event-all-day,
+.event-editor #event-notify,
+.event-editor #event-show-on-dashboard { appearance: none; -webkit-appearance: none; position: relative; flex: 0 0 46px; width: 46px; height: 26px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px; background: #7d8da1; cursor: pointer; transition: background-color 0.15s; }
+.event-editor #event-all-day::after,
+.event-editor #event-notify::after,
+.event-editor #event-show-on-dashboard::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.15s; }
+.event-editor #event-all-day:checked,
+.event-editor #event-notify:checked,
+.event-editor #event-show-on-dashboard:checked { background: var(--ui-primary); }
+.event-editor #event-all-day:checked::after,
+.event-editor #event-notify:checked::after,
+.event-editor #event-show-on-dashboard:checked::after { transform: translateX(20px); }
+.event-editor #event-all-day:disabled,
+.event-editor #event-notify:disabled,
+.event-editor #event-show-on-dashboard:disabled { opacity: 0.45; cursor: not-allowed; }
+.event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard), .event-editor :is(#event-all-day, #event-notify, #event-show-on-dashboard)::after { transition: none; } }
+.event-editor .event-notify-reason { margin: 6px 2px 0; color: var(--ui-muted); }
+.event-editor .event-visibility { padding: 6px 14px; border: 1px solid var(--ui-border); border-radius: 14px; }
+.event-editor .event-visibility legend { padding: 0 4px; color: #42536a; font-size: 13px; font-weight: 700; }
+.event-editor .event-other-toggle { position: relative; padding: 12px 40px 12px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font-size: 15px; font-weight: 800; }
+.event-editor .event-other-toggle span { margin-top: 2px; color: var(--ui-muted); font-weight: 400; }
+.event-editor .event-other-toggle::after { content: ''; position: absolute; top: 50%; right: 16px; width: 8px; height: 8px; margin-top: -7px; border-right: 2px solid #6c7c92; border-bottom: 2px solid #6c7c92; transform: rotate(45deg); }
+.event-editor .event-other-toggle[aria-expanded="true"]::after { margin-top: -2px; transform: rotate(-135deg); }

@@ -1,0 +1,47 @@
+[
+  {
+    "name": "04_shared_personal",
+    "duration": "14.400000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "capturedFrames": 262,
+    "decode": "passed"
+  },
+  {
+    "name": "05_split_payment",
+    "duration": "21.360000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "capturedFrames": 368,
+    "decode": "passed"
+  },
+  {
+    "name": "06_web_recipe",
+    "duration": "17.480000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "capturedFrames": 267,
+    "decode": "passed"
+  },
+  {
+    "name": "06_web_recipe_from_page",
+    "duration": "12.560000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "capturedFrames": 174,
+    "decode": "passed"
+  },
+  {
+    "name": "07_shopping_list",
+    "duration": "18.880000",
+    "width": 780,
+    "height": 1688,
+    "fps": "25/1",
+    "capturedFrames": 323,
+    "decode": "passed"
+  }
+]

@@ -261,20 +261,28 @@ export function WarikanPage() {
 
   const detail = splits.find((split) => split.id === detailId) ?? null
   const visibleSplits = splits.filter((split) => worldFilter === 'all' || (worldFilter === 'external' ? split.isExternal : !split.isExternal))
+  const plannedTotal = (role: ExpenseSplit['role']) => visibleSplits
+    .filter((split) => split.role === role && split.status !== 'settled')
+    .reduce((sum, split) => sum + split.amountDue, 0)
   const emptyMessage = worldFilter === 'all'
     ? '割り勘の内訳はありません'
     : `${worldFilter === 'internal' ? '世帯内' : '世帯外'}の割り勘の内訳はありません`
 
   return (
     <div ref={pageRef} className="page warikan-page">
-      <div className="panel" data-testid="warikan-panel">
-        <div className="toolbar">
-          <h2>割り勘・精算</h2>
+      <div className="ui-narrow" data-testid="warikan-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>割り勘・精算</h2>
+            <p className="ui-page-sub">未精算と精算済みを一覧で確認</p>
+          </div>
+        </header>
+        <div className="kakeibo-links">
           <Link to="/kakeibo" className="btn btn-secondary">
             家計簿に戻る
           </Link>
         </div>
-        <div className="tabs" role="tablist" aria-label="相手の絞り込み">
+        <div className="tabs warikan-filter-tabs" role="tablist" aria-label="相手の絞り込み">
           <button
             type="button"
             role="tab"
@@ -303,12 +311,17 @@ export function WarikanPage() {
             世帯外
           </button>
         </div>
+        {/* 表示中(絞り込み後)の内訳のうち、精算が済んでいない分の合計。 */}
+        <dl className="ui-card warikan-plan-summary" data-testid="warikan-plan-summary">
+          <div><dt>受け取り予定</dt><dd className="kakeibo-amount-income">{plannedTotal('payer').toLocaleString('ja-JP')}円</dd></div>
+          <div><dt>支払い予定</dt><dd className="kakeibo-amount-expense">{plannedTotal('debtor').toLocaleString('ja-JP')}円</dd></div>
+        </dl>
         {visibleSplits.length === 0 ? (
-          <p>{emptyMessage}</p>
+          <p className="ui-empty">{emptyMessage}</p>
         ) : (
           <ul className="warikan-list" aria-label="割り勘の内訳一覧">
             {visibleSplits.map((split) => (
-              <li key={split.id}>
+              <li key={split.id} className="ui-card warikan-card">
                 <button
                   type="button"
                   className="list-row-button warikan-row"

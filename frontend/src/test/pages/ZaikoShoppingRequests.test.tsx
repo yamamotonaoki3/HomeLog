@@ -33,7 +33,7 @@ it('並替GETの401を同じrefresh-sessionで再試行した新しい予定数�
  )
  const user=userEvent.setup();render(<MemoryRouter initialEntries={['/zaiko/shopping']}><ZaikoPage/></MemoryRouter>);await screen.findByRole('button',{name:'testuser_品目の詳細'})
  await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'name')
- await waitFor(()=>expect(within(screen.getByRole('button',{name:'testuser_品目の詳細'})).getByText('予定 7')).toBeInTheDocument())
+ await waitFor(()=>expect(within(screen.getByRole('group',{name:'testuser_品目の購入数'})).getByRole('status')).toHaveTextContent('7'))
  expect(sortAuth).toEqual(['Bearer testuser_access','Bearer testuser_sort_access']);expect(refreshes).toBe(1);expect(getRefreshToken()).toBe('testuser_refresh')
 })
 it.each(['別user','同user再login'])('新refresh-sessionへの切替後は遅い並替GETを採用しない: %s',async(mode)=>{
@@ -46,7 +46,7 @@ it.each(['別user','同user再login'])('新refresh-sessionへの切替後は遅�
   await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'name');await arrived
   setTokens(mode==='別user'?'testuser_other_access':'testuser_relogin_access',mode==='別user'?'testuser_other_refresh':'testuser_relogin_refresh')
   await act(async()=>{release();await finished})
-  expect(within(screen.getByRole('button',{name:'testuser_品目の詳細'})).getByText('予定 1')).toBeInTheDocument();expect(screen.queryByText('予定 9')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('group',{name:'testuser_品目の購入数'})).getByRole('status')).toHaveTextContent(/^1$/)
  } finally { release();apiClient.interceptors.response.eject(interceptor) }
 })
 it('初回一覧失敗を空一覧と区別しGET再取得で回復する',async()=>{
@@ -58,5 +58,5 @@ it('遅い旧並替GETが新しいGETの予定数を上書きしない',async()=
  common();let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>{release=r}),arrived=new Promise<void>(r=>{entered=r})
  server.use(http.get('/api/shopping-list-items',async({request})=>{const sort=new URL(request.url).searchParams.get('sort');if(sort==='name'){entered();await gate;return HttpResponse.json([{...item,plannedQuantity:9}])}return HttpResponse.json([{...item,plannedQuantity:sort==='category'?3:1}])}))
  const user=userEvent.setup();render(<MemoryRouter initialEntries={['/zaiko/shopping']}><ZaikoPage/></MemoryRouter>);await screen.findByRole('button',{name:'testuser_品目の詳細'})
- await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'name');await arrived;await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'category');await waitFor(()=>expect(within(screen.getByRole('button',{name:'testuser_品目の詳細'})).getByText('予定 3')).toBeInTheDocument());release();await waitFor(()=>expect(screen.queryByText('予定 9')).not.toBeInTheDocument())
+ await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'name');await arrived;await user.selectOptions(screen.getByRole('combobox',{name:'並び替え'}),'category');const shown=()=>within(screen.getByRole('group',{name:'testuser_品目の購入数'})).getByRole('status');await waitFor(()=>expect(shown()).toHaveTextContent(/^3$/));release();await waitFor(()=>expect(shown()).toHaveTextContent(/^3$/))
 })

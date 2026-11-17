@@ -38,7 +38,12 @@ for (const width of [1280, 390, 320]) {
         await expect(shoppingRow.locator('.dashboard-stock-value')).toHaveText(item.want)
       } else await expect(shoppingRow).toHaveCount(0)
     }
-    await expect(card.getByRole('link')).toHaveCount(0)
+    // 一覧の行はリンクにせず、小見出しの右にそれぞれの一覧へのリンクを置く(#493)。
+    await expect(shopping.getByRole('link')).toHaveCount(0)
+    await expect(inventory.getByRole('link')).toHaveCount(0)
+    await expect(card.getByRole('link', { name: '買い物リストを見る', exact: true })).toHaveAttribute('href', '/zaiko/shopping')
+    await expect(card.getByRole('link', { name: '在庫一覧を見る', exact: true })).toHaveAttribute('href', '/zaiko')
+    await expect(card.getByRole('link')).toHaveCount(2)
     await expect(card.getByText('値段', { exact: true })).toBeVisible()
     await expect(card.getByText('残数', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
@@ -77,7 +82,7 @@ for (const width of [1280, 390, 320]) {
     }
     await page.goto('/zaiko')
     await openInventoryDetails(page, page.getByTestId('inventory-panel').getByRole('button', { name: `${items[0].name}の詳細`, exact: true }))
-    const detail = page.getByRole('dialog', { name: '在庫詳細・編集' })
+    const detail = page.getByRole('dialog', { name: '在庫の詳細編集' })
     await page.getByLabel('値段（円・任意）').fill('980')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(detail).toBeHidden()

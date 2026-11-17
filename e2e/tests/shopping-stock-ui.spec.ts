@@ -31,7 +31,8 @@ for (const width of [1280, 390, 320]) {
 
     // 購入を反映すると、在庫が増えた値になる(閾値超えで買い物リストから外れる前に確認できるよう、閾値以下のまま)
     await confirmShoppingPurchase(page)
-    await expect(page.getByRole('status')).toContainText('購入を反映しました')
+    // 行の購入数(#485)も status の役割を持つので、文言で絞り込む。
+    await expect(page.getByRole('status').filter({ hasText: '購入を反映しました' })).toBeVisible()
     const inventory = await (await page.request.get('/api/inventory-items', { headers })).json()
     expect(inventory.find((entry: { id: number }) => entry.id === itemId).quantity).toBe(1.5)
     await page.goto('/zaiko')

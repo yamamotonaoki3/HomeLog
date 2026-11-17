@@ -229,7 +229,7 @@ describe('EventsPage', () => {
 })
 
 
-it.each([false, true])('削除後のframe復帰がcommit前でも、消える行ではなく登録へ戻す (StrictMode=%s)', async (strict) => {
+it.each([false, true])('削除後は、消える行ではなく登録へフォーカスを戻す (StrictMode=%s)', async (strict) => {
   const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 0 } })
   const user = userEvent.setup()
   const page = <MemoryRouter><EventsPage /></MemoryRouter>
@@ -237,22 +237,13 @@ it.each([false, true])('削除後のframe復帰がcommit前でも、消える行
   const row = await screen.findByRole('button', { name: '旅行の詳細' })
   await user.click(row)
   await user.click(screen.getByRole('button', { name: '旅行を削除' }))
-  let connectedWhenFrameRan: boolean | undefined
-  // rAFはReactのcommit完了を保証しない。callback先行の順序だけを固定し、React/共通hookは実物を使う。
-  const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
-    connectedWhenFrameRan = row.isConnected
-    callback(performance.now())
-    return 1
-  })
-  try {
-    await user.click(screen.getByRole('button', { name: '削除する' }))
-    await screen.findByText('イベントはありません')
-    if (frame.mock.calls.length) expect(connectedWhenFrameRan).toBe(true)
-    expect(row.isConnected).toBe(false)
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(calls.filter(call => call.method === 'DELETE')).toHaveLength(1)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus())
-  } finally { frame.mockRestore() }
+  await user.click(screen.getByRole('button', { name: '削除する' }))
+  await screen.findByText('イベントはありません')
+  expect(row.isConnected).toBe(false)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(calls.filter(call => call.method === 'DELETE')).toHaveLength(1)
+  // 復帰は描画の合図(requestAnimationFrame)を待たず、モーダルが外れた直後に行う(#497)。
+  await waitFor(() => expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus())
 })
 
 
@@ -339,6 +330,63 @@ describe('イベント一覧A案・一覧限定partial (#426)', () => {
     expect(rows[1]).toHaveFocus()
     expect(calls.filter(call => call.method !== 'GET')).toHaveLength(0)
   })
+  it('編集を閉じた後に移したフォーカスを、後から行へ引き戻さない (#497)', async () => {
+    setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+    const user = userEvent.setup()
+    renderEventsPage()
+    const row = await screen.findByRole('button', { name: '旅行の詳細' })
+    const add = screen.getByRole('button', { name: 'イベントを登録' })
+    // 混んだ環境では、描画の合図(requestAnimationFrame)が利用者の次の操作より後に届く。その順序を固定する。
+    const delayed: FrameRequestCallback[] = []
+    const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => delayed.push(callback))
+    const lateFrame = () => act(async () => { for (const callback of delayed.splice(0)) callback(performance.now()) })
+    try {
+      for (const close of ['escape', 'cancel'] as const) {
+        await user.click(row)
+        expect(screen.getByRole('dialog', { name: 'イベントを編集' })).toBeInTheDocument()
+        if (close === 'cancel') await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+        else await user.keyboard('{Escape}')
+        await waitFor(() => expect(row).toHaveFocus())
+        // 閉じた直後に利用者が別の場所へ移る。遅れた合図が届いても、フォーカスは移した先に残る。
+        add.focus()
+        await lateFrame()
+        expect(add).toHaveFocus()
+      }
+      // 行から開いた後に「イベントを登録」を開いて取り消すと、前に開いた行ではなく登録ボタンへ戻る。
+      await user.click(row)
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(row).toHaveFocus())
+      await user.click(add)
+      expect(screen.getByRole('dialog', { name: 'イベントを登録' })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+      await waitFor(() => expect(add).toHaveFocus())
+      await lateFrame()
+      expect(add).toHaveFocus()
+      // 閉じた直後に開き直したモーダルから、フォーカスが背景の行へ抜けない。
+      await user.click(row)
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(row).toHaveFocus())
+      await user.keyboard('{Enter}')
+      const reopened = screen.getByRole('dialog', { name: 'イベントを編集' })
+      await lateFrame()
+      expect(reopened).toContainElement(document.activeElement as HTMLElement)
+    } finally { frame.mockRestore() }
+  })
+  it('更新後の一覧から対象が消えていたら、消えた行ではなく登録へフォーカスを戻す (#497)', async () => {
+    const { calls } = setupApi({ events: [travelEvent], summaries: { 1: 0 } })
+    const user = userEvent.setup()
+    renderEventsPage()
+    const row = await screen.findByRole('button', { name: '旅行の詳細' })
+    await user.click(row)
+    // 編集中に、別の端末などで対象が一覧から外れた状態にする。
+    server.use(http.get('/api/events', () => HttpResponse.json([])))
+    await user.click(screen.getByRole('button', { name: '更新' }))
+    await screen.findByText('イベントはありません')
+    expect(row.isConnected).toBe(false)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(calls.filter(call => call.method === 'PATCH')).toHaveLength(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'イベントを登録' })).toHaveFocus())
+  })
   it.each([true, false])('旧単発通知値%sはOFF表示し取消だけでは書き換えない', async (notifyEnabled) => {
     const { calls } = setupApi({ events: [{ ...travelEvent, notifyEnabled }], summaries: { 1: 0 } })
     const user = userEvent.setup()
@@ -348,5 +396,31 @@ describe('イベント一覧A案・一覧限定partial (#426)', () => {
     expect(screen.getByLabelText('通知する')).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(calls.filter(call => call.method !== 'GET')).toHaveLength(0)
+  })
+})
+
+describe('イベント一覧の見た目に関わる構成', () => {
+  it('補足と見出しを表示し、1件を1つのリスト項目にして公開範囲の印を添える', async () => {
+    setupApi({ events: [{ ...travelEvent, id: 1, name: '[E2E_TEST] 家族でお出かけ', personal: false }, { ...travelEvent, id: 2, name: '[E2E_TEST] 健康診断', personal: true }] })
+    renderEventsPage()
+    expect(await screen.findByRole('heading', { level: 2, name: 'イベント一覧' })).toBeInTheDocument()
+    expect(screen.getByText('家族と個人の予定を一覧で確認')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'イベントを登録' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 3, name: '登録済みのイベント' })).toBeInTheDocument()
+    const items = within(screen.getByRole('list', { name: 'イベント' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(within(within(items[0]).getByRole('button', { name: '[E2E_TEST] 家族でお出かけの詳細' })).getByText('世帯共有')).toBeInTheDocument()
+    expect(within(within(items[1]).getByRole('button', { name: '[E2E_TEST] 健康診断の詳細' })).getByText('個人')).toBeInTheDocument()
+  })
+
+  it('フォームの操作はキャンセル・登録の順に並ぶ', async () => {
+    setupApi()
+    renderEventsPage()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'イベントを登録' }))
+    const dialog = screen.getByRole('dialog', { name: 'イベントを登録' })
+    const cancel = within(dialog).getByRole('button', { name: 'キャンセル' })
+    const submit = within(dialog).getByRole('button', { name: '登録' })
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

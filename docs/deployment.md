@@ -65,18 +65,69 @@ Cronも公開対象となる。既存の日次処理（UTC毎日16:00、JST翌01
 
 **本番反映後の初回実行では、全世帯の先週以前の献立登録が物理削除される。** 今週と未来の献立・元のレシピは残るが、削除した献立の復元機能はない。Cronの実行時刻は遅れる場合があり、実行時点のJSTの週を基準に削除する。公開先D1/R2と自動処理開始・既存データへの影響を確認し、ユーザーから本番反映の指示を受けてから実行する。
 
-**パスワード再設定メール（#401）**はGASのMailApp経由。`PASSWORD_RESET_MAIL_ENABLED`は初期値`"false"`（停止）で、停止中・secret未設定のあいだ申請APIは利用不可（503）を返す。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。GAS公開・送信用Googleアカウントの認可・`PASSWORD_RESET_GAS_URL`/`PASSWORD_RESET_GAS_SECRET`のsecret登録・有効化の手順は[password-reset-gas-setup.md](details/password-reset-gas-setup.md)を参照する（実値はコミット・チャット・Issueに書かない）。D1マイグレーション0023（`password_reset_attempts`）は`npm run deploy`の際に自動適用される。
+**パスワード再設定メール（#401）**はGASのMailApp経由。`PASSWORD_RESET_MAIL_ENABLED`は初期値`"false"`（停止）で、停止中・secret未設定のあいだ申請APIは利用不可（503）を返す。`APP_PASSWORD_RESET_LOG_TOKEN_ENABLED`は本番で必ず`false`とし、生トークンを出力しない。GAS公開・送信用Googleアカウントの認可・`PASSWORD_RESET_GAS_URL`/`PASSWORD_RESET_GAS_SECRET`のsecret登録・有効化の手順は[password-reset-gas-setup.md](details/password-reset-gas-setup.md)を参照する（実値はコミット・チャット・Issueに書かない）。D1マイグレーション0023（`password_reset_attempts`）を含む未適用マイグレーションは、Workers Buildsのデプロイコマンドが配信前に適用する。`npm run deploy`単独ではマイグレーションは適用しないため、手動公開時は先に`npx wrangler d1 migrations apply DB --remote`を実行する。
 
 **固定費の取りこぼし回収（#396）**: マイグレーション0024が`fixed_costs.effective_from`を追加し、既存の固定費は**適用日（JST）**を有効開始日にする。適用日以前の支払日は回収せず、以降の支払日から今月分の取りこぼしを回収する。反映後の最初のCron（JST翌01:00）から有効になる。反映後に`wrangler d1 execute homelog-db --remote`の読み取り専用クエリで`effective_from`が全行に入っていることを確認する。
 
 OCRには既存の`GOOGLE_VISION_API_KEY`のsecret設定（同じ対話入力方式）とGoogle Vision側の利用準備、およびWorkers AIの利用準備が別途必要。ローカルE2Eではリモートバインディングを無効にする。
+
+<a id="デモ環境"></a>
+
+## デモ環境（#529）
+
+README から誰でも試せるデモ環境。本番とは別の Worker・D1 で動かし、プログラムと画面は本番と同じビルドを使う。設計は [2026-11-14-demo-environment-design.md](superpowers/specs/2026-11-14-demo-environment-design.md)、API は [api-design.md](details/api-design.md) の「デモ環境」を参照。
+
+### 構成
+
+| 項目 | 本番 | デモ |
+| --- | --- | --- |
+| Worker | `homelog-backend-workers` | `homelog-demo` |
+| URL | `https://homelog-backend-workers.nyproducts.workers.dev` | `https://homelog-demo.nyproducts.workers.dev`（入口は `/demo`） |
+| D1 | `homelog-db` | `homelog-demo-db`（本番とは別） |
+| R2・Workers AI・Google Vision | あり | つながない |
+| メール | — | 送らない（`PASSWORD_RESET_MAIL_ENABLED = "false"`） |
+| `DEMO_MODE` | 未設定 | `"true"` |
+| `JWT_SECRET` | 本番の値 | 本番と別の値（デモの Worker にだけ登録） |
+| Cron | `0 15 * * *`・`0 16 * * *` | 同じ2本 ＋ `0 * * * *`（期限切れのデモの削除） |
+| 自動デプロイ（Workers Builds） | `production` ブランチ | つないでいない（手元から公開する） |
+
+設定は `backend-workers/wrangler.toml` の `[env.demo]`。`vars`・D1・Cron は名前付き環境に引き継がれないため、デモ側に書き直している。`DEMO_MODE` が `"true"` のときだけ `/api/demo/start` などのデモ用の動作、止める機能、期限切れの判定が働く。本番では `/api/demo/start` と `/api/demo/switch` は 404 を返す。
+
+### 公開・更新の手順
+
+本番と同じタイミング（ユーザーの「本番に出して」）で更新する。デモ専用の D1 に対してマイグレーションを適用してから公開する。
+
+```sh
+cd frontend && npm run build
+cd ../backend-workers
+npx wrangler d1 migrations apply DB --remote --env demo
+npx wrangler deploy --env demo
+```
+
+`--env demo` を付け忘れると本番の D1・Worker が対象になるため、必ず付ける。
+
+### 初回作成の手順（実施済み・作り直す場合の参考）
+
+以下は `backend-workers/` で行う。値は書かず、対話入力で登録する。
+
+1. `npx wrangler d1 create homelog-demo-db` で D1 を作成し、表示された `database_id` を `wrangler.toml` の `[[env.demo.d1_databases]]` に設定する（D1 の ID は秘密情報ではない）。
+2. `npx wrangler secret put JWT_SECRET --env demo` で、本番とは別の十分な強度の値を対話入力する。コマンド引数・vars・Issue・ログへ実値を書かない。
+3. 上の「公開・更新の手順」でマイグレーションの適用と公開を行う。初回は Worker が未作成のため、作成の確認が出る。
+
+`wrangler secret put` は既存の Worker でも新しいバージョンを即時にデプロイする。
+
+### 確認方法
+
+- `GET https://homelog-demo.nyproducts.workers.dev/api/demo` が `{ "enabled": true }` を返す。本番の同じ API は `{ "enabled": false }` を返す。
+- `https://homelog-demo.nyproducts.workers.dev/demo` を PC で開くとスマホの枠の中にログイン画面が出て、「デモを試す（登録不要）」でデモ太郎として始まる。
+- 期限切れのデモは毎時の Cron で削除される。Cloudflare のダッシュボードで `homelog-demo` の Cron の実行を確認できる。
 
 ## 公開後の確認・残作業
 
 - HTTPS公開URLで`/`、`/login`、`/recipes/iphone-shortcut`への直接アクセスとreloadを確認する。
 - 同じoriginでhealthの200 JSON、未認証meの401 JSON、未知APIと`/api`の非HTML 404を確認する。
 - 登録・ログイン・本人表示・共有URLの未ログイン復帰・PWA登録後のオンライン動作を確認する。架空の確認データのみを使う。
-- 公開URL確定後、ユーザーがiPhone Safariとショートカット共有を実機確認する。iCloud共有リンクの配布は後続Issue。カスタムドメイン・本番ID・課金プランは本Issueで決めない。
+- iPhone Safariとショートカット共有の実機確認はユーザーが行う。iCloud共有リンクは現在、画面の「ショートカットを追加」から配布している。
 
 参考（2026-10-16確認）: [Cloudflare SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)、[Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)。
 

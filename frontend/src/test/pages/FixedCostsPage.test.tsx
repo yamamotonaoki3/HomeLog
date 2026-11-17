@@ -157,7 +157,8 @@ describe('FixedCostsPage', () => {
     renderFixedCostsPage()
 
     await waitFor(() => expect(screen.getByText('家賃')).toBeInTheDocument())
-    expect(screen.getByText('80000円')).toBeInTheDocument()
+    // 金額は行のほか、末尾の登録額合計にも表示される(#475)。
+    expect(within(screen.getByRole('button', { name: '家賃の詳細' })).getByText('80,000円')).toBeInTheDocument()
     expect(screen.getByText('27日')).toBeInTheDocument()
     const row = screen.getByRole('button', { name: '家賃の詳細' })
     expect(row.querySelectorAll('span')).toHaveLength(4)
@@ -459,7 +460,7 @@ describe('FixedCostsPage', () => {
     await user.type(amountInput, '85000')
     await user.click(screen.getByRole('button', { name: '更新' }))
 
-    await waitFor(() => expect(screen.getAllByText('85000円')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByText('85,000円')).toHaveLength(3) /* 行・詳細・登録額合計(#475) */)
     const patchCall = calls.find((c) => c.method === 'PATCH' && c.url === '/api/fixed-costs/1')
     expect(patchCall?.body).toMatchObject({ name: '家賃', amount: 85000 })
   })
@@ -695,4 +696,47 @@ it('初回一覧取得と保存後の再取得が失敗してもPOST成功の既
   expect(screen.queryByText('固定費はありません')).not.toBeInTheDocument()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(calls.filter(call=>call.method==='POST')).toHaveLength(1)
+})
+
+describe('固定費一覧の見た目に関わる構成 (#475)', () => {
+  const base = { personal: false, includeInHouseholdTotal: true, editable: true, splitInputType: null, splits: [], accountId: null, cardId: null }
+
+  it('補足と自動計上の説明を表示し、1件を1つのリスト項目にして登録額合計を添える', async () => {
+    setupApi({ fixedCosts: [
+      { ...base, id: 1, name: '[E2E_TEST] 家賃', amount: 80000, paymentDay: 5 },
+      { ...base, id: 2, name: '[E2E_TEST] 通信費', amount: 6000, paymentDay: 25, personal: true },
+    ] })
+    renderFixedCostsPage()
+    expect(await screen.findByRole('heading', { level: 2, name: '固定費管理' })).toBeInTheDocument()
+    expect(screen.getByText('毎月の支払予定を確認')).toBeInTheDocument()
+    expect(screen.getByText(/毎月の支払日に家計簿の支出へ自動計上/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '固定費を登録' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '家計簿に戻る' })).toHaveAttribute('href', '/kakeibo')
+    const items = within(await screen.findByRole('list', { name: '登録済みの固定費' })).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    const row = within(items[0]).getByRole('button', { name: '[E2E_TEST] 家賃の詳細' })
+    expect([...row.querySelectorAll(':scope > span')].map(cell => cell.textContent)).toEqual(['[E2E_TEST] 家賃', '80,000円', '5日', 'なし'])
+    const total = screen.getByTestId('fixed-cost-total')
+    expect(total).toHaveTextContent('登録額合計（参考）')
+    expect(total).toHaveTextContent('86,000円')
+  })
+
+  it('固定費がないときは登録額合計を表示しない', async () => {
+    setupApi()
+    renderFixedCostsPage()
+    await screen.findByText('固定費はありません')
+    expect(screen.queryByTestId('fixed-cost-total')).not.toBeInTheDocument()
+  })
+
+  it('フォームの操作はキャンセル・登録の順に並び、「詳細設定」は名前を変えず内容の補足を表示する', async () => {
+    setupApi()
+    renderFixedCostsPage()
+    await userEvent.click(await screen.findByRole('button', { name: '固定費を登録' }))
+    const dialog = screen.getByRole('dialog', { name: '固定費を登録' })
+    const cancel = within(dialog).getByRole('button', { name: 'キャンセル' })
+    const submit = within(dialog).getByRole('button', { name: '登録' })
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const toggle = within(dialog).getByRole('button', { name: '詳細設定' })
+    expect(toggle).toHaveTextContent('公開範囲・世帯合計・割り勘')
+  })
 })

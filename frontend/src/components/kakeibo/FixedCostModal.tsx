@@ -146,18 +146,24 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
               <option key={presetName} value={presetName} />
             ))}
           </datalist>
-          <label htmlFor="fc-amount">金額</label>
-          <input id="fc-amount" type="number" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <label htmlFor="fc-payment-day">支払日</label>
-          <input
-            id="fc-payment-day"
-            type="number"
-            step="1"
-            min="1"
-            max="31"
-            value={paymentDay}
-            onChange={(e) => setPaymentDay(e.target.value)}
-          />
+          <div className="transaction-pair">
+            <div>
+              <label htmlFor="fc-amount">金額</label>
+              <input id="fc-amount" type="number" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="fc-payment-day">支払日</label>
+              <input
+                id="fc-payment-day"
+                type="number"
+                step="1"
+                min="1"
+                max="31"
+                value={paymentDay}
+                onChange={(e) => setPaymentDay(e.target.value)}
+              />
+            </div>
+          </div>
           <label htmlFor="fc-account">引き落とし元（任意）</label>
           <select id="fc-account" value={accountSelection} onChange={(e) => setAccountSelection(e.target.value)}>
             <option value="">選択しない</option>
@@ -173,7 +179,10 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
             ))}
           </select>
           </section>
-          <button type="button" className="btn btn-secondary fixed-cost-settings-toggle" aria-expanded={detailsOpen} aria-controls="fc-details" onClick={() => setDetailsOpen((open) => !open)}>詳細設定</button>
+          <button type="button" className="btn btn-secondary fixed-cost-settings-toggle" aria-expanded={detailsOpen} aria-controls="fc-details" onClick={() => setDetailsOpen((open) => !open)}>
+            <span>詳細設定</span>
+            <span className="transaction-split-sub" aria-hidden="true">公開範囲・世帯合計・割り勘</span>
+          </button>
           <div id="fc-details" hidden={!detailsOpen}>
           <fieldset>
             <legend>公開範囲</legend>
@@ -207,12 +216,12 @@ export function FixedCostModal({ fixedCost, accounts, members, membersLoaded = t
           />
           </div>
           {error && <p className="error" role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {isEdit ? '更新' : '登録'}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+          <div className="modal-actions ui-form-actions">
+            <button type="button" className="ui-form-cancel" onClick={onClose} disabled={submitting}>
               キャンセル
+            </button>
+            <button type="submit" className="ui-action" disabled={submitting}>
+              {isEdit ? '更新' : '登録'}
             </button>
           </div>
         </form>

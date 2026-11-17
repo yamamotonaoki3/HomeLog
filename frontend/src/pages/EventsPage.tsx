@@ -18,6 +18,19 @@ export function EventsPage() {
     (detailTrigger.current?.isConnected ? detailTrigger.current : addButton.current)?.focus({ preventScroll: true })
   }, [])
   const closeDetail = useCallback(() => { setDetailId(null); restoreFocus() }, [restoreFocus])
+  // 登録・編集モーダルを閉じた後のフォーカス復帰(#497)。閉じる処理では要求だけを残し、モーダルが画面から外れた直後に一度だけ確かめる。
+  // 次の描画まで遅らせる(requestAnimationFrame)と、その間に利用者が移したフォーカスや、開き直したモーダルのフォーカスを奪う。
+  const restoreAfterClose = useRef(false)
+  useEffect(() => {
+    if (modalTarget !== undefined || !restoreAfterClose.current) return
+    restoreAfterClose.current = false
+    // 開いた元(行・登録ボタン)へ戻すのは共通処理(useDialog)に任せる。その処理の後もフォーカスを失っているとき
+    // (削除などで元の行が消えたとき)だけ補う。
+    queueMicrotask(() => {
+      const active = document.activeElement
+      if (!active || active === document.body) restoreFocus()
+    })
+  }, [modalTarget, restoreFocus])
   const [toast, setToast] = useState({ message: '', showKey: 0 })
 
   const showToast = useCallback((message: string) => {
@@ -52,7 +65,7 @@ export function EventsPage() {
       const latest = await fetchEvents()
       if (wasEdit && !latest.some((event) => event.id === modalTarget.id)) {
         setDetailId(null)
-        requestAnimationFrame(restoreFocus)
+        restoreAfterClose.current = true
       }
     } catch (err) {
       showToast(getApiErrorMessage(err, 'イベント一覧の取得に失敗しました'))
@@ -71,24 +84,28 @@ export function EventsPage() {
 
   return (
     <div className="page events-page">
-      <div className="panel" data-testid="events-panel">
-        <div className="toolbar">
-          <h2>イベント一覧</h2>
-          <button ref={addButton} type="button" className="btn btn-primary event-register-button" onClick={() => setModalTarget(null)}>
-            イベントを登録
-          </button>
-        </div>
+      <div className="ui-narrow" data-testid="events-panel">
+        <header className="ui-page-head">
+          <div>
+            <h2>イベント一覧</h2>
+            <p className="ui-page-sub">家族と個人の予定を一覧で確認</p>
+          </div>
+        </header>
+        <button ref={addButton} type="button" className="ui-action event-register-button" onClick={() => setModalTarget(null)}>
+          <span aria-hidden="true">＋</span>イベントを登録
+        </button>
         <div className="events-list">
           {!eventsLoaded && <p role="status">イベント一覧を確認できません</p>}
           {events.length === 0 ? (eventsLoaded && (
-            <div className="events-empty">
+            <div className="ui-card events-empty">
               <p>イベントはありません</p>
               <p>イベントを登録すると、予定を一覧で確認できます。</p>
             </div>
-          )) : (
+          )) : (<>
+            <h3 className="ui-section-label">登録済みのイベント</h3>
             <ul className="event-list" aria-label="イベント">
               {events.map((event) => (
-                <li key={event.id}>
+                <li key={event.id} className="ui-card event-card">
                 <button type="button" className="list-row-button event-list-row" aria-label={`${event.name}の詳細`} aria-describedby={`event-description-${event.id}`}
                   onClick={(clickEvent) => { detailTrigger.current = clickEvent.currentTarget; if (event.editable) { setDetailId(null); setModalTarget(event) } else setDetailId(event.id) }}>
                   <span className="event-date-block">
@@ -101,12 +118,13 @@ export function EventsPage() {
                   <span className="event-row-content">
                     <span className="event-row-title">{event.name}</span>
                     <span className="event-row-meta"><span>{timeRangeLabel(event)}</span><span>{RECURRENCE_LABELS[event.recurrenceType]}</span></span>
+                    <span className="ui-tag event-row-scope">{event.personal ? '個人' : '世帯共有'}</span>
                   </span>
                 </button>
                 </li>
               ))}
             </ul>
-          )}
+          </>)}
         </div>
       </div>
       {detailEvent && modalTarget === undefined && (
@@ -116,13 +134,13 @@ export function EventsPage() {
         />
       )}
       {modalTarget !== undefined && (
-        <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) requestAnimationFrame(restoreFocus) }} onSaved={handleSaved}
+        <EventModal event={modalTarget} onClose={() => { setModalTarget(undefined); if (detailId === null) restoreAfterClose.current = true }} onSaved={handleSaved}
           onDeleted={modalTarget?.editable ? () => {
             // 削除が確定した行はcommit前にまだ接続されていても復帰先にしない。
             detailTrigger.current = null
             setEvents(previous => previous.filter(event => event.id !== modalTarget.id))
             setModalTarget(undefined)
-            requestAnimationFrame(restoreFocus)
+            restoreAfterClose.current = true
             showToast('イベントを削除しました')
           } : undefined} />
       )}

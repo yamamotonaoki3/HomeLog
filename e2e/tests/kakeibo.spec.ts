@@ -86,6 +86,29 @@ for (const width of [1280, 390, 320]) {
       await trigger.click()
       const modal = page.getByTestId('transaction-modal')
       await checkForm(page, modal)
+      // #487: 関連する設定への入口は、一覧ではなくモーダルの中(使う場所の横)に置く。
+      await expect(panel.getByRole('link', { name: '固定費', exact: true })).toHaveCount(0)
+      await expect(panel.getByRole('link', { name: 'カテゴリー管理', exact: true })).toHaveCount(0)
+      const categoryLink = modal.getByRole('link', { name: 'カテゴリー管理', exact: true })
+      const fixedLink = modal.getByRole('link', { name: '固定費で登録', exact: true })
+      await expect(categoryLink).toHaveAttribute('href', '/categories')
+      await expect(fixedLink).toHaveAttribute('href', '/fixed-costs')
+      const categoryBox = (await modal.getByLabel('カテゴリー', { exact: true }).boundingBox())!
+      for (const link of [categoryLink, fixedLink]) {
+        const box = (await link.boundingBox())!
+        expect(box.height).toBeGreaterThanOrEqual(44)
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width).toBeLessThanOrEqual(width)
+      }
+      // 「カテゴリー管理」はカテゴリー欄のすぐ上、右寄せに置く。
+      const categoryLinkBox = (await categoryLink.boundingBox())!
+      expect(categoryLinkBox.y + categoryLinkBox.height).toBeLessThanOrEqual(categoryBox.y + 1)
+      expect(Math.abs(categoryLinkBox.x + categoryLinkBox.width - (categoryBox.x + categoryBox.width))).toBeLessThanOrEqual(4)
+      await shot(page, width, 'ledger-form-links')
+      await modal.getByRole('tab', { name: '収入', exact: true }).click()
+      await expect(categoryLink).toBeVisible()
+      await expect(fixedLink).toHaveCount(0)
+      await modal.getByRole('tab', { name: '支出', exact: true }).click()
       const expenseAccount = modal.getByLabel('口座/カード（任意）')
       await expect(expenseAccount).toHaveValue('')
       await expenseAccount.selectOption('card:' + card.id)
@@ -149,8 +172,8 @@ for (const width of [1280, 390, 320]) {
       await expect(modal).toBeHidden()
       const summary = page.getByTestId('monthly-summary')
       const summaryUnchanged = async () => {
-        for (const text of ['今月支出：1200円', '今月収入：5000円', '今月差額：3800円']) await expect(summary.getByText(text, { exact: true })).toBeVisible()
-        await expect(summary.getByText('当月サマリー（' + year + '年' + monthNumber + '月）', { exact: true })).toBeVisible()
+        for (const text of ['今月支出：1,200円', '今月収入：5,000円', '今月差額：3,800円']) await expect(summary.getByText(text, { exact: true })).toBeVisible()
+        await expect(summary.getByText(year + '年' + monthNumber + '月の集計', { exact: true })).toBeVisible()
       }
       await summaryUnchanged()
       await expect(rows).toHaveCount(5)
@@ -168,7 +191,8 @@ for (const width of [1280, 390, 320]) {
       await expect(rows).toHaveCount(2)
       await expect(panel.getByText('履歴: ' + previousMonth.slice(0, 4) + '年' + Number(previousMonth.slice(5)) + '月', { exact: true })).toBeVisible()
       const typeBox = (await type.boundingBox())!
-      await type.click({ position: { x: typeBox.width - 2, y: typeBox.height - 2 } })
+      // 選択欄は角を丸めたため(#473)、丸みの内側に入る右下の端を押して、端まで操作できることを確かめる。
+      await type.click({ position: { x: typeBox.width - 6, y: typeBox.height - 6 } })
       await page.keyboard.press('Escape')
       await expect(type).toBeFocused()
       await type.press('ArrowDown')

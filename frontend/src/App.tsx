@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext'
 import { RequireAuth } from './routes/RequireAuth'
 import { RequireHousehold } from './routes/RequireHousehold'
 import { AccountsPage } from './pages/AccountsPage'
+import { DemoFramePage } from './pages/DemoFramePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EventsPage } from './pages/EventsPage'
 import { FixedCostsPage } from './pages/FixedCostsPage'
@@ -28,6 +29,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/demo" element={<DemoFramePage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/password-reset" element={<PasswordResetPage />} />
 

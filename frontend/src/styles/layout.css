@@ -203,20 +203,6 @@
   margin: 0;
   font-size: 16px;
 }
-.inline-form {
-  background: #f8fafc;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.inline-form select {
-  padding: 6px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-}
 
 /* タブ（既存の.btn系クラスを流用し、レイアウトのみ定義） */
 .tabs {
@@ -348,3 +334,26 @@
 .header-account a:focus-visible, .header-account button:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
 @media (max-width:800px) { .nav-inner { column-gap:8px; } }
 @media (max-width:480px) { .nav-inner { padding-left:8px; padding-right:8px; column-gap:6px; } .nav-logo { gap:3px; font-size:14px; } .nav-logo small { display:none; } }
+
+/* デモ中の帯(#534)。ヘッダーの下に置き、狭い幅ではボタンを折り返す。 */
+.demo-banner { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 16px; background:#fef3c7; border-bottom:1px solid #fcd34d; color:#78350f; font-size:13px; line-height:1.5; }
+.demo-banner-text { flex:1 1 240px; min-width:0; margin:0; overflow-wrap:anywhere; font-weight:700; }
+.demo-banner-actions { display:flex; flex-wrap:wrap; gap:8px; min-width:0; max-width:100%; }
+.demo-banner-button { min-height:44px; max-width:100%; padding:6px 12px; border:1px solid #d97706; border-radius:8px; background:#fff; color:#78350f; font:inherit; font-size:13px; cursor:pointer; overflow-wrap:anywhere; }
+.demo-banner-button:disabled { opacity:.6; cursor:not-allowed; }
+.demo-banner-note { flex:1 1 100%; margin:0; overflow-wrap:anywhere; }
+.demo-banner-error { flex:1 1 100%; margin:0; color:#b91c1c; }
+.demo-banner-highlights { flex:1 1 100%; margin:0; padding-left:20px; overflow-wrap:anywhere; }
+@media (max-width:480px) { .demo-banner { padding-left:8px; padding-right:8px; } }
+
+/* 更新操作はタイトルの隣に置き、狭い幅では本人名の列を縮める。 */
+.nav-inner { grid-template-columns: minmax(max-content,1fr) max-content fit-content(clamp(96px,32vw,144px)); }
+.nav-inner .nav-brand { grid-area:brand; display:flex; align-items:center; min-width:0; justify-self:start; }
+.nav-brand .nav-logo { flex-shrink:0; }
+.pwa-update-button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 44px; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:transparent; color:#48617e; cursor:pointer; }
+.pwa-update-button:hover { color:#2866b8; background:#f7f9fc; }
+.pwa-update-button:disabled { opacity:.45; cursor:default; }
+.pwa-update-button:focus-visible { outline:3px solid #2866b8; outline-offset:2px; }
+.header-account, .header-account-button { min-width:44px; max-width:100%; }
+.header-account-button { max-width:min(100%,clamp(96px,32vw,144px)); }
+@media (max-width:480px) { .header-account-button { width:100%; overflow:hidden; } }

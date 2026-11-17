@@ -125,7 +125,10 @@ export function ZaikoPage() {
     <div className="page zaiko-page">
       {/* 入力途中の購入個数などパネル内の状態を失わないよう、両パネルとも描画したまま非選択側を隠す */}
       <div hidden={isShoppingTab}>
+        {isolated && <div><p role="alert">ログイン状態が変更されました。再読み込みして本人と世帯を確認してください。</p><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>再読み込み</button></div>}
         {!isolated && <InventoryPanel
+          actorUserId={auth?.user?.id}
+          onScopeDetached={detachScope}
           inventory={inventory}
           categories={categories}
           onCategoriesChange={setCategories}

@@ -5,9 +5,12 @@ import { z } from 'zod'
 import { passwordResetTokens, refreshTokens, users } from '../db/schema'
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from '../lib/crypto'
 import { errorResponse } from '../lib/errors'
+import { findDemoMembership, isDemoMode, isExpiredDemoUser } from '../lib/demo'
 import { signAccessToken } from '../lib/jwt'
+import { issueTokens } from '../lib/tokens'
 import { countDeletionBlockers, deletionScheduledAt, hasBlockers, isReservedEmail, isWithinGracePeriod } from '../lib/account-deletion'
 import { consumePasswordResetQuota, purgePasswordResetAttempts, resolveMailMode, sendPasswordResetMail } from '../lib/password-reset-mail'
+import { RATE_LIMITS, TOO_MANY_REQUESTS_MESSAGE, clientAddressKey, consumeRateLimits, emailKey } from '../lib/rate-limit'
 import { requireAuth } from '../middleware/auth'
 import type { AppEnv } from '../index'
 
@@ -95,6 +98,26 @@ async function parseJsonBody(c: Context): Promise<unknown | null> {
   }
 }
 
+// ---- 回数制限(#510) ----
+// 上限を超えた要求は、登録の有無や入力内容(パスワードの正誤)と無関係に同じ429を返す。
+// パスワードの検証より前に数えるので、上限を超えた後は正しいパスワードでも窓が替わるまで通らない。
+function tooManyRequests(c: Context<AppEnv>) {
+  return c.json(errorResponse('TOO_MANY_REQUESTS', TOO_MANY_REQUESTS_MESSAGE), 429)
+}
+
+// メールアドレスとパスワードで本人確認する入口(ログイン・退会の取り消し)。
+function allowCredentialCheck(c: Context<AppEnv>, email: string): Promise<boolean> {
+  return consumeRateLimits(c.env.DB, [
+    { rule: RATE_LIMITS.loginEmail, key: emailKey(email) },
+    { rule: RATE_LIMITS.loginAddress, key: clientAddressKey(c.req.header('CF-Connecting-IP')) },
+  ])
+}
+
+// ログイン済みの利用者が、現在のパスワードで再認証する操作。
+function allowReauth(c: Context<AppEnv>): Promise<boolean> {
+  return consumeRateLimits(c.env.DB, [{ rule: RATE_LIMITS.reauthUser, key: String(c.get('userId')) }])
+}
+
 export const authRoute = new Hono<AppEnv>()
 
 authRoute.get('/me', requireAuth, async (c) => {
@@ -106,7 +129,17 @@ authRoute.get('/me', requireAuth, async (c) => {
   if (!user) {
     return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
   }
-  return c.json(user)
+  // デモ環境のデモ利用者だけ、期限と相手の表示名を返す(本番・通常の利用者は null)。
+  let demo: { expiresAt: string; partnerName: string } | null = null
+  if (isDemoMode(c.env)) {
+    const membership = await findDemoMembership(c.env.DB, user.id)
+    if (membership) {
+      const partnerId = membership.primaryUserId === user.id ? membership.partnerUserId : membership.primaryUserId
+      const partner = await drizzle(c.env.DB).select({ displayName: users.displayName }).from(users).where(eq(users.id, partnerId)).get()
+      demo = { expiresAt: membership.expiresAt, partnerName: partner?.displayName ?? '' }
+    }
+  }
+  return c.json({ ...user, demo })
 })
 
 authRoute.post('/register', async (c) => {
@@ -116,6 +149,11 @@ authRoute.post('/register', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password, displayName } = parsed.data
+
+  const registerAllowed = await consumeRateLimits(c.env.DB, [
+    { rule: RATE_LIMITS.registerAddress, key: clientAddressKey(c.req.header('CF-Connecting-IP')) },
+  ])
+  if (!registerAllowed) return tooManyRequests(c)
 
   const db = drizzle(c.env.DB)
   const existing = await db.select().from(users).where(eq(users.email, email)).get()
@@ -143,6 +181,7 @@ authRoute.post('/login', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password } = parsed.data
+  if (!(await allowCredentialCheck(c, email))) return tooManyRequests(c)
 
   const db = drizzle(c.env.DB)
   const user = await db.select().from(users).where(eq(users.email, email)).get()
@@ -167,22 +206,8 @@ authRoute.post('/login', async (c) => {
     )
   }
 
-  return c.json(await issueTokens(c, user.id))
+  return c.json(await issueTokens(c.env, user.id))
 })
-
-async function issueTokens(c: Context<AppEnv>, userId: number) {
-  const accessExpirationSeconds = Number(c.env.JWT_ACCESS_EXPIRATION_SECONDS)
-  const refreshExpirationSeconds = Number(c.env.JWT_REFRESH_EXPIRATION_SECONDS)
-
-  const accessToken = await signAccessToken(userId, c.env.JWT_SECRET, accessExpirationSeconds)
-  const refreshToken = generateOpaqueToken()
-  await drizzle(c.env.DB).insert(refreshTokens).values({
-    userId,
-    tokenHash: await sha256Hex(refreshToken),
-    expiresAt: addSecondsIso(refreshExpirationSeconds),
-  })
-  return { accessToken, refreshToken, expiresIn: accessExpirationSeconds }
-}
 
 authRoute.post('/refresh', async (c) => {
   const body = await parseJsonBody(c)
@@ -215,6 +240,11 @@ authRoute.post('/refresh', async (c) => {
     .where(eq(users.id, row.userId))
     .get()
   if (!owner || owner.deletionRequestedAt || owner.deletedAt) {
+    return c.json(errorResponse('INVALID_TOKEN', 'リフレッシュトークンが無効です'), 401)
+  }
+
+  // デモ環境では、期限切れのデモ利用者のトークンを使わせない(requireAuthを通らないためここでも確かめる)。
+  if (isDemoMode(c.env) && (await isExpiredDemoUser(c.env.DB, row.userId, new Date()))) {
     return c.json(errorResponse('INVALID_TOKEN', 'リフレッシュトークンが無効です'), 401)
   }
 
@@ -425,6 +455,7 @@ authRoute.put('/password', requireAuth, async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { currentPassword, newPassword, refreshToken } = parsed.data
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const userId = c.get('userId')
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
   if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
@@ -463,6 +494,7 @@ authRoute.put('/email', requireAuth, async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { currentPassword, newEmail } = parsed.data
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const db = drizzle(c.env.DB)
   const userId = c.get('userId')
   const user = await db.select().from(users).where(eq(users.id, userId)).get()
@@ -508,6 +540,7 @@ authRoute.post('/account/deletion', requireAuth, async (c) => {
   if (!parsed.success) {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
+  if (!(await allowReauth(c))) return tooManyRequests(c)
   const userId = c.get('userId')
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.id, userId)).get()
   if (!user) return c.json(errorResponse('UNAUTHORIZED', '認証が必要です'), 401)
@@ -549,6 +582,7 @@ authRoute.post('/account/deletion/cancel', async (c) => {
     return c.json(errorResponse('VALIDATION_ERROR', '入力内容を確認してください'), 400)
   }
   const { email, password } = parsed.data
+  if (!(await allowCredentialCheck(c, email))) return tooManyRequests(c)
   const user = await drizzle(c.env.DB).select().from(users).where(eq(users.email, email)).get()
   if (!user) {
     await verifyPassword(password, await getDummyPasswordHash())
@@ -572,5 +606,5 @@ authRoute.post('/account/deletion/cancel', async (c) => {
   if (result.meta.changes === 0) {
     return c.json(errorResponse('UNAUTHORIZED', INVALID_LOGIN_MESSAGE), 401)
   }
-  return c.json(await issueTokens(c, user.id))
+  return c.json(await issueTokens(c.env, user.id))
 })

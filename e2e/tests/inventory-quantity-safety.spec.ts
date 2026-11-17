@@ -4,7 +4,7 @@ import { openInventoryDetails, setupUserWithHousehold } from './support/flows'
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
-async function setup(page: Page, label: string, second = false) {
+async function setup(page: Page, label: string, second = false, initialQuantity = 0) {
   await setupUserWithHousehold(page, label)
   const token = await page.evaluate(() => localStorage.getItem('homelog.accessToken'))
   const headers = { Authorization: 'Bearer ' + token }
@@ -14,7 +14,7 @@ async function setup(page: Page, label: string, second = false) {
   const items: { id: number; name: string }[] = []
   for (const [index, suffix] of (second ? ['A', 'B'] : ['A']).entries()) {
     const name = '[E2E_TEST] 数量安全' + suffix
-    const response = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId: categories[0].id, storeId: null, quantity: index, threshold: 1 } })
+    const response = await page.request.post('/api/inventory-items', { headers, data: { name, categoryId: categories[0].id, storeId: null, quantity: initialQuantity + index, threshold: 1 } })
     expect(response.status()).toBe(201)
     items.push(await response.json())
   }
@@ -41,11 +41,11 @@ test('実加算後500でもGET結果や開閉で停止を解除せず同じdelta
     await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'INTERNAL_ERROR', message: '[E2E_TEST] committed response lost' }) })
   })
   await operations.getByLabel('増減量', { exact: true }).fill('2.5')
-  await operations.getByRole('button', { name: '適用', exact: true }).click()
+  await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   await expect(row.locator('.inventory-list-quantity')).toHaveText('2.5')
   const assertStopped = async () => {
     await expect(operations.getByRole('alert')).toContainText('数量変更を停止')
-    await expect(operations.getByRole('button', { name: '適用', exact: true })).toBeDisabled()
+    await expect(operations.getByRole('button', { name: '数量を適用', exact: true })).toBeDisabled()
     await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('2.5')
     await expect(operations.getByRole('button', { name: item.name + 'を増やす', exact: true })).toBeDisabled()
     await expect(operations.getByRole('button', { name: item.name + 'を減らす', exact: true })).toBeDisabled()
@@ -62,7 +62,7 @@ test('実加算後500でもGET結果や開閉で停止を解除せず同じdelta
   await expect(secondRow.locator('.inventory-list-quantity')).toHaveText('2.0')
   await row.click()
   await assertStopped()
-  const search = page.getByTestId('inventory-panel').getByRole('searchbox', { name: 'キーワード検索', exact: true })
+  const search = page.getByTestId('inventory-panel').getByRole('searchbox', { name: '商品を探す', exact: true })
   await search.fill(items[1].name)
   await expect(row).toHaveCount(0)
   await search.clear()
@@ -87,20 +87,26 @@ test('実加算後500でもGET結果や開閉で停止を解除せず同じdelta
 
 test('実APIの未更新400はdraftを保持し訂正した正の増減量だけ明示適用できる', async ({ page, consoleGuard }) => {
   consoleGuard.watch(page)
-  const { headers, item, row, operations } = await setup(page, 'quantity_rejected')
+  const { headers, item, row, operations } = await setup(page, 'quantity_rejected', false, 1)
   const path = '/api/inventory-items/' + item.id + '/quantity'
   consoleGuard.allow({ url: new RegExp(path + '$'), message: /400 \(Bad Request\)/ })
+  // Another writer consumes the server stock after this page read quantity 1.
+  expect((await page.request.patch(path, { headers, data: { delta: -1 } })).status()).toBe(200)
+  await expect(row.locator('.inventory-list-quantity')).toHaveText('1.0')
   const deltas: number[] = []
   page.on('request', request => { if (request.method() === 'PATCH' && new URL(request.url()).pathname === path) deltas.push(request.postDataJSON().delta) })
   await operations.getByLabel('増減量', { exact: true }).fill('-1')
   const rejection = page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().method() === 'PATCH')
-  await operations.getByRole('button', { name: '適用', exact: true }).click()
+  await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   expect((await rejection).status()).toBe(400)
   await expect(operations.getByRole('alert')).toContainText('在庫個数が範囲外です')
   await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('-1')
-  await expect(row.locator('.inventory-list-quantity')).toHaveText('0.0')
+  await expect(row.locator('.inventory-list-quantity')).toHaveText('1.0')
+  const rejectedState = await page.request.get('/api/inventory-items', { headers })
+  expect(rejectedState.status()).toBe(200)
+  expect(await rejectedState.json()).toEqual([expect.objectContaining({ id: item.id, quantity: 0 })])
   await operations.getByLabel('増減量', { exact: true }).fill('2.5')
-  await operations.getByRole('button', { name: '適用', exact: true }).click()
+  await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   await expect(row.locator('.inventory-list-quantity')).toHaveText('2.5')
   await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('')
   expect(deltas).toEqual([-1, 2.5])
@@ -131,11 +137,20 @@ test('既知の加算成功後GET失敗は適用済みと表示し空になっ�
     await route.fulfill({ response })
   })
   await operations.getByLabel('増減量', { exact: true }).fill('2.5')
-  await operations.getByRole('button', { name: '適用', exact: true }).click()
+  await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   await expect(page.getByText('在庫個数を更新しました。一覧の再取得に失敗しました', { exact: true })).toBeVisible()
   await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('')
   await expect(operations).not.toContainText('数量変更の結果を確認できません')
-  await operations.getByRole('button', { name: '適用', exact: true }).click()
+  await expect(operations.getByRole('button', { name: '数量を適用', exact: true })).toBeDisabled()
+  const recover = page.getByRole('button', { name: '一覧を再取得', exact: true })
+  await expect(recover).toBeVisible()
+  expect(calls).toBe(1)
+  await recover.click()
+  await expect(row.locator('.inventory-list-quantity')).toHaveText('2.5')
+  await expect(operations.getByRole('button', { name: '数量を適用', exact: true })).toBeEnabled()
+  await expect(operations.getByLabel('増減量', { exact: true })).toHaveValue('')
+  expect(calls).toBe(1)
+  await operations.getByRole('button', { name: '数量を適用', exact: true }).click()
   await expect(operations.getByRole('alert')).toContainText('増減量')
   expect(calls).toBe(1)
   expect(failedGets).toBe(1)

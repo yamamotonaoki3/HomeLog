@@ -42,7 +42,7 @@ export async function dashboardDayDetail(db: D1Database, householdId: number, us
        WHERE e.household_id = ? AND e.payer_user_id = ? AND e.expense_date = ? ORDER BY e.id DESC`,
     ).bind(householdId, userId, householdId, userId, date),
     db.prepare(
-      `SELECT m.id, m.recipe_id AS recipeId, r.title AS recipeTitle, m.free_text_memo AS freeTextMemo, m.week_start_date AS weekStartDate
+      `SELECT m.id, m.recipe_id AS recipeId, CASE WHEN m.inventory_menu_link_id IS NOT NULL OR m.usage_tenths IS NOT NULL OR m.recipe_title_snapshot IS NOT NULL OR m.consumed_event_id IS NOT NULL THEN m.recipe_title_snapshot ELSE r.title END AS recipeTitle, m.free_text_memo AS freeTextMemo, m.week_start_date AS weekStartDate
        FROM menu_entries m LEFT JOIN recipes r ON r.id = m.recipe_id AND r.household_id = ?
        WHERE m.household_id = ? AND m.week_start_date = ? ORDER BY m.id`,
     ).bind(householdId, householdId, weekStartDate),

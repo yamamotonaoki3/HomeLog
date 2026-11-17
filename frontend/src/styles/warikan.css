@@ -40,3 +40,29 @@
 .warikan-comments-modal .comment-list { padding-left:20px; }
 .warikan-comments-modal .comment-list p { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:480px) { .warikan-page { padding:12px; } .warikan-page .panel { padding:10px; } .warikan-row { gap:6px; } .warikan-detail-content,.warikan-child-modal { padding:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); } }
+
+/* 追加画像資料14に合わせた一覧(切り替えタブ・予定額の合計・1件1カード)。先にある #425 の指定を上書きする。 */
+.warikan-page .kakeibo-links { margin: 0 0 12px; }
+.warikan-page .kakeibo-links a.btn { flex: 0 1 auto; padding: 0 16px; }
+.warikan-page .warikan-filter-tabs { display: flex; flex-wrap: nowrap; gap: 4px; padding: 4px; border-radius: 12px; background: #eaf0f6; }
+.warikan-page .warikan-filter-tabs .btn { flex: 1; min-width: 0; border-radius: 9px; background: none; color: #55687f; font-size: 14px; font-weight: 600; }
+.warikan-page .warikan-filter-tabs .btn[aria-selected="true"] { background: var(--ui-surface); color: var(--ui-primary-strong); font-weight: 800; box-shadow: 0 1px 3px #cbd5e1; }
+.warikan-page .warikan-filter-tabs .btn:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+.warikan-plan-summary { display: grid; gap: 8px; margin: 12px 0; background: #f2f6fa; box-shadow: none; }
+.warikan-plan-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.warikan-plan-summary dt { color: var(--ui-muted); font-size: 13px; }
+.warikan-plan-summary dd { margin: 0; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.warikan-page .warikan-list { display: grid; gap: 10px; }
+.warikan-card { min-width: 0; padding: 0; }
+.warikan-card:has(.warikan-row:hover) { border-color: #b7cbe4; }
+/* 1行目に用途と状態、2行目に日付・相手と金額を置く。 */
+.warikan-page .warikan-card .warikan-row { position: relative; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "purpose purpose status" "date partner amount"; gap: 4px 10px; min-height: 64px; padding: 12px 34px 12px 14px; border: 0; border-radius: 15px; background: none; }
+.warikan-page .warikan-card .warikan-row:hover { background: none; }
+.warikan-page .warikan-card .warikan-row:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: -2px; background: none; }
+.warikan-page .warikan-card .warikan-row::after { content: '›'; position: absolute; top: 50%; right: 14px; color: #6c7c92; font-size: 18px; line-height: 1; transform: translateY(-50%); }
+.warikan-page .warikan-card .warikan-row > span:nth-child(1) { grid-area: date; color: var(--ui-muted); font-size: 13px; white-space: nowrap; }
+.warikan-page .warikan-card .warikan-row > span:nth-child(2) { grid-area: partner; color: var(--ui-muted); font-size: 13px; }
+.warikan-page .warikan-card .warikan-row-purpose { grid-area: purpose; color: var(--ui-text); font-size: 15px; font-weight: 800; }
+.warikan-page .warikan-card .warikan-row-status { grid-area: status; align-self: start; padding: 3px 8px; border-radius: 7px; background: #eef3f8; color: #4a5c74; font-size: 12px; font-weight: 700; text-align: center; }
+.warikan-page .warikan-card .warikan-row-amount { grid-area: amount; font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+@media(max-width:480px) { .warikan-page .ui-narrow { padding: 0; } }

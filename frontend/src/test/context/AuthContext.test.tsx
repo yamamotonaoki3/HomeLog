@@ -193,3 +193,59 @@ describe('AuthContext', () => {
     expect(getRefreshToken()).toBeNull()
   })
 })
+
+describe('AuthContext のデモ(#534)', () => {
+  afterEach(() => { clearTokens(); vi.unstubAllGlobals() })
+
+  function DemoConsumer() {
+    const { startDemo, switchDemo, user } = useAuth()
+    return (
+      <div>
+        <span data-testid="demo-partner">{user?.demo?.partnerName}</span>
+        <button onClick={() => void startDemo()}>start</button>
+        <button onClick={() => void switchDemo().catch(() => {})}>switch</button>
+      </div>
+    )
+  }
+
+  it('startDemo は /demo/start のトークンを保存し、本人情報の demo を持つ', async () => {
+    server.use(
+      http.post('/api/demo/start', () => HttpResponse.json({ accessToken: 'demo-a', refreshToken: 'demo-r', expiresIn: 900 }, { status: 201 })),
+      http.get('/api/auth/me', () => HttpResponse.json({ id: 1, displayName: 'デモ太郎', demo: { expiresAt: '2099-01-01T00:00:00.000Z', partnerName: 'デモ花子' } })),
+    )
+    render(<AuthProvider><DemoConsumer /></AuthProvider>)
+    await userEvent.setup().click(screen.getByText('start'))
+    expect(await screen.findByText('デモ花子')).toBeInTheDocument()
+    expect(getAccessToken()).toBe('demo-a')
+    expect(getRefreshToken()).toBe('demo-r')
+  })
+
+  it('switchDemo は今のリフレッシュトークンを送り、相手のトークンを保存してホームを開き直す', async () => {
+    setTokens('taro-a', 'taro-r')
+    let body: unknown
+    server.use(http.post('/api/demo/switch', async ({ request }) => {
+      body = await request.json()
+      return HttpResponse.json({ accessToken: 'hanako-a', refreshToken: 'hanako-r', expiresIn: 900 })
+    }))
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    render(<AuthProvider><DemoConsumer /></AuthProvider>)
+    await userEvent.setup().click(screen.getByText('switch'))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/'))
+    expect(body).toEqual({ refreshToken: 'taro-r' })
+    expect(getAccessToken()).toBe('hanako-a')
+    expect(getRefreshToken()).toBe('hanako-r')
+  })
+
+  it('switchDemo が失敗したときはトークンを変えず、読み込み直さない', async () => {
+    setTokens('taro-a', 'taro-r')
+    server.use(http.post('/api/demo/switch', () => HttpResponse.json({ code: 'NOT_FOUND', message: 'x' }, { status: 404 })))
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    render(<AuthProvider><DemoConsumer /></AuthProvider>)
+    await userEvent.setup().click(screen.getByText('switch'))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(assign).not.toHaveBeenCalled()
+    expect(getAccessToken()).toBe('taro-a')
+  })
+})

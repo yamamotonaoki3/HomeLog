@@ -9,6 +9,8 @@ type Purchase = { requestId: string; items: { id: number; purchasedQuantity: num
 const purchaseUrl = '**/api/shopping-list-items/purchases'
 const recoveryButton = (page: Page) => page.getByRole('button', { name: '前回の購入結果を確認', exact: true })
 const panel = (page: Page) => page.getByTestId('shopping-panel')
+// 行に表示している購入数(#485)。チェック前は予定数、チェック後は実購入数。
+const count = (page: Page, name: string) => panel(page).getByRole('group', { name: name + 'の購入数', exact: true }).getByRole('status')
 const reflect = (page: Page) => panel(page).getByRole('button', { name: '購入を反映', exact: true })
 async function headersFor(page: Page) { return { Authorization: 'Bearer ' + await page.evaluate(() => localStorage.getItem('homelog.accessToken')) } }
 async function fixture(page: Page, label: string) {
@@ -242,7 +244,7 @@ test('native短期Web Locksで2tab同時確認は同keyだけを保存し、通�
     gates[1].release()
     for (const tab of [page, second]) {
       const row = panel(tab).getByRole('button', { name: a.name + 'の詳細', exact: true })
-      await expect(row).toContainText('予定 2')
+      await expect(count(tab, a.name)).toHaveText('2')
       await expect(panel(tab).getByRole('checkbox', { name: a.name + 'を購入済みにする', exact: true })).not.toBeChecked()
       await expect(recoveryButton(tab)).toHaveCount(0)
     }
@@ -391,7 +393,7 @@ test('別tabで旧terminal409を解決してnewkey待機中、後着旧応答が
     await recoveryButton(second).click()
     await expect(recoveryButton(second)).toHaveCount(0)
     await expect(second.getByRole('status').filter({ hasText: '購入は反映されていません' })).toBeVisible()
-    await expect(panel(second).getByRole('button', { name: a.name + 'の詳細', exact: true })).toContainText('予定 3')
+    await expect(count(second, a.name)).toHaveText('3')
     expect(await stored(second, a.key)).toBeNull()
     expect(await stock(second, a.inventoryId)).toBe(5)
     await second.route(purchaseUrl, async route => {
@@ -413,7 +415,7 @@ test('別tabで旧terminal409を解決してnewkey待機中、後着旧応答が
     await expect(recoveryButton(page)).toBeEnabled()
     expect(await stored(second, a.key)).toEqual(pendingNew)
     await expect(panel(second).getByRole('checkbox', { name: a.name + 'を購入済みにする', exact: true })).toBeChecked()
-    await expect(panel(second).getByRole('button', { name: a.name + 'の詳細', exact: true })).toContainText('実購入 1')
+    await expect(count(second, a.name)).toHaveText('1')
     expect(new Set(observed.map(value => value.requestId)).size).toBe(2)
     newGate.release()
     await expect.poll(() => stored(second, a.key)).toBeNull()
@@ -452,7 +454,7 @@ test('通常GETと予定保存の401refreshは同sessionを維持し、一覧と
   expect({ category: seed.categoryStatus, create: seed.createStatus, add: seed.addStatus }).toEqual({ category: 200, create: 201, add: 201 })
   await page.goto('/zaiko/shopping')
   const row = panel(page).getByRole('button', { name: name + 'の詳細', exact: true })
-  await expect(row).toContainText('予定 1')
+  await expect(count(page, name)).toHaveText('1')
   await expect(panel(page).getByRole('checkbox', { name: name + 'を購入済みにする', exact: true })).toBeEnabled()
   const externalPlanStatus = await page.evaluate(async entryId => {
     const response = await fetch('/api/shopping-list-items/' + entryId, { method: 'PATCH', headers: { Authorization: 'Bearer ' + localStorage.getItem('homelog.accessToken'), 'Content-Type': 'application/json' }, body: JSON.stringify({ plannedQuantity: 3, expectedPurchaseRevision: 0 }) })
@@ -479,7 +481,7 @@ test('通常GETと予定保存の401refreshは同sessionを維持し、一覧と
   })
   try {
     await panel(page).getByLabel('並び替え').selectOption('name')
-    await expect(row).toContainText('予定 3')
+    await expect(count(page, name)).toHaveText('3')
     expect(refreshes).toBe(1)
     expect(shoppingReads).toBe(2)
     await choose(page, name, '2')
@@ -490,7 +492,8 @@ test('通常GETと予定保存の401refreshは同sessionを維持し、一覧と
     await detail.getByRole('button', { name: '予定数を保存', exact: true }).click()
     await expect(detail.getByRole('button', { name: '予定数を保存', exact: true })).toBeEnabled()
     await detail.getByRole('button', { name: '閉じる', exact: true }).click()
-    await expect(row).toContainText('予定 4')
+    // チェック済みの行は実購入数を表示する。保存した予定4は、購入後の残り(4-2)で確かめる。
+    await expect(count(page, name)).toHaveText('2')
     expect(refreshes).toBe(2)
     expect(planRequests).toBe(2)
     expect(purchases).toBe(0)
@@ -500,7 +503,7 @@ test('通常GETと予定保存の401refreshは同sessionを維持し、一覧と
     await detail.getByLabel(name + 'の予定数', { exact: true }).fill('5')
     await detail.getByRole('button', { name: '閉じる', exact: true }).click()
     await confirmShoppingPurchase(page)
-    await expect(row).toContainText('予定 2')
+    await expect(count(page, name)).toHaveText('2')
     await expect(row).toContainText('在庫 7')
     expect(purchases).toBe(1)
     expect(refreshes).toBe(2)
@@ -548,7 +551,7 @@ test('未保存の予定5を残し、保存済予定3から実2だけ購入し�
   await planned.fill('5')
   await detail.getByRole('button', { name: '閉じる', exact: true }).click()
   await confirmShoppingPurchase(page)
-  await expect(row).toContainText('予定 1')
+  await expect(count(page, name)).toHaveText('1')
   await row.click()
   await expect(planned).toHaveValue('5')
   expect(planWrites).toBe(1)
@@ -574,7 +577,7 @@ test('未保存の予定5を残し、保存済予定3から実2だけ購入し�
   }, seed.entryId)
   expect(external).toBe(200)
   await panel(page).getByLabel('並び替え').selectOption('name')
-  await expect(row).toContainText('予定 7')
+  await expect(count(page, name)).toHaveText('7')
   await row.click()
   await expect(planned).toHaveValue('7')
   const saveLatest = page.waitForRequest(request => request.method() === 'PATCH' && request.url().endsWith('/shopping-list-items/' + seed.entryId))
@@ -638,7 +641,7 @@ test('世帯再確認は両一覧の旧行を隔離しGET失敗後も新一覧�
     fresh = true
     await retry.click()
     const row = panel(page).getByRole('button', { name: freshName + 'の詳細', exact: true })
-    await expect(row).toContainText('予定 4')
+    await expect(count(page, freshName)).toHaveText('4')
     await expect(panel(page).getByRole('checkbox', { name: freshName + 'を購入済みにする', exact: true })).not.toBeChecked()
     await page.getByRole('link', { name: '在庫一覧', exact: true }).click()
     await expect(page.getByRole('button', { name: freshName + 'の詳細', exact: true })).toBeVisible()

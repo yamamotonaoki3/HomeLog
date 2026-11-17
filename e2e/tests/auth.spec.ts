@@ -18,6 +18,16 @@ test.describe('F-01 認証', () => {
     await expect((await openAccountMenu(page)).getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible()
   })
 
+  test('デモ環境でなければログイン画面にデモのボタンを出さない (#534)', async ({ page, consoleGuard }) => {
+    consoleGuard.watch(page)
+    const availability = page.waitForResponse((response) => response.url().endsWith('/api/demo'))
+    await page.goto('/login')
+    expect(await (await availability).json()).toEqual({ enabled: false })
+    await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /デモを試す/ })).toHaveCount(0)
+    await expect(page.getByText('架空の2人の世帯で、24時間お試しできます')).toHaveCount(0)
+  })
+
   test('確認用パスワードが一致しないと登録できない', async ({ page, consoleGuard }) => {
     consoleGuard.watch(page)
     const user = newUser('mismatch')

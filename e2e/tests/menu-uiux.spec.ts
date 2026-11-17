@@ -39,8 +39,8 @@ test('390px: 献立の部分成功後は成功済みを再送せず、失敗分�
 
   await page.goto('/menu')
   await page.getByRole('button', { name: 'レシピを追加', exact: true }).click()
-  const sheet = page.getByRole('dialog', { name: 'レシピを追加', exact: true })
-  const submit = sheet.getByRole('button', { name: '追加', exact: true })
+  const sheet = page.getByRole('dialog', { name: '献立に追加する', exact: true })
+  const submit = sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ })
   for (const title of titles) await sheet.getByRole('checkbox', { name: title, exact: true }).check()
   expect(attempts).toEqual([])
 
@@ -100,11 +100,11 @@ test('390px: 献立保存後の500は結果不明として再送を止め、再�
   await page.goto('/menu')
   const trigger = page.getByRole('button', { name: 'レシピを追加', exact: true })
   await trigger.click()
-  const sheet = page.getByRole('dialog', { name: 'レシピを追加', exact: true })
+  const sheet = page.getByRole('dialog', { name: '献立に追加する', exact: true })
   await sheet.getByRole('checkbox', { name: title, exact: true }).check()
-  await sheet.getByRole('button', { name: '追加', exact: true }).click()
+  await sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
   await expect(sheet.getByRole('alert')).toContainText('再送せず')
-  await expect(sheet.getByRole('button', { name: '追加', exact: true })).toBeDisabled()
+  await expect(sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ })).toBeDisabled()
   await expect(sheet.getByRole('checkbox', { name: title, exact: true })).toBeDisabled()
   expect(attempts).toBe(1)
 
@@ -114,7 +114,7 @@ test('390px: 献立保存後の500は結果不明として再送を止め、再�
   await trigger.click()
   await expect(sheet.getByRole('alert')).toContainText('再送せず')
   await expect(sheet.getByRole('alert')).toContainText('画面を再読み込み')
-  await expect(sheet.getByRole('button', { name: '追加', exact: true })).toBeDisabled()
+  await expect(sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ })).toBeDisabled()
   expect(attempts).toBe(1)
 
   const entriesResponse = await page.request.get(`/api/menu-entries?weekStartDate=${encodeURIComponent(weekStartDate)}`, { headers })

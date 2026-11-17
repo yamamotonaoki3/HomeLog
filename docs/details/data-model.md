@@ -197,6 +197,7 @@ erDiagram
         bigserial id PK
         bigint household_id FK
         bigint owner_user_id FK
+        bigint created_by_user_id FK
         varchar name
         date event_date
         boolean is_all_day
@@ -405,6 +406,8 @@ erDiagram
 
 ### account_deletion_requests（アカウント削除申請）
 
+> このエンティティとワンタイム取消資格情報は将来の論理モデル。現在のWorkers実装では専用テーブルを作らず、`users.deletion_requested_at` で申請を管理し、取消はメールアドレスとパスワードで本人確認する。削除予定日は申請日時の30日後として計算する（[F01_auth.md](features/F01_auth.md) 8-2章）。
+
 削除申請日時、30日後の削除予定日時、取消日時、処理完了日時を追跡する。申請中はユーザーの通常アクセスとトークン更新を拒否する。取消は通常APIとは別の専用手段とし、ワンタイムの取消資格情報を用いてハッシュ化して保管する。処理完了時はuser_idとの紐付けと取消資格情報を削除し、詳細な有効期限・再発行方式はメール送信基盤を含めて実装Issueで確定する。
 
 ### 退会時に保持する共有記録の帰属
@@ -445,6 +448,31 @@ erDiagram
 | count | INTEGER | ○ | 窓内の申請回数。上限（3/10/50）に達した行は増えない |
 
 保持期間は2日。申請のたびと日次Cronで`window_start`が古い行を削除する（#401）。
+
+### rate_limit_counters（認証・画像解析の回数制限）
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| scope | TEXT | ○ | PK。`login_email` / `login_address` / `register_address` / `reauth_user` / `ocr_upload_user` / `ocr_analyze_user` |
+| key_hash | TEXT | ○ | PK。メールアドレス（小文字・trim）・接続元IP・利用者IDのSHA-256。実値は保存しない |
+| window_start | INTEGER | ○ | PK。固定窓の開始（UNIX秒）。窓の長さは種類ごと（15分・1時間・1日） |
+| count | INTEGER | ○ | 窓内の回数。上限に達した行は増えない |
+
+保持期間は2日。日次Cronで`window_start`が古い行を削除する（#510）。上限と対象のAPIは[api-design.md](api-design.md)の「認証・画像解析の回数制限」を参照。
+
+### demo_households（デモ世帯、#529）
+
+デモ環境（`DEMO_MODE`）で、来た人ごとに作る専用の世帯と2人の利用者を管理する。本番では空のまま使われない。「この利用者はデモか」は、`primary_user_id` または `partner_user_id` に一致する行があるかで判定し、`users` には列を足さない。
+
+| カラム名 | 型 | 必須 | 備考 |
+| --- | --- | --- | --- |
+| household_id | INTEGER | ○ | PK。デモ世帯（`households.id` の値） |
+| primary_user_id | INTEGER | ○ | デモ太郎（`users.id` の値） |
+| partner_user_id | INTEGER | ○ | デモ花子（`users.id` の値） |
+| expires_at | TEXT | ○ | 期限（ISO 8601、UTC）。作成から24時間。索引 `demo_households_expires_at_idx` |
+| created_at | TEXT | ○ | 作成日時（既定は現在時刻） |
+
+外部キーは付けない。期限切れのデモを削除する `batch` で、この表を「消す対象の目印」として最後まで使い、親（`households`・`users`）より後に消すため。値として同じIDを持つという意味で参照する。毎時の Cron が期限切れの行と関連する全テーブルの行を削除する。
 
 ### user_settings（ユーザー設定）
 
@@ -492,7 +520,7 @@ erDiagram
 | households.invite_code | VARCHAR(16) | ○ | UNIQUE。世帯作成時に自動発行するランダム英数字コード（他ユーザーの参加に使用） |
 | household_members.household_id | BIGINT | ○ | FK → households.id |
 | household_members.user_id | BIGINT | ○ | FK → users.id |
-| household_members.role | VARCHAR(20) | ○ | `admin` / `member`。作成者を`admin`で登録。既存管理者のみが変更でき、変更者・日時を監査する。最後の管理者を単独で降格・解除できない |
+| household_members.role | VARCHAR(20) | ○ | 将来要件。現行Workersにrole列と管理者の権限制御は未実装（[common-notes.md](common-notes.md) 12.3章参照）。実装する場合は`admin` / `member`を持ち、作成者を`admin`で登録。既存管理者のみが変更でき、変更者・日時を監査する。最後の管理者を単独で降格・解除できない |
 
 ### external_persons（世帯外の精算相手）
 
@@ -660,6 +688,7 @@ Workersの#253では `debtor_user_id` をnullableにし、`debtor_external_id` �
 | id | BIGSERIAL | ○ | PK |
 | household_id | BIGINT | ○ | FK → households.id |
 | owner_user_id | BIGINT | — | FK → users.id。NULL＝世帯共有（メンバー全員が閲覧可能）、設定時＝個人所有（本人のみ閲覧・編集可能）。登録時に選択する（[common-notes.md](common-notes.md) 2章） |
+| created_by_user_id | BIGINT | ○ | FK → users.id（登録者）。共有イベントでも編集・削除はこのユーザーに限る。個人イベントではowner_user_idと同じ値 |
 | name | VARCHAR(50) | ○ | イベント名 |
 | event_date | DATE | ○ | イベントの基準日（トップ画面カレンダー表示に使用） |
 | is_all_day | BOOLEAN | ○ | 終日イベントかどうか。デフォルトtrue |
@@ -782,3 +811,34 @@ PKは(household_id,actor_user_id,request_id)。商品名・価格・JWTなどは
 ※ `recipe_id` と `free_text_memo` はどちらか一方のみ設定する（確定登録/ラフ登録の排他）。
 
 保存期間（#362）：今週（月曜0時開始、JST）と未来の行を保持する。毎日JST 0時と1時の定期処理で、実行時点の今週の月曜日より `week_start_date` が前の行を全世帯について物理削除する。初回は既存の過去週も対象。元の `recipes` は保持する。実行遅延・失敗時は次回に回収し、復元・アーカイブは提供しない。詳細は [F10](features/F10_kondate_menu.md) の「保存期間・自動削除」を参照。
+
+## 在庫別メニュー・実食・継続の物理モデル（#547）
+
+D1追加型マイグレーション`0028_inventory_menu_linkage.sql`・`0029_menu_entry_recipe_title_snapshot.sql`と`schema.ts`を正とする。画面#548はこの契約を利用し、追加のDB変更は行わない。詳細は[承認仕様](../superpowers/specs/2026-11-15-inventory-menu-link-design.md)。既存在庫・通常献立へ関連や消費履歴を自動作成しない。
+
+| 対象 | 追加内容 |
+| --- | --- |
+| `inventory_menu_links` | 世帯、在庫/原本（削除時SET NULL）、原本名snapshot、使用数10倍整数1〜999999、enabled/carry_enabled、開始月曜、revision。週行と独立。enabled=1の同在庫/同原本は部分一意。異在庫の同原本は許可 |
+| `menu_entries` | nullable `inventory_menu_link_id`/`usage_tenths`/`consumed_event_id`/`recipe_title_snapshot TEXT`、`meal_state`既定uneaten、`meal_revision`既定0。名前は連携週行生成時に保存、通常行はNULL。`(inventory_menu_link_id,week_start_date)`一意。通常のNULL関連行は同原本再追加可 |
+| `menu_consumption_events` | UUID、世帯、週行/在庫（削除時SET NULL）、消費量10倍整数、取消日時、作成日時。週削除後もイベントを保持する |
+| `menu_operation_requests` | 世帯/actor/requestIdの複合主キー、正規化request JSON、成功HTTP status/JSON、`guard=1`の名前付きCHECK、作成日時。成功再送を再現し、期限自動削除しない |
+
+新表は世帯削除CASCADE、要求台帳のactorはusers参照CASCADE。退会の墓標化方針は維持し、期限切れデモの物理削除では既存世帯/利用者削除のCASCADEで新表も消える。週行削除だけで持ち越し設定・要求台帳・イベントを削除しない。
+
+0029は既存連携週行だけを移行時の現原本名で補完し、原本削除済みなら関連の`recipe_title_snapshot`を使う。過去の改名履歴は保存されていないため、移行前の生成時名は復元できない。通常行の名前列はNULLのまま、保存済み操作要求の成功JSONも変更しない。
+
+在庫数量のUPDATEで0に到達するとDB triggerで該当関連のcarryをOFFにしrevisionを増やす。補充・取消で自動再ONしない。在庫/原本削除は関連を無効化して参照NULLを残す。日次自動消費ONと有効関連は相互にDB triggerで拒否する。
+
+### 予定回数・品目単位計画の追加（#554、画面#555実装済み）
+
+0030〜0032の追加型移行。共有済み0028/0029は変更しない。旧usage_tenths・event数量・週snapshot・保存済み成功JSONは丸めず保持する。
+
+| テーブル | 追加列と意味 |
+| --- | --- |
+| inventory_items | menu_plan_enabled boolean既定false（planned専用）、menu_plan_revision安全整数既定0（品目集約CAS） |
+| inventory_menu_links | remaining_count nullable整数0〜99999。NULLはlegacy、明示的新計画保存時だけ整数へ。memo nullable255文字以内。recipe別carryは既存列を維持 |
+| menu_consumption_events | plan_count_delta NULL=旧stockだけ/1=新planned、inventory_menu_link_id nullable FK SET NULL、previous_event_id nullable TEXT（LIFO前top、旧行NULL） |
+
+menu_entriesはcountを持たず、consumed_event_idをtop、meal_revisionをCASとして使う。unlinkしてlinkIDがNULLでもevent参照の週行と週名snapshotを保持する。undoの在庫正本はevent.inventory_item_id、元planned link生存時だけcountを戻し、解除/再追加の新IDへ履歴を付け替えない。
+
+0031は全stock writerでSUM(planned remaining)*10≦stockを保証（品目OFFも同じ）。残予定>0とdailyONは排他、legacyは旧enabled条件を維持する。在庫の観測列更新と関連INSERT/UPDATE/DELETEで品目集約revisionを進める。count/stock/event/台帳結果は同batch、既存menu_operation_requestsへ集約version2を追加し旧操作・旧成功JSONを保持する。

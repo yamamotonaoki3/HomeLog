@@ -52,7 +52,7 @@ for (const width of [1280, 390, 320]) {
       }
       await row.click({ position: { x: 3, y: 3 } })
       await expect(close).toBeFocused()
-      await expect(detail.getByText('9999999999円', { exact: true })).toBeVisible()
+      await expect(detail.getByText('9,999,999,999円', { exact: true })).toBeVisible()
       await expect(detail.getByText(accountName, { exact: true })).toBeVisible()
       await expect(detail.getByText('含める', { exact: true })).toBeVisible()
       await expect(detail.getByText('世帯共有', { exact: true })).toBeVisible()
@@ -150,7 +150,7 @@ for (const width of [1280, 390, 320]) {
       const patch = page.waitForRequest(request => request.method() === 'PATCH' && new URL(request.url()).pathname === '/api/fixed-costs/' + fixedCostId)
       await edit.getByRole('button', { name: '更新', exact: true }).click()
       expect((await patch).postDataJSON()).toEqual({ name, amount: 85000, paymentDay: 30, personal: true, includeInHouseholdTotal: false, accountId: null, cardId: null, splitInputType: null, splits: [] })
-      await expect(detail.getByText('85000円', { exact: true })).toBeVisible()
+      await expect(detail.getByText('85,000円', { exact: true })).toBeVisible()
       await detail.getByRole('button', { name: name + 'を削除', exact: true }).click()
       const confirmation = page.getByRole('dialog', { name: '固定費を削除しますか？' })
       await expect(confirmation.getByRole('button', { name: 'キャンセル' })).toBeFocused()

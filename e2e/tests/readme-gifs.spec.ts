@@ -2,7 +2,7 @@ import { mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { APIRequestContext, Browser, Page } from '@playwright/test'
 import { expect, test } from './console-guard'
-import { register, createHousehold, openInventoryDetails } from './support/flows'
+import { register, createHousehold } from './support/flows'
 import { E2E_PASSWORD } from './support/test-data'
 
 // README の GIF 用に、画面操作を動画で録画する(#306)。README_GIF_DIR を指定したときだけ動く。
@@ -55,14 +55,16 @@ async function seed(request: APIRequestContext, token: string) {
   await post('expenses', { expenseDate: today, amount: 2400, purpose: 'ピザの出前', categoryId: cat('食費'), accountId: bank.id, splitInputType: 'amount', splits: [{ debtorExternalName: 'たなかさん', amountDue: 1200 }] })
   await post('fixed-costs', { name: '家賃', amount: 80000, paymentDay: 27, personal: false, includeInHouseholdTotal: true, accountId: bank.id })
   await post('events', { name: '誕生日会', eventDate: dayOfThisMonth(20), isAllDay: true, recurrenceType: 'yearly', personal: false })
-  const zaikoCategories: { id: number; name: string }[] = await get('zaiko-categories')
-  for (const [name, quantity, threshold, price] of [
-    ['卵', 2, 3, 250],
-    ['牛乳', 1, 2, 220],
-    ['お米', 5, 1, 2500],
-    ['トイレットペーパー', 0, 1, 450],
+  // 在庫は品目に合うカテゴリーへ入れる。既定に無い「日用品」はその場で追加する。
+  const zaikoCategories: { id: number; name: string }[] = [...await get('zaiko-categories'), await post('zaiko-categories', { name: '日用品' })]
+  const zaikoCat = (name: string) => zaikoCategories.find((c) => c.name === name)?.id ?? zaikoCategories[0].id
+  for (const [name, category, quantity, threshold, price] of [
+    ['卵', '卵', 2, 3, 250],
+    ['牛乳', '乳製品', 1, 2, 220],
+    ['お米', '乾物', 5, 1, 2500],
+    ['トイレットペーパー', '日用品', 0, 1, 450],
   ] as const) {
-    await post('inventory-items', { name, categoryId: zaikoCategories[0].id, storeId: null, quantity, threshold, price })
+    await post('inventory-items', { name, categoryId: zaikoCat(category), storeId: null, quantity, threshold, price })
   }
   const nikujaga = await post('recipes', { title: '肉じゃが', ingredients: 'じゃがいも 3個\n牛肉 200g\n玉ねぎ 1個\nしょうゆ 大さじ3', steps: '1. 材料を切る\n2. 牛肉と玉ねぎを炒める\n3. じゃがいもと調味料を加えて煮る', sourceType: 'manual' })
   const curry = await post('recipes', { title: 'カレーライス', ingredients: 'カレールー 1箱\nにんじん 1本', steps: '1. 野菜を炒める\n2. 煮込んでルーを溶かす', sourceType: 'manual' })
@@ -98,6 +100,29 @@ async function record(browser: Browser, name: string, scenario: (page: Page) => 
 }
 
 const pause = (page: Page, ms = 900) => page.waitForTimeout(ms)
+
+// WEB 登録の録画に使う架空のレシピページ(#522)。recipe.example.com は予約ドメインで、実在のサイトではない。
+const WEB_RECIPE_URL = 'https://recipe.example.com/teriyaki-chicken'
+const WEB_RECIPE_THUMBNAIL = 'https://recipe.example.com/images/teriyaki-chicken.svg'
+// サムネイルは自作の絵(皿に盛った鶏の照り焼き)。詳細では中央を切り取って表示されるので、料理を中央に置く。
+const WEB_RECIPE_THUMBNAIL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="420" viewBox="0 0 800 420">
+<rect width="800" height="420" fill="#f6e7cf"/>
+<rect y="300" width="800" height="120" fill="#e9d2ad"/>
+<ellipse cx="400" cy="232" rx="250" ry="130" fill="#d9cbb7"/>
+<ellipse cx="400" cy="222" rx="250" ry="130" fill="#ffffff"/>
+<ellipse cx="400" cy="222" rx="196" ry="98" fill="#f4f1ec"/>
+<g fill="#5e9e3d"><circle cx="262" cy="214" r="34"/><circle cx="292" cy="178" r="30"/><circle cx="300" cy="246" r="28"/></g>
+<g fill="#7dbb55"><circle cx="276" cy="200" r="16"/><circle cx="300" cy="236" r="12"/></g>
+<g stroke="#5a2f12" stroke-width="3">
+<rect x="330" y="160" width="96" height="72" rx="26" fill="#a5582a"/>
+<rect x="408" y="176" width="96" height="72" rx="26" fill="#9a4f24"/>
+<rect x="356" y="220" width="96" height="66" rx="26" fill="#ab5e2d"/>
+</g>
+<g fill="#e7a56d" opacity="0.75"><rect x="346" y="172" width="44" height="10" rx="5"/><rect x="424" y="190" width="44" height="10" rx="5"/><rect x="372" y="234" width="44" height="10" rx="5"/></g>
+<g fill="#fff8e6"><circle cx="372" cy="200" r="3"/><circle cx="396" cy="186" r="3"/><circle cx="452" cy="214" r="3"/><circle cx="476" cy="200" r="3"/><circle cx="404" cy="258" r="3"/><circle cx="428" cy="248" r="3"/></g>
+<g fill="#f2c94c"><circle cx="530" cy="262" r="20"/><circle cx="552" cy="238" r="16"/></g>
+<path d="M512 262 a20 20 0 0 1 36 0" fill="none" stroke="#e0a91f" stroke-width="3"/>
+</svg>`
 
 async function scrollSlowly(page: Page, distance: number) {
   for (let moved = 0; moved < distance; moved += 120) {
@@ -184,19 +209,26 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
   await record(browser, 'zaiko', async (p) => {
     await p.goto('/zaiko')
     await pause(p, 1200)
-    const detail = await openInventoryDetails(p, p.getByRole('button', { name: '卵の詳細', exact: true }))
+    // 行を押すと、その場に数量の操作欄が開く。＋は押すたびに保存される。
+    const row = p.getByRole('button', { name: '卵の詳細', exact: true })
+    await row.click()
+    const operations = p.getByRole('region', { name: '卵の数量変更', exact: true })
+    await expect(operations).toBeVisible()
     await pause(p)
-    const plus = detail.getByRole('button', { name: /増やす/ }).first()
+    const plus = operations.getByRole('button', { name: '卵を増やす', exact: true })
     await plus.click()
-    await pause(p, 400)
+    await expect(row).toContainText('3.0')
+    await pause(p, 500)
     await plus.click()
-    await expect(detail.locator('.qty-value')).toHaveText('4.0')
-    await pause(p)
-    await detail.getByRole('button', { name: 'キャンセル', exact: true }).click()
-    await expect(detail).toBeHidden()
-    await expect(p.getByRole('button', { name: '卵の詳細', exact: true })).toContainText('4.0')
-    await pause(p)
+    await expect(row).toContainText('4.0')
+    await pause(p, 1200)
     await p.getByRole('navigation', { name: '在庫管理関連機能' }).getByRole('link', { name: '買い物リスト' }).click()
+    const shopping = p.getByTestId('shopping-panel')
+    await expect(shopping).toContainText('牛乳')
+    await pause(p, 1200)
+    // 買った数を＋で合わせると、その行にチェックが付く(在庫へは「購入を反映」で確定するまで入らない)。
+    await shopping.getByRole('button', { name: '牛乳の購入数を1増やす', exact: true }).click()
+    await expect(shopping.getByRole('group', { name: '牛乳の購入数', exact: true })).toContainText('2')
     await pause(p, 1800)
   })
 
@@ -215,16 +247,55 @@ test('README 用の画面録画', async ({ browser, page, consoleGuard, baseURL:
     await pause(p, 2000)
   })
 
+  // WEB タブで URL から登録する(#522)。外部サイトには接続しない: サーバーがページを読みに行く
+  // POST /api/recipes/from-url とサムネイル画像だけを、架空の応答に差し替える。一覧の取得は本物の API。
+  await record(browser, 'recipes-web', async (p) => {
+    const added: unknown[] = []
+    await p.route(WEB_RECIPE_THUMBNAIL, (route) => route.fulfill({ contentType: 'image/svg+xml', body: WEB_RECIPE_THUMBNAIL_SVG }))
+    await p.route('**/api/recipes/from-url', async (route) => {
+      const body = route.request().postDataJSON()
+      expect(body.url).toBe(WEB_RECIPE_URL)
+      const recipe = { id: 900001, title: '鶏の照り焼き', sourceType: 'web', url: body.url, memo: body.memo ?? null, ingredients: null, steps: null, thumbnailUrl: WEB_RECIPE_THUMBNAIL, isFavorite: false }
+      added.push(recipe)
+      await route.fulfill({ status: 201, json: recipe })
+    })
+    await p.route('**/api/recipes', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      const response = await route.fetch()
+      await route.fulfill({ response, json: [...await response.json(), ...added] })
+    })
+    await p.goto('/recipes')
+    await pause(p, 1200)
+    await p.getByRole('button', { name: 'レシピを登録' }).click()
+    await pause(p, 600)
+    await p.getByRole('tab', { name: 'WEB' }).click()
+    await pause(p)
+    await p.getByLabel('レシピURL').fill(WEB_RECIPE_URL)
+    await pause(p)
+    await p.getByLabel('メモ').pressSequentially('週末に作る', { delay: 150 })
+    await pause(p)
+    await p.getByRole('button', { name: '登録', exact: true }).click()
+    const card = p.getByRole('list', { name: 'レシピ' }).getByRole('button', { name: '鶏の照り焼き', exact: true })
+    await expect(card).toBeVisible()
+    await card.scrollIntoViewIfNeeded()
+    await pause(p, 1500)
+    await card.click()
+    const detail = p.getByRole('dialog', { name: 'レシピ詳細' })
+    await expect(detail.getByRole('img', { name: '鶏の照り焼きのサムネイル' })).toBeVisible()
+    await expect(detail).toContainText('週末に作る')
+    await pause(p, 2500)
+  })
+
   await record(browser, 'menu', async (p) => {
     await p.goto('/menu')
     const menu = p.getByTestId('menu-panel')
     await pause(p, 1200)
     await menu.getByRole('button', { name: 'レシピを追加', exact: true }).click()
-    const sheet = p.getByRole('dialog', { name: 'レシピを追加' })
+    const sheet = p.getByRole('dialog', { name: '献立に追加する' })
     await sheet.getByLabel('レシピを検索').pressSequentially('カレー', { delay: 150 })
     await sheet.getByRole('checkbox', { name: 'カレーライス', exact: true }).check()
     await pause(p)
-    await sheet.getByRole('button', { name: '追加', exact: true }).click()
+    await sheet.getByRole('button', { name: /^(選択した\d+件を)?追加$/ }).click()
     await expect(menu.getByRole('button', { name: 'カレーライス' })).toBeVisible()
     await pause(p)
     await menu.getByRole('button', { name: '肉じゃが', exact: true }).click()
