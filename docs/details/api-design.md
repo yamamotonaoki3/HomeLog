@@ -435,7 +435,7 @@ price省略は保存値維持、nullはクリア、数値は在庫の値段を�
 
 ### POST /api/shopping-list-items/update
 
-旧APIは未保護行の従来の入力・応答・数量0の処理を維持する。予定編集または部分購入で保護された行を1件でも含む場合、事前検証とbatch内条件の双方で全体を409 `RESOURCE_CONFLICT` とし、在庫を加算しない。旧APIでは同じ要求の再送を識別しない。現行画面は[要求ID付きの購入API](#post-apishopping-list-itemspurchases455)を利用する。
+旧APIは未保護の要求対象について、手動追加の行は購入数が0でも買い物リストから除外し、自動追加の行は更新後の在庫が補充基準を超えた場合に除外する。予定編集または部分購入で保護された行を1件でも含む場合、事前検証とbatch内条件の双方で全体を409 `RESOURCE_CONFLICT` とし、在庫を加算しない。旧APIでは同じ要求の再送を識別しない。現行画面は[要求ID付きの購入API](#post-apishopping-list-itemspurchases455)を利用し、購入後の予定残数を扱う。
 
 リクエスト:
 ```json
