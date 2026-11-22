@@ -51,6 +51,13 @@ test.describe('レシピURL登録のローカルAPI契約 (#569)', () => {
     const recipe = await created.json() as { id: number }
     const saved = { ...data, id: recipe.id, sourceType: 'manual', url: null, thumbnailUrl: null, memo: null }
     expect(recipe).toMatchObject(saved)
+    const duplicate = await request.post(api + '/recipes', { headers: ownerHeaders, data: { ...data, title: '　' + data.title + ' ' } })
+    expect(duplicate.status()).toBe(409)
+    expect(await duplicate.json()).toEqual({
+      code: 'RESOURCE_CONFLICT', message: '同じタイトルのレシピが既に登録されています',
+      details: [{ field: 'title', reason: 'DUPLICATE_RECIPE_TITLE' }],
+    })
+
 
     const ownList = await request.get(api + '/recipes', { headers: ownerHeaders })
     expect(ownList.status()).toBe(200)

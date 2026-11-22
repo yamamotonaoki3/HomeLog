@@ -60,13 +60,21 @@ app.onError((err, c) => {
   let cause: unknown = err
   while (cause instanceof Error && !seen.has(cause)) {
     seen.add(cause)
+    // Check the D1 error before generic checks that could match Drizzle's SQL parameters.
+    if (/^D1_ERROR: HOMELOG_RECIPE_TITLE_CONFLICT(?:: SQLITE_CONSTRAINT(?:_TRIGGER)?(?: \(extended: SQLITE_CONSTRAINT_TRIGGER\))?)?$/.test(cause.message)) {
+      return c.json(errorResponse('RESOURCE_CONFLICT', '同じタイトルのレシピが既に登録されています', [
+        { field: 'title', reason: 'DUPLICATE_RECIPE_TITLE' },
+      ]), 409)
+    }
+    cause = cause.cause
+  }
+  for (const cause of seen) {
     if (isMenuPlanWriteConflict(cause)) {
       return c.json(errorResponse('RESOURCE_CONFLICT', '献立または在庫が変更されました。再取得してください'), 409)
     }
     if (/\bHOMELOG_ACCOUNT_DELETED\b/.test(cause.message)) {
       return c.json(errorResponse('VALIDATION_ERROR', '指定された口座が見つかりません'), 400)
     }
-    cause = cause.cause
   }
   // Honoの既定と同じHTTP例外/500応答を維持し、privateなerrorHandlerには依存しない。
   if ('getResponse' in err) {

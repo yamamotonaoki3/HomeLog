@@ -21,6 +21,22 @@ beforeEach(async()=>{
  recipeId=(await env.DB.prepare("INSERT INTO recipes(household_id,created_by_user_id,title,source_type) VALUES(?,?,'[E2E_TEST] curry','manual') RETURNING id").bind(householdId,user.id).first<{id:number}>())!.id
  headers={'Content-Type':'application/json',Authorization:'Bearer '+await signAccessToken(user.id,env.JWT_SECRET,900)}
 })
+it.each(['menuPlan', 'menuLinkage'] as const)('同じ新規レシピタイトルを含む %s の一括登録を全て取り消す', async kind => {
+ const before = await counts()
+ const title = '[E2E_TEST] 無水カレー'
+ const titles = [title, '　' + title + ' ']
+ const data = kind === 'menuPlan'
+  ? body(titles.map(newRecipeTitle => ({newRecipeTitle,remainingCount:1,memo:null,carryEnabled:false})))
+  : {...body(),menuPlan:undefined,menuLinkage:{requestId:crypto.randomUUID(),menus:titles.map(newRecipeTitle => ({newRecipeTitle}))}}
+ const response = await request('POST', 'inventory-items', {...data,threshold:5})
+ expect(response.status).toBe(409)
+ expect(await response.json()).toEqual({
+  code:'RESOURCE_CONFLICT',message:'同じタイトルのレシピが既に登録されています',
+  details:[{field:'title',reason:'DUPLICATE_RECIPE_TITLE'}],
+ })
+ expect(await counts()).toEqual(before)
+})
+
 it.each([5,5.5,6])('在庫%sへ2+3回を一括保存し未割当を許可、全DTOと週行を確定する',async quantity=>{
  const created=await create({...body(),quantity})
  expect(created).toMatchObject({quantity,menuPlanEnabled:true,menuPlanRevision:expect.any(Number),menuLinks:[{recipeId,remainingCount:2,memo:null},{remainingCount:3,memo:' spicy ',carryEnabled:true}]})

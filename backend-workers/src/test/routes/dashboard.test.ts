@@ -340,6 +340,8 @@ describe('GET /api/dashboard/summary', () => {
       .bind(householdId, '先週の献立', '2000-01-03')
       .run()
 
+    // Model legacy rows created before the registration guard was installed.
+    await env.DB.prepare('DROP TRIGGER recipes_unique_title_insert').run()
     const duplicate = await env.DB.prepare('INSERT INTO recipes (household_id, created_by_user_id, title) VALUES (?, ?, ?) RETURNING id')
       .bind(householdId, userId, '肉じゃが').first<{ id: number }>()
     if (!duplicate) throw new Error('test setup error')
