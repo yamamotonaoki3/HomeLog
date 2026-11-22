@@ -31,7 +31,7 @@ test('在庫の重複は409で保存せず、自分自身の編集とURLなし�
   const listed = await listedResponse.json()
   expect(listed.find((row: { id: number }) => row.id === other.id).name).toBe('[E2E_TEST] Other')
   for (let i = 0; i < 2; i++) {
-    const recipe = await page.request.post('/api/recipes', { headers, data: { title: '[E2E_TEST] 手動レシピ' } })
+    const recipe = await page.request.post('/api/recipes', { headers, data: { title: '[E2E_TEST] 手動レシピ ' + i } })
     expect(recipe.status()).toBe(201)
     expect((await recipe.json()).url).toBeNull()
   }

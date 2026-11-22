@@ -593,6 +593,79 @@ describe('PATCH /api/recipes/:id (web種別)', () => {
   })
 })
 
+describe('レシピタイトルの重複', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const create = (headers: Record<string, string>, title: string, sourceType = 'manual') => app.request('/api/recipes', {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ title, sourceType }),
+  }, env)
+
+  it('手動とOCRの同時登録で同じ世帯には1件だけ保存し、別世帯には同じタイトルを保存できる', async () => {
+    const owner = await createUserWithHousehold('testuser_title_owner@example.com')
+    const member = await createUserWithoutHousehold('testuser_title_member@example.com')
+    await joinHousehold(member.userId, member.headers, owner.headers)
+    const title = '[E2E_TEST] 肉じゃが'
+    const results = await Promise.all([
+      create(owner.headers, title),
+      create(member.headers, '\t' + title + '　', 'ocr'),
+    ])
+    expect(results.map(result => result.status).sort()).toEqual([201, 409])
+    expect(await results.find(result => result.status === 409)!.json()).toMatchObject({
+      code: 'RESOURCE_CONFLICT', message: '同じタイトルのレシピが既に登録されています',
+    })
+    expect(await env.DB.prepare('SELECT count(*) AS n FROM recipes').first()).toEqual({ n: 1 })
+
+    const another = await createUserWithHousehold('testuser_title_another@example.com')
+    expect((await create(another.headers, title)).status).toBe(201)
+  })
+
+  it.each(['[E2E_TEST] HOMELOG_ACCOUNT_DELETED', '[E2E_TEST] menu_plan_allocation'])(
+    'タイトルの文字列が他のDBエラーの識別名を含んでいてもタイトル重複として返す: %s',
+    async title => {
+      const { headers } = await createUserWithHousehold('testuser_conflict_marker@example.com')
+      expect((await create(headers, title)).status).toBe(201)
+      const duplicate = await create(headers, title)
+      expect(duplicate.status).toBe(409)
+      expect(await duplicate.json()).toEqual({
+        code: 'RESOURCE_CONFLICT',
+        message: '同じタイトルのレシピが既に登録されています',
+        details: [{ field: 'title', reason: 'DUPLICATE_RECIPE_TITLE' }],
+      })
+    },
+  )
+
+
+  it('同名のWebレシピ登録と改名を拒否し、タイトル据え置きの編集を受け付ける', async () => {
+    const { headers } = await createUserWithHousehold('testuser_title_edit@example.com')
+    const title = '[E2E_TEST] カレー'
+    expect((await create(headers, title)).status).toBe(201)
+    const second = await create(headers, '[E2E_TEST] シチュー')
+    const { id } = await second.json<{ id: number }>()
+    const patch = (newTitle: string, ingredients: string) => app.request('/api/recipes/' + id, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle, ingredients }),
+    }, env)
+    expect((await patch(title, '未保存')).status).toBe(409)
+    expect(await env.DB.prepare('SELECT title, ingredients FROM recipes WHERE id = ?').bind(id).first()).toEqual({
+      title: '[E2E_TEST] シチュー', ingredients: null,
+    })
+    expect((await patch('[E2E_TEST] シチュー', '保存済み')).status).toBe(200)
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(
+      '<meta property="og:title" content="　' + title + '　">',
+      { headers: { 'content-type': 'text/html' } },
+    )))
+    const web = await app.request('/api/recipes/from-url', {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/recipe' }),
+    }, env)
+    expect(web.status).toBe(409)
+    expect(await web.json()).toMatchObject({ code: 'RESOURCE_CONFLICT' })
+    expect(await env.DB.prepare('SELECT count(*) AS n FROM recipes').first()).toEqual({ n: 2 })
+  })
+})
+
+
 describe('レシピURLの重複 (#318)', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -647,8 +720,8 @@ describe('レシピURLの重複 (#318)', () => {
   it('別世帯の同一URLと文字列の異なるURLを許可する', async () => {
     for (const email of ['testuser_url_one@example.com', 'testuser_url_two@example.com']) {
       const { headers } = await createUserWithHousehold(email)
-      for (const url of ['https://example.com/Recipe', 'https://example.com/recipe']) {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<title>[E2E_TEST] レシピ</title>', { headers: { 'content-type': 'text/html' } })))
+      for (const [index, url] of ['https://example.com/Recipe', 'https://example.com/recipe'].entries()) {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<title>[E2E_TEST] レシピ ' + index + '</title>', { headers: { 'content-type': 'text/html' } })))
         expect((await register(headers, url)).status).toBe(201)
       }
     }
@@ -657,7 +730,7 @@ describe('レシピURLの重複 (#318)', () => {
   it('URLなしのレシピは複数登録できる', async () => {
     const { headers } = await createUserWithHousehold('testuser_manual@example.com')
     for (let i = 0; i < 2; i++) {
-      const res = await app.request('/api/recipes', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '[E2E_TEST] レシピ' }) }, env)
+      const res = await app.request('/api/recipes', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '[E2E_TEST] レシピ ' + i }) }, env)
       expect(res.status).toBe(201)
       expect((await res.json<{ url: string | null }>()).url).toBeNull()
     }

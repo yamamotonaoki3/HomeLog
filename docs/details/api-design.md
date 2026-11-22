@@ -593,7 +593,11 @@ interface DashboardDayDetail {
 `POST /api/recipes/from-url` は、入力URLを `new URL()` で解析し、正規化した文字列（`parsedUrl.toString()`）と同一世帯の保存済みURLとの一致で比較する。
 一致すれば外部取得・保存を行わず409、共通形式 `{ code: "DUPLICATE_RECIPE_URL", message: "このURLのレシピは既に登録されています", details: [] }` を返す。
 入力の元URLは2048文字まで。保存には `parsedUrl.toString()` を使う。画像URLの条件は[F-09](features/F09_kondate_recipe.md)を参照。ホスト名の大小文字やルートの末尾スラッシュの有無（`https://EXAMPLE.com` と `https://example.com/`）はURL正規化により同一になる。パスの大小文字など、正規化後も異なる文字列は別URLとして扱う。
-別世帯は対象外。URLなし（null・空文字）のレシピは複数可。既存重複データは維持し、UNIQUE制約は追加しない。
+同一URLの確認は世帯ごとに行う。URLなしのレシピはタイトルが異なれば複数登録できる。
+
+### レシピタイトルの重複防止
+
+レシピを作成するAPIと手動・OCRレシピの改名では、前後の空白を除いたタイトルが同一世帯の他のレシピと一致すると、409と `RESOURCE_CONFLICT`（「同じタイトルのレシピが既に登録されています」、`details: [{ field: "title", reason: "DUPLICATE_RECIPE_TITLE" }]`）を返す。Web登録時は同一URLの判定を優先する。在庫の献立連携で作成するレシピにもタイトルの条件を適用し、競合時は在庫・献立を含む操作全体をロールバックする。保存済みの連携操作を再送した場合は、既存の保存結果を返す。既存の同名レシピとタイトルを維持した編集を許可する。
 
 ### PATCH /api/shopping-list-items/{id}（#455）
 

@@ -163,10 +163,11 @@ describe('purgeExpiredDemos', () => {
 })
 
 async function seedMenuLinkage(household: number, user: number, planned=false) {
+  const title = planned ? '[E2E_TEST] planned recipe' : '[E2E_TEST] linked recipe'
   const category = (await env.DB.prepare('INSERT INTO zaiko_categories(household_id,name) VALUES (?,?) RETURNING id').bind(household, '[E2E_TEST] link category').first<{ id: number }>())!.id
   const stock = (await env.DB.prepare('INSERT INTO inventory_items(household_id,name,category_id,quantity_tenths,threshold_tenths,menu_plan_enabled) VALUES (?,?,?,20,0,?) RETURNING id').bind(household, '[E2E_TEST] linked stock', category,Number(planned)).first<{ id: number }>())!.id
-  const recipe = (await env.DB.prepare('INSERT INTO recipes(household_id,created_by_user_id,title) VALUES (?,?,?) RETURNING id').bind(household, user, '[E2E_TEST] linked recipe').first<{ id: number }>())!.id
-  const link = (await env.DB.prepare("INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,carry_enabled,remaining_count,memo) VALUES (?,?,?,?,'2026-11-09',1,?,?) RETURNING id").bind(household, stock, recipe, '[E2E_TEST] linked recipe',planned?1:null,planned?'[E2E_TEST] planned demo':null).first<{ id: number }>())!.id
+  const recipe = (await env.DB.prepare('INSERT INTO recipes(household_id,created_by_user_id,title) VALUES (?,?,?) RETURNING id').bind(household, user, title).first<{ id: number }>())!.id
+  const link = (await env.DB.prepare("INSERT INTO inventory_menu_links(household_id,inventory_item_id,recipe_id,recipe_title_snapshot,starts_on,carry_enabled,remaining_count,memo) VALUES (?,?,?,?,'2026-11-09',1,?,?) RETURNING id").bind(household, stock, recipe, title,planned?1:null,planned?'[E2E_TEST] planned demo':null).first<{ id: number }>())!.id
   const event = crypto.randomUUID()
   const entry = (await env.DB.prepare("INSERT INTO menu_entries(household_id,recipe_id,week_start_date,inventory_menu_link_id,usage_tenths,meal_state,consumed_event_id) VALUES (?,?,'2026-11-09',?,10,'eaten',?) RETURNING id").bind(household, recipe, link, event).first<{ id: number }>())!.id
   await env.DB.batch([
