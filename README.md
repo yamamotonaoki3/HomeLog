@@ -2,7 +2,7 @@
 
 ## ライブデモ
 
-**[https://homelog-demo.nyproducts.workers.dev/demo](https://homelog-demo.nyproducts.workers.dev/demo)**
+**[https://homelog-demo.nyproducts.workers.dev/demo](https://homelog-demo.nyproducts.workers.dev/demo)** ｜ 新規登録なしでデモを試せます。
 
 ### ライブデモの使い方と注意事項
 
@@ -213,6 +213,8 @@ flowchart LR
 | テスト | Vitest（`@cloudflare/vitest-pool-workers` / Testing Library / msw）/ Playwright |
 | 品質 | ESLint / oxlint / TypeScript / GitHub Actions / gitleaks |
 | デプロイ | Cloudflare Workers Builds（`production` ブランチへの push で自動デプロイ） |
+
+当初は Java / Spring Boot で API を実装していました。現在は Cloudflare Workers（Hono）で画面と API を配信し、データは D1 に保存しています。移行前の Spring Boot 版は `backend/` に残しており、現在の本番では使っていません。
 
 詳しくは [docs/技術スタック.md](docs/技術スタック.md) と [docs/details/system-architecture.md](docs/details/system-architecture.md) を参照してください。
 
